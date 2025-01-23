@@ -1,99 +1,142 @@
 import torch
+from torch import nn
 from tqdm import tqdm
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 # toy ML force field
+
+def target_f(x):
+    """
+    """
+    return torch.sin(x) + torch.sin((10./3.)*x)
+
+
+
+
 class ToyMLFF(torch.nn.Module):
     def __init__(self):
         super().__init__()
         # Input features: flattened positions (3*n_atoms)
-        self.fc1 = torch.nn.Linear(9, 32)
-        self.fc2 = torch.nn.Linear(32, 16)
-        self.fc3 = torch.nn.Linear(16, 1)  # Output scalar energy
+        s = 64
+        self.net = nn.Sequential(
+            nn.Linear(1, s),
+            nn.ReLU(),
+            nn.Linear(s, s),
+            nn.ReLU(),
+            nn.Linear(s, s),
+            nn.ReLU(),            
+            nn.Linear(s, 1)
+        )
 
-    def forward(self, x, z):
+    def forward(self, x):
         """
-        x: atomic positions (3 x n_atoms)
-        z: atomic numbers (n_atoms)
-        return: energy (scalar), forces per atom (3 x n_atoms)
+        x
+        return: f(x)
         """
-        # Compute energy
-        batch_size = x.shape[0] if len(x.shape) > 2 else 1
-        x_flat = x.reshape(batch_size, -1)  # Flatten positions
-        
-        x_flat.requires_grad_(True)  # Enable gradient computation
-        
-        h = torch.relu(self.fc1(x_flat))
-        h = torch.relu(self.fc2(h))
-        energy = self.fc3(h)  # Scalar energy
-        
-        # Compute forces as negative gradient of energy w.r.t. positions
-        forces = -torch.autograd.grad(
-            energy.sum(), x_flat, 
-            create_graph=True, retain_graph=True
-        )[0]
-        
-        forces = forces.reshape(batch_size, -1, 3)  # Reshape to (batch, n_atoms, 3)
-        
-        return energy, forces
+        return self.net(x)
     
     def get_parameters(self):
         """Returns flattened parameters"""
         return torch.cat([p.flatten() for p in self.parameters()])
 
+    
 class MetaSampler(torch.nn.Module):
     """Predicts the atom positions x that minimize the energy E(x).
     Takes as input the model parameters and atom numbers z.
     Returns the predicted positions.
     """
-    def __init__(self, n_params, n_atoms):
+    def __init__(self, n_params):
         super().__init__()
         self.n_params = n_params
-        self.n_atoms = n_atoms
         
         # simple MLP to predict the positions
-        self.mlp = torch.nn.Sequential(
-            torch.nn.Linear(n_params + n_atoms, 128),
-            torch.nn.ReLU(),
-            torch.nn.Linear(128, 3 * n_atoms),
+        self.net = nn.Sequential(
+            nn.Linear(n_params, 128),
+            nn.ReLU(),
+            nn.Linear(128, 128),
+            nn.ReLU(),            
+            nn.Linear(128, 1),
         )
     
-    def forward(self, params, z):
+    def forward(self, params):
         """
         params: model parameters (n_params)
-        z: atomic numbers (n_atoms)
-        return: predicted positions (3 x n_atoms)
+        return: predicted f_min
         """
         params = params.reshape(1, -1)
-        x = self.mlp(torch.cat([params, z], dim=-1))
-        return x.reshape(-1, self.n_atoms, 3)
+        x = self.net(params)
+        return x
 
 if __name__ == "__main__":
-    # Example usage
-    x = torch.randn(1, 3, 3)  # Batch size 1, 3 atoms, 3D positions
-    z = torch.randint(1, 10, (1, 3))  # Atomic numbers
-
-    model = ToyMLFF()
-    energy, forces = model(x, z)
+    # seed
+    # torch.manual_seed(1)
     
-    print(f"energy: {energy.shape}")
-    print(f"forces: {forces.shape}")
-    print(f"parameters: {sum(p.numel() for p in model.parameters())}")
+    TRAIN=False
 
-    # meta sampler
-    n_params = sum(p.numel() for p in model.parameters())
-    n_atoms = x.shape[-1]
-    meta_sampler = MetaSampler(n_params, n_atoms)
-    x_pred = meta_sampler(model.get_parameters(), z)
-    print(f"x_pred: {x_pred.shape}")
+    if TRAIN:
+        xs = torch.linspace(-5, 10, 100).reshape(-1, 1)
+        ys = target_f(xs)
+        sns.lineplot(x=xs.squeeze(), y=ys.squeeze())
+        model = ToyMLFF()
+        # train model to predic target_f using (xs, ys) as training data
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+        dataset = torch.utils.data.TensorDataset(xs, ys)
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=32, shuffle=True)
+        for _ in tqdm(range(50000)):
+            for x, y in dataloader:
+                optimizer.zero_grad()
+                y_pred = model(x)
+                loss = torch.nn.functional.mse_loss(y_pred, y)
+                loss.backward()
+                optimizer.step()
+
+
+        # save parameters:
+        torch.save(model.state_dict(), "model_1.pth")
+
+        pred_ys = model(xs).detach().squeeze()
+        sns.lineplot(x=xs.squeeze(), y=pred_ys)
+        plt.show()
+
+    else:
+        model = ToyMLFF()
+        model.load_state_dict(torch.load("model.pth"))
+
+        xs = torch.linspace(-10, 15, 100).reshape(-1, 1)
+        ys = target_f(xs)
+        sns.lineplot(x=xs.squeeze(), y=ys.squeeze())
+        pred_ys = model(xs).detach().squeeze()
+        sns.lineplot(x=xs.squeeze(), y=pred_ys)
+        # plt.show()
+
+
+    n_params = model.get_parameters().shape[0]
+    meta_sampler = MetaSampler(n_params)
+    x_pred = meta_sampler(model.get_parameters()).detach().reshape(-1)
+    sns.scatterplot(x=x_pred, y=target_f(x_pred), color="blue")
     
     # train meta sampler
     optimizer = torch.optim.Adam(meta_sampler.parameters(), lr=1e-3)
     for _ in tqdm(range(100)):
         optimizer.zero_grad()
-        x_pred = meta_sampler(model.get_parameters(), z)
-        energy, forces = model(x_pred, z)
-        loss = energy.sum()
+        x_pred = meta_sampler(model.get_parameters())
+        x = model(x_pred)
+        loss = x.sum()
         loss.backward()
         optimizer.step()
         tqdm.write(f"loss: {loss.item()}")
         
+
+    x_pred = meta_sampler(model.get_parameters()).detach().reshape(-1)
+    sns.scatterplot(x=x_pred, y=target_f(x_pred), color="red")
+
+    # model_1 = ToyMLFF()
+    # model_1.load_state_dict(torch.load("model_1.pth"))
+    # x_pred = meta_sampler(model_1.get_parameters()).detach().reshape(-1)
+    # sns.scatterplot(x=x_pred, y=target_f(x_pred), color="red", marker="x")
+    
+    plt.show()
+    
+
+    
