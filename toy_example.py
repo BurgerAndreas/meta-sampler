@@ -10,15 +10,16 @@ def target_f(x):
     """
     """
     return torch.sin(x) + torch.sin((10./3.)*x)
+    # return torch.cos(x) + x**8 - 0.5*x**2
 
 
 
 
 class ToyMLFF(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, n_hidden=64):
         super().__init__()
         # Input features: flattened positions (3*n_atoms)
-        s = 64
+        s = n_hidden
         self.net = nn.Sequential(
             nn.Linear(1, s),
             nn.ReLU(),
@@ -72,10 +73,10 @@ if __name__ == "__main__":
     # seed
     # torch.manual_seed(1)
     
-    TRAIN=False
+    TRAIN=True# False
 
     if TRAIN:
-        xs = torch.linspace(-5, 10, 100).reshape(-1, 1)
+        xs = torch.linspace(-1, 1, 500).reshape(-1, 1)
         ys = target_f(xs)
         sns.lineplot(x=xs.squeeze(), y=ys.squeeze())
         model = ToyMLFF()
@@ -83,7 +84,7 @@ if __name__ == "__main__":
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
         dataset = torch.utils.data.TensorDataset(xs, ys)
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=32, shuffle=True)
-        for _ in tqdm(range(50000)):
+        for _ in tqdm(range(10000)):
             for x, y in dataloader:
                 optimizer.zero_grad()
                 y_pred = model(x)
@@ -93,11 +94,13 @@ if __name__ == "__main__":
 
 
         # save parameters:
-        torch.save(model.state_dict(), "model_1.pth")
+        torch.save(model.state_dict(), "model_doublewell.pth")
 
+        xs = torch.linspace(-1.1, 1.1, 500).reshape(-1, 1)
         pred_ys = model(xs).detach().squeeze()
         sns.lineplot(x=xs.squeeze(), y=pred_ys)
         plt.show()
+        exit()
 
     else:
         model = ToyMLFF()
