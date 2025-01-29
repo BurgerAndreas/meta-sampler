@@ -156,14 +156,12 @@ def main():
     # train meta sampler
     ######################################################################
     
-    overfit_to_single_sample = True
-    training_iterations = 1000
-    
     starttime = time.time()
-    if overfit_to_single_sample:
+    # fit to a single batch
+    if args.overfit_to_single_sample:
         firstbatch = next(iter(train_loader))
         
-        pbar = tqdm(range(training_iterations))
+        pbar = tqdm(range(args.max_steps))
         for _ in pbar:
             # If non_blocking=True, no synchronization is triggered, 
             # from the host perspective, multiple tensors can be sent to the device simultaneously, 
@@ -221,49 +219,82 @@ def main():
             
     else:
 
-        # TODO: under construction
+        step = 0
+        pbar = tqdm(range(args.max_steps))
         for epoch in itertools.count():
-            for batch_host in tqdm(train_loader):
-                # Transfer to 'device'
-                batch = {
-                    k: v.to(device=device, non_blocking=True)
-                    for (k, v) in batch_host.items()
-                }
-                # Reset gradient
+            for batch_host in train_loader:
+                coord = batch_host['coord'].to(device=device, non_blocking=True).requires_grad_(True)
+                elems = batch_host['elems'].to(device=device, non_blocking=True)
+                cell = batch_host['cell'].to(device=device, non_blocking=True).requires_grad_(True)
+                # num_atoms = batch_host['num_atoms'].to(device=device, non_blocking=True).float().requires_grad_(True)
+                num_atoms = batch_host['num_atoms'].to(device=device, non_blocking=True)
+                # pairs = batch_host['pairs'].to(device=device, non_blocking=True)
+                # n_diff = batch_host['n_diff'].to(device=device, non_blocking=True).requires_grad_(True)
+                # num_pairs = batch_host['num_pairs'].to(device=device, non_blocking=True)
+                
                 optimizer.zero_grad()
-
-                # Forward, backward and optimize
-                pred = sampler(batch)
-                # TODO: akward gradient flow
-                pred = add_connectivity_batch(pred)
-                outputs = mlff(
-                    pred, compute_forces=bool(args.forces_weight)
+                
+                coord_pred = sampler(
+                    num_atoms=num_atoms, elems=elems, cell=cell, coord=coord,
                 )
+                
+                pairs, n_diff, num_pairs = add_connectivity_batch(
+                    num_atoms=num_atoms, elems=elems, cell=cell, coord=coord_pred,
+                    params=sampler.named_parameters()
+                )
+                
+                # print(f"coord_pred: \n{coord_pred}")
+                # print(f"coord: \n{coord}")
+                # print(f"cell: \n{cell}")
+                
+                # does not depend on coord, but on n_diff
+                outputs = mlff(
+                    num_atoms=num_atoms, elems=elems, cell=cell, coord=coord_pred,
+                    pairs=pairs, n_diff=n_diff, num_pairs=num_pairs,
+                    compute_forces=False,
+                    # compute_forces=bool(args.forces_weight)
+                )
+                
                 loss = torch.sum(outputs["energy"])
+                
                 loss.backward()
+                tqdm.write(f"loss: {loss.item():.1f}")
+                
+                # View gradients in each part of the sampler
+                # for i, (name, param) in enumerate(sampler.named_parameters()):
+                #     if param.grad is None:
+                #         print(name, "grad is None, requires_grad : ", param.requires_grad)
+                #     else:
+                #         print (name, "grad", param.grad.data)
+                
+                # clip gradient
+                grad = torch.nn.utils.clip_grad_norm_(sampler.parameters(), max_norm=10.0)
                 optimizer.step()
                 
+                elapsed = time.time() - starttime
+                pbar.set_description(f"loss={loss.item():.1f}, grad={torch.linalg.norm(grad):.1f}, lr={optimizer.param_groups[0]['lr']:.1e}, time={elapsed:.0f}s")
+                pbar.update(1)
                 step += 1
-
+                
                 if not args.plateau_scheduler:
                     scheduler.step()
 
                 if step >= args.max_steps:
                     logging.info("Max steps reached, exiting")
-                    torch.save(
-                        {
-                            # "model": mlff.state_dict(),
-                            "meta_sampler": sampler.state_dict(),
-                            "optimizer": optimizer.state_dict(),
-                            "scheduler": scheduler.state_dict(),
-                            "step": step,
-                            "best_val_loss": best_val_loss,
-                            "node_size": args.node_size,
-                            "num_layer": args.num_interactions,
-                            "cutoff": args.cutoff,
-                        },
-                        os.path.join(args.output_dir, "exit_model.pth"),
-                    )
+                    # torch.save(
+                    #     {
+                    #         # "model": mlff.state_dict(),
+                    #         "meta_sampler": sampler.state_dict(),
+                    #         "optimizer": optimizer.state_dict(),
+                    #         "scheduler": scheduler.state_dict(),
+                    #         "step": step,
+                    #         "best_val_loss": best_val_loss,
+                    #         "node_size": args.node_size,
+                    #         "num_layer": args.num_interactions,
+                    #         "cutoff": args.cutoff,
+                    #     },
+                    #     os.path.join(args.output_dir, "exit_model.pth"),
+                    # )
                     sys.exit(0)
     
 

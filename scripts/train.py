@@ -91,6 +91,12 @@ def get_arguments(arg_list=None):
         default="dtudataset",
     )
     parser.add_argument(
+        "--overfit_to_single_sample",
+        action="store_true",
+        help="Overfit to a single sample",
+        default=False,
+    )
+    parser.add_argument(
         "--max_steps",
         type=int,
         help="Maximum number of optimisation steps. Between 1k and 1M",
