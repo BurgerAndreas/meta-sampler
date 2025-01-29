@@ -1,0 +1,4 @@
+--load_model
+trained_models/96_node_3_layer.pth
+--batch_size
+2
