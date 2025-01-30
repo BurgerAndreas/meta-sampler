@@ -22,7 +22,7 @@ import torch_cluster
 
 
 from scripts.train import get_arguments, update_namespace, setup_seed, split_data
-from sampler.build_mod_graph_ase import get_neighborlist
+from sampler.build_mol_graph_ase import get_neighborlist
 
 """Compute molecular graph (add edges) after predicting atom coordinates.
 

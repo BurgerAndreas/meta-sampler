@@ -209,10 +209,11 @@ class PainnModel(nn.Module):
         edge_dist = torch.linalg.norm(edge_diff, dim=1)
         
         node_scalar = self.atom_embedding(elems)
-        node_vector = torch.zeros((coord.shape[0], 3, self.hidden_state_size),
-                                  device=edge_diff.device,
-                                  dtype=edge_diff.dtype,
-                                 )
+        node_vector = torch.zeros(
+            (coord.shape[0], 3, self.hidden_state_size),
+            device=edge_diff.device,
+            dtype=edge_diff.dtype,
+        )
         
         assert not torch.isnan(node_scalar).any(), f"node_scalar: \n{node_scalar}"
         assert not torch.isnan(node_vector).any(), f"node_vector: \n{node_vector}"

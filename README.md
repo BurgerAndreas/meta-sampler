@@ -45,7 +45,7 @@ pip install torch-geometric
 
 ### Fit sampler (ours)
 ```bash
-python scripts/fit_sampler.py --load_model trained_models/96_node_3_layer.pth --batch_size 4
+python scripts/train_sampler.py --load_model trained_models/96_node_3_layer.pth --batch_size 4
 ```
 
 ### Run PaiNN (previous)
