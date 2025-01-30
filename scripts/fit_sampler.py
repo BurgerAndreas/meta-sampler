@@ -183,7 +183,6 @@ def main():
             
             pairs, n_diff, num_pairs = add_connectivity_batch(
                 num_atoms=num_atoms, elems=elems, cell=cell, coord=coord_pred,
-                params=sampler.named_parameters()
             )
             
             # print(f"coord_pred: \n{coord_pred}")
@@ -240,7 +239,6 @@ def main():
                 
                 pairs, n_diff, num_pairs = add_connectivity_batch(
                     num_atoms=num_atoms, elems=elems, cell=cell, coord=coord_pred,
-                    params=sampler.named_parameters()
                 )
                 
                 # print(f"coord_pred: \n{coord_pred}")
@@ -268,7 +266,7 @@ def main():
                 #         print (name, "grad", param.grad.data)
                 
                 # clip gradient
-                grad = torch.nn.utils.clip_grad_norm_(sampler.parameters(), max_norm=10.0)
+                grad = torch.nn.utils.clip_grad_norm_(sampler.parameters(), max_norm=2.0)
                 optimizer.step()
                 
                 elapsed = time.time() - starttime

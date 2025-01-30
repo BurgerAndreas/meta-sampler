@@ -1,3 +1,4 @@
-2025-01-29 17:48:03,820 [INFO ]  loading data dtudataset
-2025-01-29 17:48:03,824 [INFO ]  Dataset size: 18773, training set size: 16895, validation set size: 1878
-2025-01-29 17:48:04,420 [INFO ]  Load model from trained_models/96_node_3_layer.pth
+2025-01-30 06:03:35,668 [INFO ]  loading data dtudataset
+2025-01-30 06:03:35,793 [INFO ]  Dataset size: 18773, training set size: 16895, validation set size: 1878
+2025-01-30 06:03:36,954 [INFO ]  Load model from trained_models/96_node_3_layer.pth
+2025-01-30 06:03:39,079 [DEBUG]  Loaded backend tkagg version 8.6.

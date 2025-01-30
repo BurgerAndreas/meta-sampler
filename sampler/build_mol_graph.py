@@ -38,7 +38,7 @@ Batch in the dataset contains:
 - forces: forces [n_atoms_batch, 3] # ignore
 """
 
-def get_neighborlist_torch(coord, cell, pbc, cutoff, params=None, device=None):
+def get_neighborlist_torch(coord, cell, pbc, cutoff, device=None):
     """
     Constructs a neighbor list for a set of atomic positions, with periodic boundary conditions.
     Gives the same result as ASE/asap3, but ensures proper gradients flow through all tensors.
@@ -125,7 +125,7 @@ def get_neighborlist_simple_torch(coord, cutoff, device):
 
 
 # GPU version with gradients
-def add_connectivity_torch(coord, elems, cell, pbc=True, cutoff=5, params=None):
+def add_connectivity_torch(coord, elems, cell, pbc=True, cutoff=5):
     """Add connectivity (pairs, n_diff, num_pairs) to a single sample.
     
     Args:
@@ -139,14 +139,14 @@ def add_connectivity_torch(coord, elems, cell, pbc=True, cutoff=5, params=None):
     device = coord.device
     if cell.any():
         pairs, n_diff = get_neighborlist_torch(
-            coord=coord, cell=cell, pbc=pbc, cutoff=cutoff, device=device, params=params
+            coord=coord, cell=cell, pbc=pbc, cutoff=cutoff, device=device
         )
     else:
         pairs, n_diff = get_neighborlist_simple_torch(coord, cutoff, device=device)
     num_pairs = torch.tensor([pairs.shape[0]], device=device)
     return pairs, n_diff, num_pairs
 
-def add_connectivity_batch(num_atoms, elems, cell, coord, cutoff=5, params=None):
+def add_connectivity_batch(num_atoms, elems, cell, coord, cutoff=5):
     """Add connectivity (pairs, n_diff, num_pairs) to a batch of molecules.
     
     Args:
@@ -173,7 +173,7 @@ def add_connectivity_batch(num_atoms, elems, cell, coord, cutoff=5, params=None)
         prev_atoms += _num_atoms
         
         pairs, n_diff, num_pairs = add_connectivity_torch(
-            coord=_coord, elems=_elems, cell=_cell, cutoff=cutoff, params=params
+            coord=_coord, elems=_elems, cell=_cell, cutoff=cutoff
         )
         
         all_pairs.append(pairs)

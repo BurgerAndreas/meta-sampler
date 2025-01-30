@@ -4,6 +4,7 @@ from torch.nn import MultiheadAttention
 import time
 import plotly.graph_objects as go
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 """
 Batch in the dataset contains:
@@ -77,9 +78,13 @@ class SamplerModel(nn.Module):
             nn.Tanh()  # Constrain output to [-1, 1]
         )
         
-        # Initialize last layer to output very small values
-        self.offset_predictor[-2].weight.data.fill_(0.0)
-        self.offset_predictor[-2].bias.data.fill_(0.0)
+        # Initialize all layers in offset predictor to output zeros
+        # self.offset_predictor[-2].weight.data.fill_(0.0)
+        # self.offset_predictor[-2].bias.data.fill_(0.0)
+        # for module in self.offset_predictor.modules():
+        #     if isinstance(module, nn.Linear):
+        #         module.weight.data.fill_(0.0)
+        #         module.bias.data.fill_(0.0)
 
     def forward(self, num_atoms, elems, cell, coord):
         """
@@ -115,6 +120,7 @@ class SamplerModel(nn.Module):
         # Predict small coordinate offsets
         offset = self.offset_predictor(combined_features)
         offset = offset * 0.01  # Scale down the offset predictions
+        print(f"offset: \n{offset}")
         
         # Add offset to input coordinates
         perturbed_coord = coord + offset
@@ -127,52 +133,58 @@ class SamplerModel(nn.Module):
         for b, n_atoms in enumerate(num_atoms):
             batch_coord = perturbed_coord[prev_atoms:prev_atoms + n_atoms]
             batch_cell = cell[b*3:(b+1)*3]
+            batch_elems = elems[prev_atoms:prev_atoms + n_atoms]
             
             # Clamp the coordinates to the unit cell
             # Maybe it's better to 'teleport' the atoms to the other side of the cell?
             scaled_batch_coord = torch.clamp(
-                batch_coord, min=batch_cell.min(dim=1).values + 1e-6, 
-                max=batch_cell.max(dim=1).values - 1e-6
+                batch_coord, min=batch_cell.min(dim=1).values + 1e-10, 
+                max=batch_cell.max(dim=1).values - 1e-10
             )
             
             # check if coords are inside the cell
             cellmax = batch_cell.max(dim=1).values
-            inside_cell_max = torch.all(scaled_batch_coord < cellmax)
-            assert inside_cell_max, f"inside cell max: \n{scaled_batch_coord[scaled_batch_coord >= cellmax]}"
+            inside_cell_max = torch.all(scaled_batch_coord <= cellmax)
+            assert inside_cell_max, f"inside cell max: \n{scaled_batch_coord[scaled_batch_coord >= cellmax]}\ncell\n{batch_cell}"
             cellmin = batch_cell.min(dim=1).values
-            inside_cell_min = torch.all(scaled_batch_coord > cellmin)
-            assert inside_cell_min, f"inside cell min: {scaled_batch_coord[scaled_batch_coord <= cellmin]}"
+            inside_cell_min = torch.all(scaled_batch_coord >= cellmin)
+            assert inside_cell_min, f"inside cell min: {scaled_batch_coord[scaled_batch_coord <= cellmin]}\ncell\n{batch_cell}"
             
             scaled_coords.append(scaled_batch_coord)
             prev_atoms += n_atoms
             
-
-            # # 3d plot of cell with plotly
+            # visual debugging
+            # 3d plot of cell with plotly
             # _coord = scaled_batch_coord.detach().cpu().numpy()
             # _cell = batch_cell.detach().cpu().numpy()
+            # _atoms = batch_elems.detach().cpu().numpy()
             # fig = go.Figure()
             # # Add atoms scatter
             # fig.add_trace(go.Scatter3d(
             #     x=_coord[:, 0], y=_coord[:, 1], z=_coord[:, 2],
             #     mode='markers',
-            #     marker=dict(size=5)
+            #     marker=dict(size=5, color=_atoms),
+            #     name='atoms'
             # ))
             # # Add cell lines
             # fig.add_trace(go.Scatter3d(
             #     x=[0, _cell[0, 0]], y=[0, _cell[1, 0]], z=[0, _cell[2, 0]],
-            #     mode='lines', line=dict(color='black')
+            #     mode='lines', line=dict(color='black'), name='cell x',
+            #     legendgroup='cell'
             # ))
             # fig.add_trace(go.Scatter3d(
             #     x=[0, _cell[0, 1]], y=[0, _cell[1, 1]], z=[0, _cell[2, 1]], 
-            #     mode='lines', line=dict(color='black')
+            #     mode='lines', line=dict(color='black'), name='cell y',
+            #     legendgroup='cell'
             # ))
             # fig.add_trace(go.Scatter3d(
             #     x=[0, _cell[0, 2]], y=[0, _cell[1, 2]], z=[0, _cell[2, 2]],
-            #     mode='lines', line=dict(color='black')
+            #     mode='lines', line=dict(color='black'), name='cell z',
+            #     legendgroup='cell'
             # ))
-            # fname = f"coord_pred_{b}.png"
+            # fname = f"plots/coord_pred_{b}.png"
             # fig.write_image(fname)
-            # print(f"Plotly plot saved to {fname}")
+            # tqdm.write(f"Plotly plot saved to {fname}")
             
         # Concatenate all scaled coordinates
         return torch.cat(scaled_coords, dim=0)

@@ -114,7 +114,7 @@ def get_arguments(arg_list=None):
     )
     parser.add_argument(
         "--initial_lr", type=float, help="Initial learning rate",
-        default=0.0001,
+        default=1e-4,
     )
     parser.add_argument(
         "--forces_weight",
