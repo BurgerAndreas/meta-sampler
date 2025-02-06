@@ -1,14 +1,14 @@
 from setuptools import setup
 
 setup(
-    name="PaiNN",
+    name="predictor",
     version="1.0.0",
-    description="Library for implementation of message passing neural networks in Pytorch",
-    author="xinyang",
-    author_email="xinyang@dtu.dk",
-    url = "https://github.com/Yangxinsix/PaiNN-model",
+    description="...",
+    author="Andreas Burger",
+    author_email="me@andreas-burger.com",
+    url = "https://github.com/BurgerAndreas",
     # point to folders that you want to be able to import
-    packages=["PaiNN", "scripts", "sampler"],
+    packages=["predictor"],
     install_requires=[
         'ase>=3.22.1',
         'numpy<=1.25.0',

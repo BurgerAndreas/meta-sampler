@@ -1,10 +1,9 @@
 
-
-**/39631924
-**/andreas_models
-**/dtudataset
-build/
-
-**/*.egg-info/
-**/__pycache__/
-.vscode/
+**/__pycache__/**
+**/*.pyc
+**/*.png
+**/*.pdf
+**/*.html
+**/*.json
+**/*.csv
+**/*.jsonl

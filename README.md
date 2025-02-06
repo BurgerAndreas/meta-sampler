@@ -1,6 +1,8 @@
-# Sampling the potential energy surface of a PaiNN MLFF
+# Predicting the minimum of a polynomial (Toy version of hypernetwork acting on a )
 
-We overfit to a single PaiNN MLFF, targeting minimal energy
+Predicting inputs of NN that minimize the output of the NN could have many applications, like adverserial robustness, or finding the minimum of a ML force field.
+
+Instead of a NN we use a polynomial here for simplicity.
 
 ### Install
 
