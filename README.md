@@ -35,3 +35,14 @@ pip install torch-geometric
 ```bash
 python scripts/train_sampler.py --load_model trained_models/96_node_3_layer.pth --batch_size 4
 ```
+
+## Info
+
+OpenMM
+https://openmm.org/
+
+alanine_dipeptide.pdb
+https://github.com/choderalab/YankTools/blob/master/testsystems/data/alanine-dipeptide-gbsa/alanine-dipeptide.pdb
+
+amber99sb.xml (force field)
+https://github.com/lpwgroup/tinker-openmm/blob/master/wrappers/python/simtk/openmm/app/data/amber99sb.xml
