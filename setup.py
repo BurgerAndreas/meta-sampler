@@ -2,11 +2,11 @@ from setuptools import setup
 
 setup(
     name="predictor",
-    version="1.0.0",
+    version="0.0.1",
     description="...",
     author="Andreas Burger",
     author_email="me@andreas-burger.com",
-    url = "https://github.com/BurgerAndreas",
+    url="https://github.com/BurgerAndreas",
     # point to folders that you want to be able to import
     packages=["predictor"],
     # install_requires=[
