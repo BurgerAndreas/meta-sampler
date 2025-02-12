@@ -25,10 +25,14 @@ class PolynomialMinFinder(nn.Module):
 def train_min_finder(
     model, num_epochs=1000, batch_size=64,
     coeffs_overfit=None, device=None, dtype=torch.float32,
-    lr=1e-4
+    lr=1e-4, dataset_size=-1
     ):
     if device is None:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        
+    if dataset_size > 0:
+        dataset = MultiMinima.sample_coefficients(n_samples=dataset_size)
+        dataset = dataset.to(device=device, dtype=dtype)
         
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     
@@ -36,6 +40,9 @@ def train_min_finder(
         if coeffs_overfit is not None:
             # all epochs/iterations will use the same batch
             coeffs = coeffs_overfit
+        elif dataset_size > 0:
+            # index into the dataset
+            coeffs = dataset[epoch % len(dataset)]
         else:
             # Generate random coefficients for this batch
             coeffs = MultiMinima.sample_coefficients(n_samples=batch_size)
@@ -62,11 +69,13 @@ def main():
     # Set parameters
     DTYPE = torch.float32
     BATCH_SIZE = 64
-    NUM_EPOCHS = 1000
-    overfit_to_single_batch = True
+    NUM_EPOCHS = 10000
+    overfit_to_single_batch = False
+    dataset_size = -1 # -1 means a new random batch every iteration, no repeats
     n_sines = 2
     n_coeffs = n_sines*3 + 2
     seed = 42
+    lr = 1e-4
     
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -93,7 +102,9 @@ def main():
         model, num_epochs=NUM_EPOCHS,
         batch_size=BATCH_SIZE,
         coeffs_overfit=coeffs,
-        device=device, dtype=DTYPE
+        device=device, dtype=DTYPE,
+        lr=lr,
+        dataset_size=dataset_size
     )
     
     # Test the model
