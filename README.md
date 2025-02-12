@@ -1,20 +1,6 @@
-# Predicting the minimum of a polynomial (Toy version of hypernetwork acting on a )
-
-Predicting inputs of NN that minimize the output of the NN could have many applications, like adverserial robustness, or finding the minimum of a ML force field.
-
-Instead of a NN we use a polynomial here for simplicity.
+# Data-free Diffusion Model for Sampling Transition Points
 
 ### Install
-
-```bash
-git clone git@github.com:Yangxinsix/painn-sli.git
-cd painn-sli
-
-# 320 MB
-# https://data.dtu.dk/articles/dataset/Dataset_for_Neural_Network_Potentials_for_Accelerated_Metadynamics_of_Oxygen_Reduction_Kinetics_at_Au-Water_Interfaces_/22284514?file=39631924
-wget https://data.dtu.dk/ndownloader/files/39631924 -O dtudataset
-```
-
 ```bash
 # get mamba package manager
 wget "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
@@ -25,7 +11,7 @@ mamba activate painn
 pip uninstall painn -y
 pip install -e .
 
-pip install pyscf numpy==1.24.4 plotly kaleido scipy matplotlib==3.8.4 seaborn black tqdm joblib einops ipykernel toml 
+pip install pyscf numpy==1.24.4 plotly kaleido scipy matplotlib seaborn black tqdm joblib einops ipykernel toml hydra-core omegaconf nbformat
 
 # First uninstall any existing installations
 pip uninstall torch torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric -y
@@ -45,24 +31,7 @@ pip install torch-geometric
 # mamba install pyg -c pyg
 ```
 
-### Fit sampler (ours)
+### Fit sampler 
 ```bash
 python scripts/train_sampler.py --load_model trained_models/96_node_3_layer.pth --batch_size 4
 ```
-
-### Run PaiNN (previous)
-* See `train.py` in `scripts` for training, and `md_run.py` for running MD simulations (Metadynamics) by using ASE.
-
-```bash
-python scripts/train.py
-python scripts/train.py --load_model trained_models/96_node_3_layer.pth --batch_size 8
-
-# run MD / metadynamics
-python scripts/md_run.py --load_model trained_models/96_node_3_layer.pth
-python scripts/md_run.py --load_model trained_models/96_node_3_layer.pth --plumed
-```
-
-## Citation
-
-This is based on the source code for paper [Neural Network Potentials for Accelerated Metadynamics of Oxygen Reduction Kinetics at Au-Water Interfaces](https://pubs.rsc.org/en/content/articlelanding/2023/sc/d2sc06696c) 
-
