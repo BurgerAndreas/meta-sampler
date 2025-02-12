@@ -11,7 +11,7 @@ mamba activate painn
 pip uninstall painn -y
 pip install -e .
 
-pip install pyscf numpy==1.24.4 plotly kaleido scipy matplotlib seaborn black tqdm joblib einops ipykernel toml hydra-core omegaconf nbformat
+pip install pyscf numpy==1.24.4 scikit-learn plotly kaleido scipy matplotlib seaborn black tqdm joblib einops ipykernel toml hydra-core omegaconf nbformat
 
 # First uninstall any existing installations
 pip uninstall torch torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric -y
@@ -43,6 +43,8 @@ https://openmm.org/
 
 alanine_dipeptide.pdb
 https://github.com/choderalab/YankTools/blob/master/testsystems/data/alanine-dipeptide-gbsa/alanine-dipeptide.pdb
+
+https://github.com/noegroup/bgflow/blob/fbba56fac3eb88f6825d2bd4f745ee75ae9715e1/tests/data/alanine-dipeptide-nowater.pdb
 
 amber99sb.xml (force field)
 https://github.com/lpwgroup/tinker-openmm/blob/master/wrappers/python/simtk/openmm/app/data/amber99sb.xml
