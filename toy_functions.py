@@ -7,9 +7,9 @@ import plotly.graph_objects as go
 # ---------------------------
 def toy_polynomial(x: torch.Tensor) -> torch.Tensor:
     # x is a tensor of shape (batch, 2) representing (x, y) coordinates.
-    # Define f(x,y) = (x^2 - 1)^3 + (y^2 - 2)^3.
+    # Define f(x,y) = (x^2 - 1)^3 + (y^2 - 1.3)^3.
     x.requires_grad_()
-    pes = (x[:, 0] ** 2 - 1) ** 3 + (x[:, 1] ** 2 - 2) ** 3
+    pes = (x[:, 0] ** 2 - 1) ** 3 + (x[:, 1] ** 2 - 1.3) ** 3
 
     # pseudo_energy is defined as the
     # norm of the analytical gradient of the potential_energy_surface.
@@ -17,7 +17,7 @@ def toy_polynomial(x: torch.Tensor) -> torch.Tensor:
     #   df/dx = 6*x*(x^2-1)^2
     #   df/dy = 6*y*(y^2-2)^2
     grad_x = 6 * x[:, 0] * (x[:, 0] ** 2 - 1) ** 2
-    grad_y = 6 * x[:, 1] * (x[:, 1] ** 2 - 2) ** 2
+    grad_y = 6 * x[:, 1] * (x[:, 1] ** 2 - 1.3) ** 2
     pes_grad_norm = torch.sqrt(grad_x**2 + grad_y**2)
     return pes, pes_grad_norm
 
