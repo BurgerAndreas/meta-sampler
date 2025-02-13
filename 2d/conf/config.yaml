@@ -1,4 +1,4 @@
-pes_fn: "toy_polynomial"  #  six_hump_camel or toy_polynomial
+pes_fn: "toy_polynomial_2d"  #  six_hump_camel or toy_polynomial_2d
 
 diffusion:
   timesteps: 1000

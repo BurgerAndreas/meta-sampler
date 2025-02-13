@@ -8,8 +8,10 @@ import plotly.graph_objects as go
 import time
 import hydra
 from omegaconf import DictConfig
+import os
+import pathlib
 
-from toy_functions import toy_polynomial, six_hump_camel
+from toy_functions import toy_polynomial_2d, six_hump_camel
 from plotting import plot_potential_energy_surface, plot_results
 
 

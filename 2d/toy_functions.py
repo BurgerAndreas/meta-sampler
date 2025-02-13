@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 # ---------------------------
 # 1. Define our toy 2D potential_energy_surface and its pseudo_energy.
 # ---------------------------
-def toy_polynomial(x: torch.Tensor) -> torch.Tensor:
+def toy_polynomial_2d(x: torch.Tensor) -> torch.Tensor:
     # x is a tensor of shape (batch, 2) representing (x, y) coordinates.
     # Define f(x,y) = (x^2 - 1)^3 + (y^2 - 1.3)^3.
     x.requires_grad_()
@@ -86,11 +86,11 @@ if __name__ == "__main__":
         (-0.0898, 0.7126),  # Approx. another global minimum
     ])
     
-    print("Testing toy_polynomial")
+    print("Testing toy_polynomial_2d")
     
     print("pts_to_test.shape", pts_to_test.shape)
     
-    pes, pes_grad_norm = toy_polynomial(pts_to_test)
+    pes, pes_grad_norm = toy_polynomial_2d(pts_to_test)
     print(f"pes = \n{pes}")
     print(f"pes_grad_norm = \n{pes_grad_norm}")
     

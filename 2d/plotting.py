@@ -1,16 +1,17 @@
 import torch
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
 import torch.nn as nn
-import torch.optim as optim
-import plotly.graph_objects as go
 import time
 import os
+import pathlib
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-# Create plots directory if it doesn't exist
-os.makedirs("plots", exist_ok=True)
+# plotting directory: current directory
+plotting_dir = pathlib.Path(__file__).parent / "plots"
+plotting_dir.mkdir(exist_ok=True)
 
 def plot_potential_energy_surface_2d(X_np, Y_np, pes_np, grad_norm_np, p_xy, cutoff=None, percentile=95):
     t1 = time.time()
@@ -128,7 +129,7 @@ def plot_potential_energy_surface_2d(X_np, Y_np, pes_np, grad_norm_np, p_xy, cut
     fig.update_yaxes(title_text="y")
     
     t2 = time.time()
-    figname = "plots/potential_energy_surface.png"
+    figname = plotting_dir / "potential_energy_surface.png"
     fig.write_image(figname)
     print(f"Figure saved as {figname} ({t2-t1:.2f} seconds)")
 
@@ -179,7 +180,7 @@ def plot_potential_energy_surface_3d(X_np, Y_np, pes_np, grad_norm_np, p_xy, cut
         height=600,
         margin=dict(l=0, r=0, b=0, t=0),
     )
-    figname1 = "plots/pes_surface_3d.png"
+    figname1 = plotting_dir / "pes_surface_3d.png"
     fig1.write_image(figname1)
     print(f"3D figure saved as {figname1} ({time.time()-t1:.2f} seconds)")
 
@@ -206,7 +207,7 @@ def plot_potential_energy_surface_3d(X_np, Y_np, pes_np, grad_norm_np, p_xy, cut
         height=600,
         margin=dict(l=0, r=0, b=0, t=0),
     )
-    figname2 = "plots/gradient_norm_3d.png"
+    figname2 = plotting_dir / "gradient_norm_3d.png"
     fig2.write_image(figname2)
     print(f"3D figure saved as {figname2} ({time.time()-t1:.2f} seconds)")
 
@@ -233,7 +234,7 @@ def plot_potential_energy_surface_3d(X_np, Y_np, pes_np, grad_norm_np, p_xy, cut
         height=600,
         margin=dict(l=0, r=0, b=0, t=0),
     )
-    figname3 = "plots/boltzmann_dist_3d.png"
+    figname3 = plotting_dir / "boltzmann_dist_3d.png"
     fig3.write_image(figname3)
     print(f"3D figure saved as {figname3} ({time.time()-t1:.2f} seconds)")
 
@@ -337,7 +338,7 @@ def plot_results_2d(final_samples, X_grid, Y_grid, p_true):
         showlegend=True
     )
 
-    figname = "plots/diffusion_datafree.png"
+    figname = plotting_dir / "diffusion_datafree.png"
     fig.write_image(figname)
     print(f"Figure saved as {figname} ({time.time()-t1:.2f} seconds)")
 
@@ -380,7 +381,7 @@ def plot_results_3d(final_samples, X_grid, Y_grid, p_true):
     )
 
     # Save the Plotly figure
-    plotly_figname_png = "plots/diffusion_datafree_3d.png"
+    plotly_figname_png = plotting_dir / "diffusion_datafree_3d.png"
     fig_plotly.write_image(plotly_figname_png)
     print(f"Plotly 3D figure saved as {plotly_figname_png}")
 
