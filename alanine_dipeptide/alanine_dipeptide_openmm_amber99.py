@@ -7,6 +7,11 @@ from openmm.app import PDBFile, ForceField, Simulation, NoCutoff
 from openmm import Context, VerletIntegrator, Platform
 from openmm.unit import nanometer, kilojoule_per_mole, picoseconds, Quantity
 
+"""Alanine dipeptide with OpenMM and Amber99 force field using dihedral angles as reaction coordinates.
+
+Transforms dihedral angles to atom positions.
+"""
+
 def rotation_matrix(axis, theta):
     """
     Return the rotation matrix for a counterclockwise rotation about
@@ -110,6 +115,7 @@ def build_alanine_dipeptide(phi, psi, pdbfile):
     positions = set_dihedral(positions, psi_indices, psi)
     
     # Convert the modified positions back into an OpenMM Quantity (with units of nanometer).
+    # (doesn't do anything)
     positions_quantity = Quantity(positions, nanometer)
     return positions_quantity
 
@@ -212,6 +218,8 @@ if __name__ == '__main__':
     energy, forces = compute_energy_and_forces(dihedrals)
     print("Energy (kJ/mol):", energy.item())
     print("Forces shape:", forces.shape)
+    
+    #################################################################################
     
     # Create a batch of dihedral angle pairs (in radians). For example, B=3.
     # Each row: [phi, psi]
