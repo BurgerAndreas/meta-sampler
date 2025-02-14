@@ -7,11 +7,134 @@ import os
 from sklearn.cluster import KMeans
 from tqdm import tqdm
 
-from alanine_dipeptide import compute_energy_and_forces
+from mace.calculators import mace_off, mace_anicc
+from alanine_dipeptide_openmm_amber99 import compute_energy_and_forces_openmm
+from alanine_dipeptide_mace import update_alanine_dipeptide_with_grad, load_alanine_dipeptide_ase
+
+def compute_ramachandran_openmm_amber(
+    phi_values, psi_values,
+    datafile='alanine_dipeptide/outputs/ramachandran_openmm_amber.npy',
+    recompute=False,
+    ):
+    # if file exists, load it
+    if os.path.exists(datafile) and not recompute:
+        energies, forces_norm, forces_normmean = np.load(datafile)
+    else:
+        # Initialize an array to store energies.
+        energies = np.zeros((len(phi_values), len(psi_values)))
+        forces_norm = np.zeros((len(phi_values), len(psi_values)))
+        forces_normmean = np.zeros((len(phi_values), len(psi_values)))
+
+        # Loop over grid points.
+        for i, phi in tqdm(enumerate(phi_values), total=len(phi_values)):
+            for j, psi in enumerate(psi_values):
+                # Convert angles from degrees to radians
+                dihedrals = torch.tensor([phi * np.pi/180.0, psi * np.pi/180.0], dtype=torch.float32)
+                
+                # Compute the energy and forces
+                energy, force = compute_energy_and_forces_openmm(dihedrals)
+                
+                # Store the energy (in kJ/mol)
+                energies[i, j] = energy.item()
+                # force are shape [22,3] each row is a force vector for an atom
+                forces_norm[i, j] = torch.linalg.norm(force).item()
+                forces_normmean[i, j] = torch.linalg.norm(force, axis=1).mean().item()
+                
+                # Optionally, print the computed energy for each grid point.
+                tqdm.write(f"phi={phi:6.1f}°, psi={psi:6.1f}° -> U={energy.item():8.2f} kJ/mol, F={forces_norm[i, j]:8.2f}")
+                
+        # Save the energies to a file
+        np.save(datafile, (energies, forces_norm, forces_normmean))
+    return energies, forces_norm, forces_normmean
+
+def compute_ramachandran_mace(
+    phi_values, psi_values,
+    datafile='alanine_dipeptide/outputs/ramachandran_mace.npy',
+    recompute=False,
+    ):
+    """
+    Compute the Ramachandran plot for the alanine dipeptide energy landscape using the MACE model.
+    Takes forces as derivative w.r.t. dihedral angles.
+    """
+    # if file exists, load it
+    if os.path.exists(datafile) and not recompute:
+        energies, forces_norm, forces_normmean = np.load(datafile)
+    else:
+        # get alanine dipeptide atoms
+        atoms = load_alanine_dipeptide_ase()
+        
+        # Get MACE force field: mace_off or mace_anicc
+        device_str = 'cuda' if torch.cuda.is_available() else 'cpu'
+        calc = mace_off(model="medium", device=device_str) # enable_cueq=True
+        device = calc.device
+        atoms.calc = calc
+        atoms_calc = atoms.calc
+
+        ################################################
+        # ASE atoms -> torch batch
+        batch_base = atoms_calc._atoms_to_batch(atoms)
+
+        if atoms_calc.model_type in ["MACE", "EnergyDipoleMACE"]:
+            batch = atoms_calc._clone_batch(batch_base)
+            node_heads = batch["head"][batch["batch"]]
+            num_atoms_arange = torch.arange(batch["positions"].shape[0])
+            node_e0 = atoms_calc.models[0].atomic_energies_fn(batch["node_attrs"])[
+                num_atoms_arange, node_heads
+            ]
+            compute_stress = not atoms_calc.use_compile
+        else:
+            compute_stress = False
+        batch_base = batch_base.to_dict()
+        model = atoms_calc.models[0]
+        
+        # Initialize an array to store energies.
+        energies = np.zeros((len(phi_values), len(psi_values)))
+        forces_norm = np.zeros((len(phi_values), len(psi_values)))
+        forces_normmean = np.zeros((len(phi_values), len(psi_values)))
+        
+        # Loop over grid points.
+        for i, phi in tqdm(enumerate(phi_values), total=len(phi_values)):
+            for j, psi in enumerate(psi_values):
+                # Convert angles from degrees to radians
+                dihedrals = torch.tensor([phi * np.pi/180.0, psi * np.pi/180.0], dtype=torch.float32)
+                dihedrals.requires_grad = True
+                
+                # Update positions
+                batch = update_alanine_dipeptide_with_grad(dihedrals, batch_base)
+                
+                # TODO: need to update edge_index?
+                
+                # Compute energy by calling MACE
+                out = model(
+                    batch,
+                    compute_stress=compute_stress,
+                    # training=True -> retain_graph when calculating forces=dE/dx
+                    # which is what we need to compute forces'=dE/dphi_psi
+                    training=True, #atoms_calc.use_compile,
+                )
+                
+                # Compute forces
+                forces = torch.autograd.grad(out["energy"], dihedrals, create_graph=True)
+                if isinstance(forces, tuple):
+                    forces = forces[0]
+                
+                # Store the energy (in kJ/mol)
+                energy = out["energy"]
+                energies[i, j] = energy.item()
+                # force are shape [22,3] each row is a force vector for an atom
+                forces_norm[i, j] = torch.linalg.norm(forces).item()
+                forces_normmean[i, j] = torch.linalg.norm(forces, axis=-1).mean().item()
+                
+                # Optionally, print the computed energy for each grid point.
+                tqdm.write(f"phi={phi:6.1f}°, psi={psi:6.1f}° -> U={energy.item():8.2f} kJ/mol, F={forces_norm[i, j]:8.2f}")
+                
+        # Save the energies to a file
+        np.save(datafile, (energies, forces_norm, forces_normmean))
+    return energies, forces_norm, forces_normmean
 
 def create_ramachandran_plot(
     phi_range=(-180, 180), psi_range=(-180, 180), resolution=36, 
-    datafile='alanine_dipeptide/ramachandran.npy',
+    datafile='alanine_dipeptide/outputs/ramachandran.npy',
     recompute=False,
     ):
     """
@@ -33,35 +156,10 @@ def create_ramachandran_plot(
     phi_values = np.linspace(phi_range[0], phi_range[1], resolution)
     psi_values = np.linspace(psi_range[0], psi_range[1], resolution)
     
-    # Initialize an array to store energies.
-    energies = np.zeros((resolution, resolution))
-    forces_norm = np.zeros((resolution, resolution))
-    forces_normmean = np.zeros((resolution, resolution))
-    
-    # if file exists, load it
-    if os.path.exists(datafile) and not recompute:
-        energies, forces_norm, forces_normmean = np.load(datafile)
-    else:
-        # Loop over grid points.
-        for i, phi in tqdm(enumerate(phi_values), total=len(phi_values)):
-            for j, psi in enumerate(psi_values):
-                # Convert angles from degrees to radians
-                dihedrals = torch.tensor([phi * np.pi/180.0, psi * np.pi/180.0], dtype=torch.float32)
-                
-                # Compute the energy and forces
-                energy, force = compute_energy_and_forces(dihedrals)
-                
-                # Store the energy (in kJ/mol)
-                energies[i, j] = energy.item()
-                # force are shape [22,3] each row is a force vector for an atom
-                forces_norm[i, j] = torch.linalg.norm(force).item()
-                forces_normmean[i, j] = torch.linalg.norm(force, axis=1).mean().item()
-                
-                # Optionally, print the computed energy for each grid point.
-                tqdm.write(f"phi={phi:6.1f}°, psi={psi:6.1f}° -> U={energy.item():8.2f} kJ/mol, F={forces_norm[i, j]:8.2f}")
-                
-        # Save the energies to a file
-        np.save(datafile, (energies, forces_norm, forces_normmean))
+    energies, forces_norm, forces_normmean = compute_ramachandran_mace(
+        phi_values, psi_values,
+        recompute=recompute,
+    )
         
     # clip negative values to smallest positive value since we are using a log scale
     energies = np.clip(energies, np.min(energies[energies > 0]), None)
@@ -96,7 +194,7 @@ def create_ramachandran_plot(
         )
     ))
     fig.update_layout(
-        title=r'\text{Ramachandran Plot for Alanine Dipeptide: } \log_{10}(U)',
+        title=r'$\text{Ramachandran Plot for Alanine Dipeptide: } \log_{10}(U)$',
         xaxis_title='Phi (degrees)', 
         yaxis_title='Psi (degrees)',
         margin=dict(l=0, r=0, t=50, b=0),
@@ -187,6 +285,6 @@ if __name__ == '__main__':
     create_ramachandran_plot(
         phi_range=(-180, 180), 
         psi_range=(-180, 180), 
-        resolution=100,
+        resolution=36,
         recompute=False,
     )

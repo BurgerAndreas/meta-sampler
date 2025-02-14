@@ -11,7 +11,7 @@ mamba activate painn
 pip uninstall painn -y
 pip install -e .
 
-pip install pyscf numpy==1.24.4 scikit-learn plotly kaleido scipy matplotlib seaborn black tqdm joblib einops ipykernel toml hydra-core omegaconf nbformat openmm 
+pip install pyscf numpy==1.24.4 scikit-learn plotly kaleido imageio scipy matplotlib seaborn black tqdm joblib einops ipykernel toml hydra-core omegaconf nbformat openmm nglview py3Dmol
 
 # First uninstall any existing installations
 pip uninstall torch torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric -y
