@@ -1,0 +1,60 @@
+# @package _global_
+
+defaults:
+  - override /energy: simple_test
+  - override /model/net: mlp
+  - override /model/noise_schedule: geometric
+
+tags: ["simple_test", "iDEM"]
+
+seed: 12345
+
+logger:
+  wandb:
+    tags: ${tags}
+    group: "simple_test"
+
+model:
+  net:
+    input_dim: ${energy.dimensionality}
+    out_dim: ${energy.dimensionality}
+    hidden_size: 64
+    hidden_layers: 3
+    emb_size: 64
+    time_emb: sinusoidal
+    input_emb: sinusoidal
+
+  noise_schedule:
+    _target_: dem.models.components.noise_schedules.GeometricNoiseSchedule
+    sigma_min: 0.00001
+    sigma_max: 1.0
+
+  buffer:
+    prioritize: false
+
+  partial_prior:
+    _target_: dem.energies.base_prior.Prior
+    _partial_: true
+    dim: 1
+
+  clipper:
+    _target_: dem.models.components.clipper.Clipper
+    should_clip_scores: True
+    should_clip_log_rewards: False
+    max_score_norm: 70
+    min_log_reward: null
+
+  lambda_weighter:
+    _target_: dem.models.components.lambda_weighter.BasicLambdaWeighter
+    _partial_: true
+    epsilon: 1e-3
+
+  optimizer:
+    lr: 5e-4
+
+  diffusion_scale: 1.0
+
+  num_estimator_mc_samples: 500
+  num_samples_to_generate_per_epoch: 1000
+  eval_batch_size: 1000
+  scheduler: null 
