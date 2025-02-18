@@ -22,7 +22,7 @@ def train_diffusion_model(cfg: DictConfig):
 
     Args:
         cfg (DictConfig): Hydra config containing model parameters and hyperparameters
-    
+
     Returns:
         None
     """
@@ -37,8 +37,10 @@ def train_diffusion_model(cfg: DictConfig):
     alphas = 1 - betas
     alpha_bar = torch.cumprod(alphas, dim=0)
     pes_fn = eval(cfg.pes_fn)
-    
-    plot_potential_energy_surface(pes_fn, cutoff=cfg.plotting.cutoff, percentile=cfg.plotting.percentile)
+
+    plot_potential_energy_surface(
+        pes_fn, cutoff=cfg.plotting.cutoff, percentile=cfg.plotting.percentile
+    )
 
     # ---------------------------
     # Define the Diffusion Model (a small neural network for 2D data)
@@ -76,10 +78,16 @@ def train_diffusion_model(cfg: DictConfig):
     # ---------------------------
     # Iterative Diffusion pseudo_energy Matching: Training without target Boltzmann samples.
     # ---------------------------
-    outer_iterations = cfg.training.outer_iterations  # number of outer loops updating the pseudo-data
-    inner_epochs = cfg.training.inner_epochs  # inner training epochs per outer iteration
+    outer_iterations = (
+        cfg.training.outer_iterations
+    )  # number of outer loops updating the pseudo-data
+    inner_epochs = (
+        cfg.training.inner_epochs
+    )  # inner training epochs per outer iteration
     batch_size = cfg.training.batch_size
-    lambda_pseudo_energy = cfg.training.lambda_pseudo_energy  # weight for the pseudo_energy penalty
+    lambda_pseudo_energy = (
+        cfg.training.lambda_pseudo_energy
+    )  # weight for the pseudo_energy penalty
 
     n_samples = cfg.training.n_samples  # number of pseudo-data points
 

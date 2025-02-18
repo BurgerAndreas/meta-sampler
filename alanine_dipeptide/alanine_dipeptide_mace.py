@@ -13,85 +13,88 @@ import openmm
 from openmm.unit import nanometer
 from openmm.unit import Quantity
 
-from dihedral import set_dihedral_torch
+from dihedral import set_dihedral_torch, compute_dihedral_torch
+from mace_neighbourshood import get_neighborhood
+from alanine_dipeptide_openmm_amber99 import fffile, pdbfile
 
 """Alanine dipeptide with using dihedral angles as reaction coordinates.
 
 Transforms dihedral angles to atom positions.
 """
 
-
 def build_alanine_dipeptide_openmm(phi, psi, pdbfile):
     """
     Build a full-atom 3D configuration of alanine dipeptide with the specified
     backbone dihedral angles phi and psi (in radians).
-    
+
     The function loads a template PDB file and then
     rotates the appropriate groups of atoms so that the dihedrals match the desired values.
-    
+
     Parameters:
       phi: Desired φ dihedral angle (radians)
       psi: Desired ψ dihedral angle (radians)
-    
+
     Returns:
       positions_quantity: A simtk.unit.Quantity (shape: [N_atoms, 3]) in nanometers.
-    
+
     > **Note:** Adjust the following dihedral atom indices to match your template.
     """
     # Load the template structure.
     pdb = openmm.app.PDBFile(pdbfile)
     # Extract positions as a NumPy array in nanometers.
     positions = torch.tensor(pdb.positions.value_in_unit(nanometer))
-    
+
     positions = set_dihedral_torch(positions, "phi", phi, "phi")
     positions = set_dihedral_torch(positions, "psi", psi, "psi")
-    
+
     return positions
 
-def load_alanine_dipeptide_ase(pdbfile=None):
+
+def load_alanine_dipeptide_ase():
     """
     Build a full-atom 3D configuration of alanine dipeptide using ASE.
-    
+
     Parameters:
       phi: Desired φ dihedral angle (radians)
       psi: Desired ψ dihedral angle (radians)
       pdbfile: Path to PDB template file
-    
+
     Returns:
       atoms: ASE Atoms object with updated positions
     """
-    if pdbfile is None:
-        pdbfile = 'alanine_dipeptide/data/alanine_dipeptide_nowater.pdb'
     # Load PDB into ASE
     atoms = ase.io.read(pdbfile)
     return fix_atomic_numbers(atoms)
+
 
 def update_alanine_dipeptide_ase(atoms, phi_psi: torch.Tensor = None):
     """
     Update the positions of alanine dipeptide with the specified
     backbone dihedral angles phi and psi (in radians) using ASE.
-    
+
     Parameters:
-      phi: Desired φ dihedral angle (radians)
-      psi: Desired ψ dihedral angle (radians)
+      phi_psi: Desired φ and ψ dihedral angles (radians)
       pdbfile: Path to PDB template file
-    
+
     Returns:
       atoms: ASE Atoms object with updated positions
     """
     # Get positions as torch tensor
     positions = torch.tensor(atoms.get_positions())
-    
-    # Set dihedral angles    
+
+    # Set dihedral angles
     positions = set_dihedral_torch(positions, "phi", phi_psi[0], "phi")
     positions = set_dihedral_torch(positions, "psi", phi_psi[1], "psi")
-    
+
     # Update positions in ASE Atoms object
     atoms.set_positions(positions.numpy())
-    
+
     return atoms
 
-def update_alanine_dipeptide_with_grad(phi_psi: torch.Tensor, batch: dict, set_phi=True, set_psi=True) -> dict:
+
+def update_alanine_dipeptide_with_grad(
+    phi_psi: torch.Tensor, batch: dict, set_phi=True, set_psi=True
+) -> dict:
     """
     Update positions based on phi_psi angles while maintaining gradient flow.
     Works with MACE Batch objects.
@@ -99,26 +102,29 @@ def update_alanine_dipeptide_with_grad(phi_psi: torch.Tensor, batch: dict, set_p
     # Create a new batch with the same attributes as the input batch
     if not isinstance(batch, dict):
         batch = batch.to_dict()
-    new_batch = {key: value.clone() if torch.is_tensor(value) else value 
-                 for key, value in batch.items()}
-    
+    new_batch = {
+        key: value.clone() if torch.is_tensor(value) else value
+        for key, value in batch.items()
+    }
+
     # Get positions tensor and apply dihedral rotations
     positions = batch["positions"].clone()
-    
+
     if set_phi:
         positions = set_dihedral_torch(positions, "phi", phi_psi[0], "phi")
     if set_psi:
         positions = set_dihedral_torch(positions, "psi", phi_psi[1], "psi")
-    
+
     # Update positions in the new batch
     new_batch["positions"] = positions
-    
+
     return new_batch
+
 
 def fix_atomic_numbers(atoms):
     """
     ASE is misinterpreting the "CA" label from your PDB file.
-    atom index 8 is showing up as "Ca" (Calcium, atomic number 20) when it should be "CA" (a Carbon atom). 
+    atom index 8 is showing up as "Ca" (Calcium, atomic number 20) when it should be "CA" (a Carbon atom).
     In PDB format, "CA" is a special atom name that stands for the alpha Carbon (Cα) of an amino acid, but ASE is interpreting it as the chemical symbol for Calcium.
     Fix atomic numbers in the ASE Atoms object to match what MACE expects.
     For alanine dipeptide, we should only have H(1), C(6), N(7), and O(8).
@@ -129,17 +135,28 @@ def fix_atomic_numbers(atoms):
     atoms.set_atomic_numbers(atomic_numbers)
     return atoms
 
-def compute_energy_and_forces_mace(dihedrals: torch.Tensor, pdbfile: str, batch_base: dict = None, model: torch.nn.Module = None) -> tuple[torch.Tensor, torch.Tensor]:
+
+def compute_energy_and_forces_mace(
+    dihedrals: torch.Tensor,
+    batch_base: dict = None,
+    model: torch.nn.Module = None,
+    model_type: str = "off",
+) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Compute the energy and forces for a given set of dihedral angles using the MACE model.
     """
     if batch_base is None or model is None:
         # get alanine dipeptide atoms
-        atoms = load_alanine_dipeptide_ase(pdbfile)
-            
+        atoms = load_alanine_dipeptide_ase()
+
         # Get MACE force field: mace_off or mace_anicc
-        device_str = 'cuda' if torch.cuda.is_available() else 'cpu'
-        calc = mace_off(model="medium", device=device_str) # enable_cueq=True
+        device_str = "cuda" if torch.cuda.is_available() else "cpu"
+        if model_type == "off":
+            calc = mace_off(model="medium", device=device_str)  # enable_cueq=True
+        elif model_type == "anicc":
+            calc = mace_anicc(device=device_str)  # enable_cueq=True
+        else:
+            raise ValueError(f"Invalid model type: {model_type}")
         device = calc.device
         atoms.calc = calc
         atoms_calc = atoms.calc
@@ -160,46 +177,73 @@ def compute_energy_and_forces_mace(dihedrals: torch.Tensor, pdbfile: str, batch_
             compute_stress = False
         batch_base = batch_base.to_dict()
         model = atoms_calc.models[0]
-    
+
     # Create phi_psi tensor with gradients
     phi_psi = dihedrals
     phi_psi.requires_grad = True
-        
+
     # Update positions
     batch = update_alanine_dipeptide_with_grad(phi_psi, batch_base)
-    
-    # TODO: need to update edge_index?
-    
+
+    # need to update edge_index
+    # https://github.com/ACEsuit/mace/blob/3e578b02e649a5b2ac8109fa857698fdc42cf842/mace/modules/models.py#L72
+    # no gradients for these, but should not affect forces
+    edge_index, shifts, unit_shifts, cell = get_neighborhood(
+        positions=batch["positions"].detach().cpu().numpy(),
+        cutoff=model.r_max.item(),
+        cell=batch["cell"].detach().cpu().numpy(),
+    )
+    batch["edge_index"] = torch.tensor(
+        edge_index, device=device, dtype=batch["edge_index"].dtype
+    )
+    batch["shifts"] = torch.tensor(
+        shifts, device=device, dtype=batch["shifts"].dtype
+    )
+    batch["unit_shifts"] = torch.tensor(
+        unit_shifts, device=device, dtype=batch["unit_shifts"].dtype
+    )
+    batch["cell"] = torch.tensor(
+        cell, device=device, dtype=batch["cell"].dtype
+    )
+
     # Compute energy by calling MACE
     out = model(
         batch,
         compute_stress=compute_stress,
         # training=True -> retain_graph when calculating forces=dE/dx
         # which is what we need to compute forces'=dE/dphi_psi
-        training=True, #atoms_calc.use_compile,
+        training=True,  # atoms_calc.use_compile,
     )
-    
+
     # Compute forces
     forces = torch.autograd.grad(out["energy"], phi_psi, create_graph=True)[0]
-    
+
     return out["energy"], forces
 
 
-def test_mace_alanine_dipeptide(pdbfile):
-    print("-"*80)
-    atoms = load_alanine_dipeptide_ase(pdbfile)
-    
-    device_str = 'cuda' if torch.cuda.is_available() else 'cpu'
+def test_mace_alanine_dipeptide():
+    print("-" * 80)
+    atoms = load_alanine_dipeptide_ase()
+
+    device_str = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Print out the atoms list
     print("\nList of atoms:")
     print("Index  Symbol  Atomic#  Position (x, y, z)")
     print("-" * 45)
-    for i, (sym, num, pos) in enumerate(zip(atoms.get_chemical_symbols(), atoms.get_atomic_numbers(), atoms.get_positions())):
-        print(f"{i:3d}     {sym:2s}      {num:2d}      ({pos[0]:6.3f}, {pos[1]:6.3f}, {pos[2]:6.3f})")
+    for i, (sym, num, pos) in enumerate(
+        zip(
+            atoms.get_chemical_symbols(),
+            atoms.get_atomic_numbers(),
+            atoms.get_positions(),
+        )
+    ):
+        print(
+            f"{i:3d}     {sym:2s}      {num:2d}      ({pos[0]:6.3f}, {pos[1]:6.3f}, {pos[2]:6.3f})"
+        )
 
     # Get MACE force field
-    calc = mace_off(model="medium", device=device_str) # enable_cueq=True
+    calc = mace_off(model="medium", device=device_str)  # enable_cueq=True
     device = calc.device
     atoms.calc = calc
 
@@ -211,18 +255,18 @@ def test_mace_alanine_dipeptide(pdbfile):
     print("Energy:", atoms.get_potential_energy())
     # print("Forces:", atoms.get_forces())
     return True
-    
 
-def test_mace_alanine_dipeptide_dihedral_grad(pdbfile):
+
+def test_mace_alanine_dipeptide_dihedral_grad():
     # compute force w.r.t. phi and psi
-    print("-"*80)
-    
+    print("-" * 80)
+
     # get alanine dipeptide atoms
-    atoms = load_alanine_dipeptide_ase(pdbfile)
-    
+    atoms = load_alanine_dipeptide_ase()
+
     # Get MACE force field: mace_off or mace_anicc
-    device_str = 'cuda' if torch.cuda.is_available() else 'cpu'
-    calc = mace_off(model="medium", device=device_str) # enable_cueq=True
+    device_str = "cuda" if torch.cuda.is_available() else "cpu"
+    calc = mace_off(model="medium", device=device_str)  # enable_cueq=True
     device = calc.device
     atoms.calc = calc
     atoms_calc = atoms.calc
@@ -243,34 +287,38 @@ def test_mace_alanine_dipeptide_dihedral_grad(pdbfile):
         compute_stress = False
     batch_base = batch_base.to_dict()
     model = atoms_calc.models[0]
-    
+
     # save default configuration
     ase.io.write(f"alanine_dipeptide/outputs/default.xyz", atoms)
-    
+
     # phi_indices = [6, 8]  # C-N-CA-C for phi
     # psi_indices = [6, 8, 14, 16]  # N-CA-C-N for psi
     phi_indices = [1, 2, 3, 4]  # Adjust indices to match template
     psi_indices = [2, 3, 4, 5]
-    
+
     # only plot atoms in phi_indices
     _atoms = atoms.copy()
     for _a in _atoms:
         if _a.index not in phi_indices:
-            _a.symbol = 'He'
+            _a.symbol = "He"
     ase.io.write(f"alanine_dipeptide/outputs/default_phi_atoms.xyz", _atoms)
     # only plot atoms in psi_indices
     _atoms = atoms.copy()
     for _a in _atoms:
         if _a.index not in psi_indices:
-            _a.symbol = 'He'
+            _a.symbol = "He"
     ase.io.write(f"alanine_dipeptide/outputs/default_psi_atoms.xyz", _atoms)
-    
+
     # set phi and psi to 0
-    batch = update_alanine_dipeptide_with_grad([0.0, 0.0], batch_base, set_phi=True, set_psi=False)
+    batch = update_alanine_dipeptide_with_grad(
+        [0.0, 0.0], batch_base, set_phi=True, set_psi=False
+    )
     _atoms = atoms.copy()
     _atoms.set_positions(batch["positions"].detach().cpu().numpy())
     ase.io.write(f"alanine_dipeptide/outputs/default_phi0.xyz", _atoms)
-    batch = update_alanine_dipeptide_with_grad([0.0, 0.0], batch_base, set_phi=False, set_psi=True)
+    batch = update_alanine_dipeptide_with_grad(
+        [0.0, 0.0], batch_base, set_phi=False, set_psi=True
+    )
     _atoms = atoms.copy()
     _atoms.set_positions(batch["positions"].detach().cpu().numpy())
     ase.io.write(f"alanine_dipeptide/outputs/default_psi0.xyz", _atoms)
@@ -286,40 +334,94 @@ def test_mace_alanine_dipeptide_dihedral_grad(pdbfile):
     for i, phi_psi in enumerate(angles):
         # Create phi_psi tensor with gradients
         phi_psi = torch.tensor(phi_psi, requires_grad=True)
-            
+
         # Update positions
         batch = update_alanine_dipeptide_with_grad(phi_psi, batch_base)
-        
-        # TODO: need to update edge_index?
-        
+
+        # need to update edge_index
+        # https://github.com/ACEsuit/mace/blob/3e578b02e649a5b2ac8109fa857698fdc42cf842/mace/modules/models.py#L72
+        # no gradients for these, but should not affect forces
+        edge_index, shifts, unit_shifts, cell = get_neighborhood(
+            positions=batch["positions"].detach().cpu().numpy(),
+            cutoff=model.r_max.item(),
+            cell=batch["cell"].detach().cpu().numpy(),
+        )
+        batch["edge_index"] = torch.tensor(
+            edge_index, device=device, dtype=batch["edge_index"].dtype
+        )
+        batch["shifts"] = torch.tensor(
+            shifts, device=device, dtype=batch["shifts"].dtype
+        )
+        batch["unit_shifts"] = torch.tensor(
+            unit_shifts, device=device, dtype=batch["unit_shifts"].dtype
+        )
+        batch["cell"] = torch.tensor(
+            cell, device=device, dtype=batch["cell"].dtype
+        )
+
         # Test gradient flow
         # testgrad = torch.autograd.grad(batch["positions"].sum(), phi_psi, create_graph=True)[0]
         # print("Test gradient w.r.t. phi_psi:", testgrad)
-        
+
         # Compute energy by calling MACE
         out = model(
             batch,
             compute_stress=compute_stress,
             # training=True -> retain_graph when calculating forces=dE/dx
             # which is what we need to compute forces'=dE/dphi_psi
-            training=True, #atoms_calc.use_compile,
+            training=True,  # atoms_calc.use_compile,
         )
-        
+
         # Compute forces
         forces = torch.autograd.grad(out["energy"], phi_psi, create_graph=True)[0]
         print(f"Forces w.r.t. phi_psi: {forces}")
-        
+
         # save as .xyz file
         atoms.set_positions(batch["positions"].detach().cpu().numpy())
-        ase.io.write(f"alanine_dipeptide/outputs/phi{phi_psi[0]:.1f}_psi{phi_psi[1]:.1f}.xyz", atoms)
+        ase.io.write(
+            f"alanine_dipeptide/outputs/phi{phi_psi[0]:.1f}_psi{phi_psi[1]:.1f}.xyz",
+            atoms,
+        )
 
 
 if __name__ == "__main__":
-    pdbfile = 'alanine_dipeptide/data/alanine_dipeptide_nowater.pdb'
+    test_mace_alanine_dipeptide()
+    test_mace_alanine_dipeptide_dihedral_grad()
     
-    test_mace_alanine_dipeptide(pdbfile)
-    test_mace_alanine_dipeptide_dihedral_grad(pdbfile)
+    #################################################################################
+    print("-" * 60)
+    # Create a batch of dihedral angle pairs (in radians). For example, B=3.
+    # Each row: [phi, psi]
+    dihedrals_batch = torch.tensor(
+        [
+            [-60 * np.pi / 180, -45 * np.pi / 180],
+            [-80 * np.pi / 180, 30 * np.pi / 180],
+            [50 * np.pi / 180, 60 * np.pi / 180],
+            [0 * np.pi / 180, 0 * np.pi / 180],
+            [30 * np.pi / 180, 0 * np.pi / 180],
+            [30 * np.pi / 180, 30 * np.pi / 180],
+            [5 * np.pi / 180, 180 * np.pi / 180],
+        ],
+        dtype=torch.float32,
+    )
+    
+    min_energy = float("inf")
+    max_energy = float("-inf")
 
+    # Display results.
+    for i in range(dihedrals_batch.shape[0]):
+        print(
+            f"Configuration {i}: φ = {dihedrals_batch[i,0]*180/np.pi:.1f}°, ψ = {dihedrals_batch[i,1]*180/np.pi:.1f}°"
+        )
+        energy, forces = compute_energy_and_forces_mace(dihedrals_batch[i], model_type="off")
+        # 1 kcal/mol = 0.04336 eV
+        # 1 eV = 23.0605 kcal/mol
+        print(
+            f"  Energy (eV): {energy.item():.2f} = {energy.item()*23.0605:.2f} kcal/mol"
+        )
+        if energy.item() < min_energy:
+            min_energy = energy.item()
+        if energy.item() > max_energy:
+            max_energy = energy.item()
 
-
-
+    print(f"Energy range: {(max_energy - min_energy):.2f} eV = {(max_energy - min_energy)*23.0605:.2f} kcal/mol")

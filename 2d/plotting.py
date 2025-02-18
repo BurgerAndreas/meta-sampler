@@ -13,9 +13,12 @@ from plotly.subplots import make_subplots
 plotting_dir = pathlib.Path(__file__).parent / "plots"
 plotting_dir.mkdir(exist_ok=True)
 
-def plot_potential_energy_surface_2d(X_np, Y_np, pes_np, grad_norm_np, p_xy, cutoff=None, percentile=95):
+
+def plot_potential_energy_surface_2d(
+    X_np, Y_np, pes_np, grad_norm_np, p_xy, cutoff=None, percentile=95
+):
     t1 = time.time()
-    
+
     # Dynamically set cutoff values if not specified.
     if cutoff is None:
         cutoff_pes = np.percentile(pes_np, percentile)
@@ -23,75 +26,74 @@ def plot_potential_energy_surface_2d(X_np, Y_np, pes_np, grad_norm_np, p_xy, cut
         cutoff_pxy = np.percentile(p_xy, percentile)
     else:
         cutoff_pes = cutoff_grad = cutoff_pxy = cutoff
-    
-        
+
     mask = pes_np < cutoff_pes
     pes_np_masked = np.ma.masked_where(~mask, pes_np).filled(np.nan)
     # mask = grad_norm_np < cutoff_grad
     grad_norm_np_masked = np.ma.masked_where(~mask, grad_norm_np).filled(np.nan)
-    
+
     # X_np_masked = np.ma.masked_where(~mask, X_np).filled(np.nan)
     # Y_np_masked = np.ma.masked_where(~mask, Y_np).filled(np.nan)
     # clip to the min and max of the masked values
     X_np_masked = np.clip(X_np, np.min(X_np[mask]), np.max(X_np[mask]))
     Y_np_masked = np.clip(Y_np, np.min(Y_np[mask]), np.max(Y_np[mask]))
-    
+
     # Create a figure with 3 subplots using make_subplots.
     fig = make_subplots(
         rows=1,
         cols=3,
         subplot_titles=["PES", "Gradient Norm", "Boltzmann Distribution"],
-        horizontal_spacing=0.05
+        horizontal_spacing=0.05,
     )
     fig.update_layout(width=1800, height=500)
-    
+
     # Plot the PES surface.
     fig.add_trace(
         go.Contour(
-            x=X_np_masked[0,:],
-            y=Y_np_masked[:,0],
+            x=X_np_masked[0, :],
+            y=Y_np_masked[:, 0],
             z=pes_np_masked,
             colorscale="Viridis",
             colorbar=dict(title="f(x,y)", x=0.3),
             name="PES",
             zmin=np.min(pes_np_masked),
-            zmax=np.max(pes_np_masked)
+            zmax=np.max(pes_np_masked),
         ),
         row=1,
-        col=1
+        col=1,
     )
     # Plot the gradient norm.
     fig.add_trace(
         go.Contour(
-            x=X_np_masked[0,:],
-            y=Y_np_masked[:,0],
+            x=X_np_masked[0, :],
+            y=Y_np_masked[:, 0],
             z=grad_norm_np_masked,
             colorscale="Plasma",
             colorbar=dict(title="|∇f(x,y)|", x=0.64),
             name="Gradient Norm",
             zmin=np.min(grad_norm_np_masked),
-            zmax=np.max(grad_norm_np_masked)
+            zmax=np.max(grad_norm_np_masked),
         ),
         row=1,
-        col=2
+        col=2,
     )
-    
+
     # Plot the Boltzmann distribution.
     fig.add_trace(
         go.Contour(
-            x=X_np[0,:],
-            y=Y_np[:,0],
+            x=X_np[0, :],
+            y=Y_np[:, 0],
             z=p_xy,
             colorscale="Cividis",
             colorbar=dict(title="p(x,y)", x=0.98),
             name="Boltzmann Distribution",
             zmin=np.min(p_xy),
-            zmax=np.max(p_xy)
+            zmax=np.max(p_xy),
         ),
         row=1,
-        col=3
+        col=3,
     )
-    
+
     # Update subplot titles and labels.
     fig.update_layout(
         title_text="Potential Energy Surface Analysis",
@@ -121,20 +123,22 @@ def plot_potential_energy_surface_2d(X_np, Y_np, pes_np, grad_norm_np, p_xy, cut
                 y=1.1,
                 showarrow=False,
             ),
-        ]
+        ],
     )
-    
+
     # Update x and y axis labels for all subplots.
     fig.update_xaxes(title_text="x")
     fig.update_yaxes(title_text="y")
-    
+
     t2 = time.time()
     figname = plotting_dir / "potential_energy_surface.png"
     fig.write_image(figname)
     print(f"Figure saved as {figname} ({t2-t1:.2f} seconds)")
 
 
-def plot_potential_energy_surface_3d(X_np, Y_np, pes_np, grad_norm_np, p_xy, cutoff=None, percentile=95):
+def plot_potential_energy_surface_3d(
+    X_np, Y_np, pes_np, grad_norm_np, p_xy, cutoff=None, percentile=95
+):
     """
     Plot the potential energy surface, gradient norm, and Boltzmann distribution in 3D.
     Uses dynamic cutoff values via the given percentile.
@@ -166,7 +170,7 @@ def plot_potential_energy_surface_3d(X_np, Y_np, pes_np, grad_norm_np, p_xy, cut
             colorscale="Viridis",
             colorbar=dict(title="PES(x,y)"),
             name="Potential Energy Surface",
-            cmax=cutoff_pes
+            cmax=cutoff_pes,
         )
     )
     fig1.update_layout(
@@ -269,11 +273,16 @@ def plot_potential_energy_surface(pes_fn, cutoff=None, percentile=50):
     Z = boltz_factor.sum() * dx * dy
     p_xy = boltz_factor / Z
 
-    plot_potential_energy_surface_2d(X_np, Y_np, pes_np, grad_norm_np, p_xy, cutoff=cutoff, percentile=percentile)
-    plot_potential_energy_surface_3d(X_np, Y_np, pes_np, grad_norm_np, p_xy, cutoff=cutoff, percentile=percentile)
+    plot_potential_energy_surface_2d(
+        X_np, Y_np, pes_np, grad_norm_np, p_xy, cutoff=cutoff, percentile=percentile
+    )
+    plot_potential_energy_surface_3d(
+        X_np, Y_np, pes_np, grad_norm_np, p_xy, cutoff=cutoff, percentile=percentile
+    )
 
 
 ###########################################################################################################
+
 
 def plot_results_2d(final_samples, X_grid, Y_grid, p_true):
     t1 = time.time()
@@ -287,7 +296,7 @@ def plot_results_2d(final_samples, X_grid, Y_grid, p_true):
     )
     x_centers = (x_edges[:-1] + x_edges[1:]) / 2
     y_centers = (y_edges[:-1] + y_edges[1:]) / 2
-    
+
     print(f"final_samples.shape: {final_samples.shape}")
     print(f"hist.shape: {hist.shape}")
     print(f"x_centers.shape: {x_centers.shape}")
@@ -315,15 +324,12 @@ def plot_results_2d(final_samples, X_grid, Y_grid, p_true):
     # Add contour lines of target Boltzmann distribution.
     fig.add_trace(
         go.Contour(
-            x=X_grid[0,:],
-            y=Y_grid[:,0],
+            x=X_grid[0, :],
+            y=Y_grid[:, 0],
             z=p_true,
-            colorscale=[[0, 'red'], [1, 'red']],
+            colorscale=[[0, "red"], [1, "red"]],
             showscale=False,
-            contours=dict(
-                coloring='lines',
-                showlabels=True
-            ),
+            contours=dict(coloring="lines", showlabels=True),
             name="Target Boltzmann",
         )
     )
@@ -335,7 +341,7 @@ def plot_results_2d(final_samples, X_grid, Y_grid, p_true):
         yaxis_title="y",
         width=800,
         height=600,
-        showlegend=True
+        showlegend=True,
     )
 
     figname = plotting_dir / "diffusion_datafree.png"
@@ -351,8 +357,8 @@ def plot_results_3d(final_samples, X_grid, Y_grid, p_true):
     # Add Boltzmann distribution surface
     fig_plotly.add_trace(
         go.Surface(
-            x=X_grid[0,:],
-            y=Y_grid[:,0],
+            x=X_grid[0, :],
+            y=Y_grid[:, 0],
             z=p_true,
             colorscale="Viridis",
             colorbar=dict(title="Boltzmann p(x,y)"),
