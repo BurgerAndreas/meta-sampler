@@ -220,10 +220,10 @@ if __name__ == "__main__":
     energies, forces = compute_energy_and_forces_batch_openmm(
         dihedrals_batch, num_workers=3
     )
-    
+
     min_energy = float("inf")
     max_energy = float("-inf")
-    
+
     # Display results.
     for i in range(dihedrals_batch.shape[0]):
         print(
@@ -237,6 +237,8 @@ if __name__ == "__main__":
             f"  Energy (kJ/mol): {energies[i].item():.2f} = {energies[i].item()*0.239006:.2f} kcal/mol"
         )
 
-    print(f"Energy range: {(max_energy - min_energy):.2f} kJ/mol = {(max_energy - min_energy)*0.239006:.2f} kcal/mol")
+    print(
+        f"Energy range: {(max_energy - min_energy):.2f} kJ/mol = {(max_energy - min_energy)*0.239006:.2f} kcal/mol"
+    )
 
     #################################################################################

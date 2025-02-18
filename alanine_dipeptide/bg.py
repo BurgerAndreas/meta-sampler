@@ -4,7 +4,7 @@ import numpy as np
 
 import openmm as mm
 import openmm.unit as unit
-import openmm.app 
+import openmm.app
 from openmm import LangevinIntegrator
 
 import mdtraj as md
@@ -31,6 +31,7 @@ import torch
 #############################################################################################################
 # https://github.com/mdtraj/mdtraj/blob/master/mdtraj/geometry/distance.py
 #############################################################################################################
+
 
 def _reduce_box_vectors(vectors):
     """Make sure box vectors are in reduced form."""
@@ -70,6 +71,7 @@ def _distance_mic(xyz, pairs, box_vectors, orthogonal):
                             dist = min(dist, np.linalg.norm(new_r12))
             out[i, j] = dist
     return out
+
 
 def _displacement(xyz, pairs):
     "Displacement vector between pairs of points in each frame"
@@ -118,6 +120,7 @@ def _displacement_mic(xyz, pairs, box_vectors, orthogonal):
             out[i, j] = min_disp
 
     return out
+
 
 def compute_displacements(traj, atom_pairs, periodic=True, opt=False):
     """Compute the displacement vector between pairs of atoms in each frame of a trajectory.
@@ -178,6 +181,7 @@ def compute_displacements(traj, atom_pairs, periodic=True, opt=False):
     # either there are no unitcell vectors or they dont want to use them
 
     return _displacement(xyz, pairs)
+
 
 #############################################################################################################
 # https://github.com/mdtraj/mdtraj/blob/master/mdtraj/geometry/dihedral.py
@@ -285,9 +289,11 @@ def compute_dihedrals(traj, indices, periodic=True, opt=False):
     _dihedral(traj, quartets, periodic, out)
     return out
 
+
 #############################################################################################################
 # https://github.com/noegroup/bgmol/blob/main/bgmol/systems/ala2.py
 #############################################################################################################
+
 
 def compute_phi_psi(traj):
     """Compute backbone dihedrals.
@@ -305,38 +311,43 @@ def compute_phi_psi(traj):
 
 DEFAULT_RIGID_BLOCK = np.array([6, 8, 9, 10, 14])
 
+DEFAULT_Z_MATRIX = np.array(
+    [
+        [0, 1, 4, 6],
+        [1, 4, 6, 8],
+        [2, 1, 4, 0],
+        [3, 1, 4, 0],
+        [4, 6, 8, 14],  # phi
+        [5, 4, 6, 8],
+        [7, 6, 8, 4],
+        [11, 10, 8, 6],
+        [12, 10, 8, 11],
+        [13, 10, 8, 11],
+        [15, 14, 8, 16],
+        [16, 14, 8, 6],  # psi # mdtraj uses [16, 14, 8, 6]
+        [17, 16, 14, 15],
+        [18, 16, 14, 8],
+        [19, 18, 16, 14],
+        [20, 18, 16, 19],
+        [21, 18, 16, 19],
+    ]
+)
 
-DEFAULT_Z_MATRIX = np.array([
-    [0, 1, 4, 6],
-    [1, 4, 6, 8],
-    [2, 1, 4, 0],
-    [3, 1, 4, 0],
-    [4, 6, 8, 14], # phi
-    [5, 4, 6, 8],
-    [7, 6, 8, 4],
-    [11, 10, 8, 6],
-    [12, 10, 8, 11],
-    [13, 10, 8, 11],
-    [15, 14, 8, 16],
-    [16, 14, 8, 6], # psi # mdtraj uses [16, 14, 8, 6]
-    [17, 16, 14, 15],
-    [18, 16, 14, 8],
-    [19, 18, 16, 14],
-    [20, 18, 16, 19],
-    [21, 18, 16, 19]
-])
 
-
-DEFAULT_GLOBAL_Z_MATRIX = np.row_stack([
-    DEFAULT_Z_MATRIX,
-    np.array([
-        [9, 8, 6, 14],
-        [10, 8, 14, 6],
-        [6, 8, 14, -1],
-        [8, 14, -1, -1],
-        [14, -1, -1, -1]
-    ])
-])
+DEFAULT_GLOBAL_Z_MATRIX = np.row_stack(
+    [
+        DEFAULT_Z_MATRIX,
+        np.array(
+            [
+                [9, 8, 6, 14],
+                [10, 8, 14, 6],
+                [6, 8, 14, -1],
+                [8, 14, -1, -1],
+                [14, -1, -1, -1],
+            ]
+        ),
+    ]
+)
 
 
 class AlanineDipeptideTSF(OpenMMSystem):
@@ -350,14 +361,19 @@ class AlanineDipeptideTSF(OpenMMSystem):
 
     url = "http://ftp.mi.fu-berlin.de/pub/cmb-data/bgmol/systems/ala2/"
 
-    def __init__(self,  root=tempfile.gettempdir(), download=True):
+    def __init__(self, root=tempfile.gettempdir(), download=True):
         super(AlanineDipeptideTSF, self).__init__()
 
         # download pdb file
         filename = "alanine-dipeptide-nowater.pdb"
         full_filename = os.path.join(root, filename)
         if download:
-            download_url(self.url + filename, root, filename, md5="728635667ed4937cf4a0e5b7c801d9ea")
+            download_url(
+                self.url + filename,
+                root,
+                filename,
+                md5="728635667ed4937cf4a0e5b7c801d9ea",
+            )
         assert os.path.isfile(full_filename)
 
         pdb = openmm.app.PDBFile(full_filename)
@@ -367,7 +383,7 @@ class AlanineDipeptideTSF(OpenMMSystem):
             removeCMMotion=True,
             nonbondedMethod=openmm.app.NoCutoff,
             constraints=openmm.app.HBonds,
-            rigidWater=True
+            rigidWater=True,
         )
         self._positions = pdb.getPositions(asNumpy=True).value_in_unit(unit.nanometer)
         self._topology = pdb.getTopology()
@@ -381,13 +397,18 @@ class AlanineDipeptideTSF(OpenMMSystem):
 
 class AlanineDipeptideImplicit(OpenMMToolsTestSystem):
     def __init__(self, constraints=openmm.app.HBonds, hydrogenMass=None):
-        super().__init__("AlanineDipeptideImplicit", constraints=constraints, hydrogenMass=hydrogenMass)
+        super().__init__(
+            "AlanineDipeptideImplicit",
+            constraints=constraints,
+            hydrogenMass=hydrogenMass,
+        )
         self.z_matrix = DEFAULT_Z_MATRIX.copy()
         self.rigid_block = DEFAULT_RIGID_BLOCK.copy()
 
     @staticmethod
     def compute_phi_psi(traj):
         return compute_phi_psi(traj)
+
 
 #############################################################################################################
 # https://github.com/noegroup/bgmol/blob/main/bgmol/datasets/ala2.py
@@ -399,10 +420,11 @@ class Ala2Implicit300(DataSet):
     1 ms Langevin dynamics with 1/ps friction coefficient and 2fs time step,
     output spaced in 10 ps intervals.
     """
+
     url = "http://ftp.mi.fu-berlin.de/pub/cmb-data/bgmol/datasets/ala2/Ala2Implicit300.tgz"
     md5 = "ce9d6f6aa214f3eb773d52255aeaeacb"
     num_frames = 99999
-    size = 49692000 # in bytes
+    size = 49692000  # in bytes
     selection = "all"
     openmm_version = "7.4.1"
     date = "2020/09/18"
@@ -425,25 +447,27 @@ class Ala2Implicit300(DataSet):
         self._forces = frames.forces
         f.close()
 
+
 #############################################################################################################
 # Plotting
 #############################################################################################################
 
+
 def plot_phi_psi(trajectory, system):
     """Ramachandran Plot for the Backbone Angles.
     notebooks/alanine_dipeptide_basics.ipynb
-    plot the Boltzmann distribution / probability P(x) over the dihedral angles, 
+    plot the Boltzmann distribution / probability P(x) over the dihedral angles,
     estimated by the occurance in the dataset
     log scale on the color axis
     """
     if not isinstance(trajectory, md.Trajectory):
         trajectory = md.Trajectory(
-            xyz=trajectory.cpu().detach().numpy().reshape(-1, 22, 3), 
-            topology=system.mdtraj_topology
+            xyz=trajectory.cpu().detach().numpy().reshape(-1, 22, 3),
+            topology=system.mdtraj_topology,
         )
     phi, psi = system.compute_phi_psi(trajectory)
-    
-    fig, ax = plt.subplots(figsize=(3,3))
+
+    fig, ax = plt.subplots(figsize=(3, 3))
     ax.hist2d(phi, psi, 50, norm=LogNorm())
     ax.set_xlim(-np.pi, np.pi)
     ax.set_ylim(-np.pi, np.pi)
@@ -455,10 +479,9 @@ def plot_phi_psi(trajectory, system):
 
 
 def scatter_plot_energy(dataset):
-    """Energy (color) for the Backbone Angles.
-    """
+    """Energy (color) for the Backbone Angles."""
     phi, psi = dataset.system.compute_phi_psi(dataset.trajectory)
-    fig, ax = plt.subplots(figsize=(3,3))
+    fig, ax = plt.subplots(figsize=(3, 3))
     z = dataset.energies
     x = phi
     y = psi
@@ -467,6 +490,7 @@ def scatter_plot_energy(dataset):
     figname = "alanine_dipeptide/plots/bg_energy_scatter.png"
     plt.savefig(figname)
     print(f"{figname} saved")
+
 
 def binning_plot_energy(dataset):
     phi, psi = dataset.system.compute_phi_psi(dataset.trajectory)
@@ -477,7 +501,7 @@ def binning_plot_energy(dataset):
 
     # Bin the data: compute the average energy in each (phi, psi) bin
     stat, xedges, yedges, binnumber = binned_statistic_2d(
-        phi, psi, values=z, statistic='mean', bins=num_bins
+        phi, psi, values=z, statistic="mean", bins=num_bins
     )
 
     # Compute the centers of the bins
@@ -496,23 +520,28 @@ def binning_plot_energy(dataset):
     plt.savefig(figname)
     print(f"{figname} saved")
 
+
 if __name__ == "__main__":
 
     # is_data_here = os.path.isfile("Ala2TSF300.tgz")
     is_data_here = os.path.isdir("Ala2TSF300")
     dataset = Ala2Implicit300(download=not is_data_here, read=True)
 
-    # The dataset contains forces, energies and coordinates it also holds a reference to the system that defines the potential energy function.
+    # The dataset contains forces, energies and coordinates it also holds a reference to the system 
+    # that defines the potential energy function.
 
     openmmsystem = dataset.system
     system = dataset.system
 
-    # The system is an OpenMMSystem object, it provides access to the openmm.system instance, the topology, and a set of initial coordinates. For example, we can run an OpenMM simulation as follows
+    # The system is an OpenMMSystem object, it provides access to the openmm.system instance, 
+    # the topology, and a set of initial coordinates. 
 
     integrator = LangevinIntegrator(dataset.temperature, 1, 0.001)
-    simulation = openmm.app.Simulation(openmmsystem.topology, openmmsystem.system, integrator)
+    simulation = openmm.app.Simulation(
+        openmmsystem.topology, openmmsystem.system, integrator
+    )
     simulation.context.setPositions(openmmsystem.positions)
-    simulation.step(10)
+    # simulation.step(10)
 
     # The dataset contains coordinates (xyz), forces, and energies.
 
@@ -521,55 +550,56 @@ if __name__ == "__main__":
     # print("positions", dataset.trajectory.xyz.shape)
     # print("first frame positions:", dataset.trajectory.xyz[0].shape)
     # print("trajectory shape:", dataset.trajectory.xyz.shape)
-    
-    # we can also get the internal coordinates 
+
+    # we can also get the internal coordinates
     phi, psi = dataset.system.compute_phi_psi(dataset.trajectory)
     # print("phi", phi)
     # print("psi", psi)
-    
+
     ###################################################################################
-    
+
     # Define the Internal Coordinate Transform
     # Rather than generating all-Cartesian coordinates, we use a mixed internal coordinate transform.
-    # The five central alanine atoms will serve as a Cartesian "anchor", 
-    # from which all other atoms are placed with respect to internal coordinates (IC) 
-    # defined through a z-matrix. 
-    # We have deposited a valid `z_matrix` and the corresponding `rigid_block` in the `dataset.system` 
+    # The five central alanine atoms will serve as a Cartesian "anchor",
+    # from which all other atoms are placed with respect to internal coordinates (IC)
+    # defined through a z-matrix.
+    # We have deposited a valid `z_matrix` and the corresponding `rigid_block` in the `dataset.system`
 
     # throw away 6 degrees of freedom (rotation and translation)
     dim_cartesian = len(system.rigid_block) * 3 - 6
     dim_bonds = len(system.z_matrix)
     dim_angles = dim_bonds
     dim_torsions = dim_bonds
-    
+
     # a context tensor to send data to the right device and dtype via '.to(ctx)'
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     dtype = torch.float32
-    ctx = torch.zeros([], device=device, dtype=dtype)   
-    
+    ctx = torch.zeros([], device=device, dtype=dtype)
+
     training_data = torch.tensor(dataset.trajectory.xyz).to(ctx)
-    
+
     coordinate_transform = bg.MixedCoordinateTransformation(
-        data=training_data, 
+        data=training_data,
         z_matrix=system.z_matrix,
         fixed_atoms=system.rigid_block,
-        keepdims=dim_cartesian, 
+        keepdims=dim_cartesian,
         normalize_angles=True,
     ).to(ctx)
-    
+
     # For demonstration, we transform the first 3 samples from the training data set into internal coordinates:
-    bonds, angles, torsions, cartesian, dlogp = coordinate_transform.forward(training_data[:3])
+    bonds, angles, torsions, cartesian, dlogp = coordinate_transform.forward(
+        training_data[:3]
+    )
     # print("bonds.shape", bonds.shape)
     # print("angles.shape", angles.shape)
     # print("torsions.shape", torsions.shape)
     # print("cartesian.shape", cartesian.shape)
     # print("dlogp.shape", dlogp.shape)
-    
+
     ###################################################################################
-    
+
     plot_phi_psi(dataset.trajectory, dataset.system)
-    
+
     scatter_plot_energy(dataset)
-    
+
     binning_plot_energy(dataset)
-    

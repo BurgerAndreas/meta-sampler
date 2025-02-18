@@ -42,10 +42,11 @@ def compute_ramachandran_openmm_amber(
     phi_values,
     psi_values,
     recompute=False,
+    convention="andreas",
 ):
     # if file exists, load it
     resolution = len(phi_values)
-    datafile = f"alanine_dipeptide/outputs/ramachandran_openmm_amber_{resolution}.npy"
+    datafile = f"alanine_dipeptide/outputs/ramachandran_openmm_amber_{resolution}_{convention}.npy"
     if os.path.exists(datafile) and not recompute:
         energies, forces_norm, forces_normmean = np.load(datafile)
     else:
@@ -72,7 +73,7 @@ def compute_ramachandran_openmm_amber(
         # integrator = VerletIntegrator(0.001 * picoseconds)
         # platform = Platform.getPlatformByName("Reference")
         # simulation = Simulation(pdb.topology, system, integrator, platform)
-        
+
         temperature = 300
         system = system_by_name("AlanineDipeptideImplicit")
         integrator = openmm.LangevinIntegrator(temperature, 1, 0.001)
@@ -97,8 +98,8 @@ def compute_ramachandran_openmm_amber(
 
                 # Set the positions.
                 positions = positions_default.copy()
-                positions = set_dihedral(positions, "phi", phi, "phi")
-                positions = set_dihedral(positions, "psi", psi, "psi")
+                positions = set_dihedral(positions, "phi", phi, "phi", convention)
+                positions = set_dihedral(positions, "psi", psi, "psi", convention)
 
                 # # build system from scratch
                 # system = forcefield.createSystem(
@@ -146,6 +147,7 @@ def compute_ramachandran_mace(
     phi_values,
     psi_values,
     recompute=False,
+    convention="andreas",
 ):
     """
     Compute the Ramachandran plot for the alanine dipeptide energy landscape using the MACE model.
@@ -153,7 +155,7 @@ def compute_ramachandran_mace(
     """
     # if file exists, load it
     resolution = len(phi_values)
-    datafile = f"alanine_dipeptide/outputs/ramachandran_mace_{resolution}.npy"
+    datafile = f"alanine_dipeptide/outputs/ramachandran_mace_{resolution}_{convention}.npy"
     if os.path.exists(datafile) and not recompute:
         energies, forces_norm, forces_normmean = np.load(datafile)
     else:
@@ -198,7 +200,7 @@ def compute_ramachandran_mace(
                 dihedrals.requires_grad = True
 
                 # Update positions
-                batch = update_alanine_dipeptide_with_grad(dihedrals, batch_base)
+                batch = update_alanine_dipeptide_with_grad(dihedrals, batch_base, convention)
 
                 # need to update edge_index
                 # no gradients for these, but should not affect forces
@@ -256,14 +258,15 @@ def compute_ramachandran_mace(
 def create_ramachandran_plot(
     phi_range=(-np.pi, np.pi),
     psi_range=(-np.pi, np.pi),
-    resolution=36,
+    resolution=60,
     # what to plot
     plot_type="energy",
     show=False,
     show_plt=False,
+    convention="andreas",
     # data processing
     log_scale=True,
-    recompute=True,
+    recompute=False,
     use_mace=True,
     mask_out_highest_energies=-1,  # keep only the lowest mask_out_highest_energies% of energies. e.g. 95
     positive_energies=True,
@@ -277,9 +280,18 @@ def create_ramachandran_plot(
     A contour plot of the energy (in kJ/mol) is then displayed.
 
     Parameters:
+        show (bool): Whether to display the plot.
         phi_range (tuple): (min_phi, max_phi) in radians (default (-pi, pi)).
         psi_range (tuple): (min_psi, max_psi) in radians (default (-pi, pi)).
-        resolution (int): Number of grid points along each dihedral axis (default 36).
+        resolution (int): Number of grid points along each dihedral axis (default 60).
+        plot_type (str): Type of plot to generate ("energy", "free_energy", "gibbs", "exp").
+        convention (str): Convention to use for the dihedral angle indices ("andreas", "bg").
+        log_scale (bool): Whether to use a log scale for the energy plot.
+        recompute (bool): Whether to recompute the energies or load from file.
+        use_mace (bool): Whether to use the MACE model.
+        mask_out_highest_energies (int): Percentage of highest energies to mask out (default 0).
+        positive_energies (bool): Whether to shift all energies to be positive (default True).
+        energy_range (tuple): (min_energy, max_energy) in kJ/mol to mask out (default None).
 
     Returns:
         None. Displays a contour plot.
@@ -298,6 +310,7 @@ def create_ramachandran_plot(
             phi_values,
             psi_values,
             recompute=recompute,
+            convention=convention,
         )
         unit = "eV"
     else:
@@ -305,6 +318,7 @@ def create_ramachandran_plot(
             phi_values,
             psi_values,
             recompute=recompute,
+            convention=convention,
         )
         unit = "kJ/mol"
 
@@ -351,14 +365,15 @@ def create_ramachandran_plot(
         )
     # The five lowest energies are:
     print(f"The lowest energies are:")
-    flat_indices = np.argsort(
-        np.where(np.isnan(energies), np.inf, energies).flatten()
-    )[:5]
+    flat_indices = np.argsort(np.where(np.isnan(energies), np.inf, energies).flatten())[
+        :5
+    ]
     for idx in flat_indices:
         i, j = np.unravel_index(idx, energies.shape)
-        print(f"  phi={phi_values[i]:6.3f}, psi={psi_values[j]:6.3f} -> {energies[i,j]:8.2f} [{unit}]")
-        
-        
+        print(
+            f"  phi={phi_values[i]:6.3f}, psi={psi_values[j]:6.3f} -> {energies[i,j]:8.2f} [{unit}]"
+        )
+
     # remove the highest energies
     if mask_out_highest_energies > 0:
         energies = np.where(
@@ -370,7 +385,7 @@ def create_ramachandran_plot(
         print(
             f"Min energy after removing highest energies: {np.nanmin(energies):.1f} [{unit}]"
         )
-        
+
     if energy_range is not None:
         # boltzmann generator: -128 - -38
         energies = np.where(energies < energy_range[1], energies, np.nan)
@@ -432,10 +447,10 @@ def create_ramachandran_plot(
 
         # free_energies = free_energies2
         if log_scale:
-            energies = np.log10(free_energies).T
+            energies = np.log10(free_energies)
             title = r"$\text{Ramachandran Plot for Alanine Dipeptide: } \log_{10}(F=-k_B T \ln(P))$"
         else:
-            energies = free_energies.T
+            energies = free_energies
             title = (
                 r"$\text{Ramachandran Plot for Alanine Dipeptide: } F=-k_B T \ln(P)$"
             )
@@ -449,12 +464,12 @@ def create_ramachandran_plot(
                 np.isnan(energies), -1.0 * 1e10, energies
             )  # large negative values will become 0 in exp
             ln_p = -energies / kbT - scipy.special.logsumexp(_e / kbT)  # - np.log(dx)
-            energies = ln_p.T
+            energies = ln_p
             title = r"$\text{Ramachandran Plot for Alanine Dipeptide: } \log_{10}(P=e^{-U/k_B T})$"
         else:
             z = np.nansum(np.exp(-energies / kbT))  # * dx
             p = np.exp(-energies / kbT) / z
-            energies = p.T
+            energies = p
             title = r"$\text{Ramachandran Plot for Alanine Dipeptide: } P=e^{-U/k_B T}$"
 
     elif plot_type == "exp":
@@ -472,15 +487,15 @@ def create_ramachandran_plot(
             # energies += np.abs(energies.min()) + 1e0
             # mask out non-positive energies
             energies = np.where(energies > 0, energies, np.nan)
-            energies = np.log10(energies).T
+            energies = np.log10(energies)
             title = r"$\text{Ramachandran Plot for Alanine Dipeptide: } \log_{10}(U)$"
         else:
-            energies = energies.T
+            energies = energies
             title = r"$\text{Ramachandran Plot for Alanine Dipeptide: } U$"
 
     else:
         raise ValueError(f"Invalid plot type: {plot_type}")
-    
+
     print(f"Min value in plot: {np.nanmin(energies):.1f} [{unit}]")
     print(f"Max value in plot: {np.nanmax(energies):.1f} [{unit}]")
 
@@ -493,24 +508,20 @@ def create_ramachandran_plot(
     phi_values = phi_values.astype(np.float64)
     psi_values = psi_values.astype(np.float64)
     
-    if show_plt:
-        figname = (
-            "alanine_dipeptide/plots/ramachandran_plt"
-            + ("_" + plot_type)
-            + ("_mace" if use_mace else "_amber")
-            + ("_log" if log_scale else "")
-            + ".png"
-        )
-        px.imshow(
-            energies, 
-            aspect="auto",
-            title=title,
-            x=phi_values,
-            y=psi_values,
-        ).write_image(figname)
-        print(f"Saved {figname}")
+    # plotly has a transposed convention
+    energies = energies.T
+    forces_norm = forces_norm.T
+    forces_normmean = forces_normmean.T
+    if log_scale:
+        forces_norm = np.log10(forces_norm)
+        forces_normmean = np.log10(forces_normmean)
 
-    # values to float32
+    tempplotfolder = "alanine_dipeptide/plots/"
+    tempplotfolder += plot_type
+    tempplotfolder += ("_mace" if use_mace else "_amber")
+    tempplotfolder += ("_" + convention)
+    os.makedirs(tempplotfolder, exist_ok=True)
+
     fig = go.Figure(
         data=go.Contour(
             x=phi_values,
@@ -533,24 +544,30 @@ def create_ramachandran_plot(
         yaxis_title="Psi (radians)",
         margin=dict(l=0, r=0, t=50, b=0),
     )
-    figname = (
-        "alanine_dipeptide/plots/ramachandran"
-        + ("_mace" if use_mace else "_amber")
-        + ("_" + plot_type)
-        + ("_log" if log_scale else "")
-        + ".png"
-    )
+    fig_suffix = ("_log" if log_scale else "")
+    if energy_range is not None:
+        fig_suffix += f"_range_{energy_range[0]}_{energy_range[1]}"
+    if positive_energies:
+        fig_suffix += "_positive"
+    fig_suffix += ".png"
+    figname = f"{tempplotfolder}/ramachandran{fig_suffix}"
     fig.write_image(figname)
     print(f"Saved {figname}")
     if show:
         fig.show()
 
+    ############################################################################
     # plot force norm
+    figname = f"{tempplotfolder}/ramachandran_forcenorm"
+    title = r"$\text{Norm Force Plot for Alanine Dipeptide } |F|$"
+    if log_scale:
+        title = r"$\text{Norm Force Plot for Alanine Dipeptide } \log_{10}(|F|)$"
+        figname += "_log"
     fig = go.Figure(
         data=go.Contour(
             x=phi_values,
             y=psi_values,
-            z=forces_norm.T,  # np.log10(forces_norm).T,
+            z=forces_norm,  # np.log10(forces_norm),
             colorscale="Viridis",
             type="contour",
             colorbar=dict(
@@ -559,28 +576,27 @@ def create_ramachandran_plot(
         )
     )
     fig.update_layout(
-        title=r"$\text{Norm Force Plot for Alanine Dipeptide } \log_{10}(|F|)$",
+        title=title,
         xaxis_title="Phi (radians)",
         yaxis_title="Psi (radians)",
         margin=dict(l=0, r=5, t=50, b=0),
     )
-    figname = (
-        f'alanine_dipeptide/plots/ramachandran_force_norm'
-        + ("_mace" if use_mace else "_amber")
-        + ("_" + plot_type)
-    )
-    if log_scale:
-        figname += "_log"
     figname += ".png"
     fig.write_image(figname)
     print(f"Saved {figname}")
 
+    ############################################################################
     # plot force norm mean
+    figname = f"alanine_dipeptide/plots/ramachandran_forcenormmean"
+    title = r"$\text{Mean Norm Force Plot for Alanine Dipeptide } \frac{1}{22}\sum_{i=1}^{22}|F_i|$"
+    if log_scale:
+        title = r"$\text{Mean Norm Force Plot for Alanine Dipeptide } \log_{10}(\frac{1}{22}\sum_{i=1}^{22}|F_i|)$"
+        figname += "_log"
     fig = go.Figure(
         data=go.Contour(
             x=phi_values,
             y=psi_values,
-            z=forces_normmean.T,  # np.log10(forces_normmean).T,
+            z=forces_normmean,  # np.log10(forces_normmean),
             colorscale="Viridis",
             type="contour",
             colorbar=dict(
@@ -589,18 +605,11 @@ def create_ramachandran_plot(
         )
     )
     fig.update_layout(
-        title=r"$\text{Mean Norm Force Plot for Alanine Dipeptide } \log_{10}(\frac{1}{22}\sum_{i=1}^{22}|F_i|)$",
+        title=title,
         xaxis_title="Phi (radians)",
         yaxis_title="Psi (radians)",
         margin=dict(l=0, r=5, t=50, b=0),
     )
-    figname = (
-        f'alanine_dipeptide/plots/ramachandran_force_norm_mean'
-        + ("_mace" if use_mace else "_amber")
-        + ("_" + plot_type)
-    )
-    if log_scale:
-        figname += "_log"
     figname += ".png"
     fig.write_image(figname)
     print(f"Saved {figname}")
@@ -613,42 +622,52 @@ if __name__ == "__main__":
     # Ensure that compute_energy_and_forces is available in the current scope.
 
     # Amber force field
-    # create_ramachandran_plot(
-    #     recompute=False,
-    #     use_mace=False,
-    #     log_scale=False,
-    #     plot_type="energy",
-    #     resolution=100,
-    # )
-    # create_ramachandran_plot(
-    #     recompute=False,
-    #     use_mace=False,
-    #     log_scale=True,
-    #     plot_type="energy",
-    # )
-    # create_ramachandran_plot(
-    #     recompute=False,
-    #     use_mace=False,
-    #     log_scale=False,
-    #     plot_type="gibbs",
-    # )
-    # create_ramachandran_plot(
-    #     recompute=False,
-    #     use_mace=False,
-    #     log_scale=True,
-    #     plot_type="gibbs",
-    # )
-
+    
     create_ramachandran_plot(
-        recompute=False,
         use_mace=False,
         log_scale=False,
-        show_plt=False,
+        positive_energies=True,
+        plot_type="exp",
+    )
+    create_ramachandran_plot(
+        use_mace=False,
+        log_scale=False,
+        plot_type="gibbs",
+    )
+
+    create_ramachandran_plot(
+        use_mace=False,
+        log_scale=False,
         positive_energies=False,
         energy_range=(-128, -38),
         plot_type="energy",
+        convention="andreas",
     )
-    
+    create_ramachandran_plot(
+        use_mace=False,
+        log_scale=True,
+        positive_energies=True,
+        # energy_range=(-128, -38),
+        plot_type="energy",
+        convention="andreas",
+    )
+    create_ramachandran_plot(
+        use_mace=False,
+        log_scale=False,
+        positive_energies=False,
+        energy_range=(-128, -38),
+        plot_type="energy",
+        convention="bg",
+    )
+    create_ramachandran_plot(
+        use_mace=False,
+        log_scale=True,
+        positive_energies=True,
+        # energy_range=(-128, -38),
+        plot_type="energy",
+        convention="bg",
+    )
+
     # create_ramachandran_plot(
     #     recompute=False,
     #     use_mace=False,

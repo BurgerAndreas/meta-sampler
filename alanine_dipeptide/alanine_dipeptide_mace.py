@@ -22,6 +22,7 @@ from alanine_dipeptide_openmm_amber99 import fffile, pdbfile
 Transforms dihedral angles to atom positions.
 """
 
+
 def build_alanine_dipeptide_openmm(phi, psi, pdbfile):
     """
     Build a full-atom 3D configuration of alanine dipeptide with the specified
@@ -83,8 +84,8 @@ def update_alanine_dipeptide_ase(atoms, phi_psi: torch.Tensor = None):
     positions = torch.tensor(atoms.get_positions())
 
     # Set dihedral angles
-    positions = set_dihedral_torch(positions, "phi", phi_psi[0], "phi")
-    positions = set_dihedral_torch(positions, "psi", phi_psi[1], "psi")
+    positions = set_dihedral_torch(positions, "phi", phi_psi[0], "phi", convention)
+    positions = set_dihedral_torch(positions, "psi", phi_psi[1], "psi", convention)
 
     # Update positions in ASE Atoms object
     atoms.set_positions(positions.numpy())
@@ -93,7 +94,7 @@ def update_alanine_dipeptide_ase(atoms, phi_psi: torch.Tensor = None):
 
 
 def update_alanine_dipeptide_with_grad(
-    phi_psi: torch.Tensor, batch: dict, set_phi=True, set_psi=True
+    phi_psi: torch.Tensor, batch: dict, set_phi=True, set_psi=True, convention="andreas"
 ) -> dict:
     """
     Update positions based on phi_psi angles while maintaining gradient flow.
@@ -111,9 +112,9 @@ def update_alanine_dipeptide_with_grad(
     positions = batch["positions"].clone()
 
     if set_phi:
-        positions = set_dihedral_torch(positions, "phi", phi_psi[0], "phi")
+        positions = set_dihedral_torch(positions, "phi", phi_psi[0], "phi", convention)
     if set_psi:
-        positions = set_dihedral_torch(positions, "psi", phi_psi[1], "psi")
+        positions = set_dihedral_torch(positions, "psi", phi_psi[1], "psi", convention)
 
     # Update positions in the new batch
     new_batch["positions"] = positions
@@ -196,15 +197,11 @@ def compute_energy_and_forces_mace(
     batch["edge_index"] = torch.tensor(
         edge_index, device=device, dtype=batch["edge_index"].dtype
     )
-    batch["shifts"] = torch.tensor(
-        shifts, device=device, dtype=batch["shifts"].dtype
-    )
+    batch["shifts"] = torch.tensor(shifts, device=device, dtype=batch["shifts"].dtype)
     batch["unit_shifts"] = torch.tensor(
         unit_shifts, device=device, dtype=batch["unit_shifts"].dtype
     )
-    batch["cell"] = torch.tensor(
-        cell, device=device, dtype=batch["cell"].dtype
-    )
+    batch["cell"] = torch.tensor(cell, device=device, dtype=batch["cell"].dtype)
 
     # Compute energy by calling MACE
     out = model(
@@ -355,9 +352,7 @@ def test_mace_alanine_dipeptide_dihedral_grad():
         batch["unit_shifts"] = torch.tensor(
             unit_shifts, device=device, dtype=batch["unit_shifts"].dtype
         )
-        batch["cell"] = torch.tensor(
-            cell, device=device, dtype=batch["cell"].dtype
-        )
+        batch["cell"] = torch.tensor(cell, device=device, dtype=batch["cell"].dtype)
 
         # Test gradient flow
         # testgrad = torch.autograd.grad(batch["positions"].sum(), phi_psi, create_graph=True)[0]
@@ -387,7 +382,7 @@ def test_mace_alanine_dipeptide_dihedral_grad():
 if __name__ == "__main__":
     test_mace_alanine_dipeptide()
     test_mace_alanine_dipeptide_dihedral_grad()
-    
+
     #################################################################################
     print("-" * 60)
     # Create a batch of dihedral angle pairs (in radians). For example, B=3.
@@ -404,7 +399,7 @@ if __name__ == "__main__":
         ],
         dtype=torch.float32,
     )
-    
+
     min_energy = float("inf")
     max_energy = float("-inf")
 
@@ -413,7 +408,9 @@ if __name__ == "__main__":
         print(
             f"Configuration {i}: φ = {dihedrals_batch[i,0]*180/np.pi:.1f}°, ψ = {dihedrals_batch[i,1]*180/np.pi:.1f}°"
         )
-        energy, forces = compute_energy_and_forces_mace(dihedrals_batch[i], model_type="off")
+        energy, forces = compute_energy_and_forces_mace(
+            dihedrals_batch[i], model_type="off"
+        )
         # 1 kcal/mol = 0.04336 eV
         # 1 eV = 23.0605 kcal/mol
         print(
@@ -424,4 +421,6 @@ if __name__ == "__main__":
         if energy.item() > max_energy:
             max_energy = energy.item()
 
-    print(f"Energy range: {(max_energy - min_energy):.2f} eV = {(max_energy - min_energy)*23.0605:.2f} kcal/mol")
+    print(
+        f"Energy range: {(max_energy - min_energy):.2f} eV = {(max_energy - min_energy)*23.0605:.2f} kcal/mol"
+    )
