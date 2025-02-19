@@ -133,10 +133,10 @@ def compute_ramachandran_openmm_amber(
                 forces_norm[i, j] = torch.linalg.norm(force).item()
                 forces_normmean[i, j] = torch.linalg.norm(force, axis=1).mean().item()
 
-                # Optionally, print the computed energy for each grid point.
-                tqdm.write(
-                    f"phi={phi:6.3f}, psi={psi:6.3f} -> U={energy.item():8.2f} kJ/mol, F={forces_norm[i, j]:8.2f}"
-                )
+                # print the computed energy for each grid point.
+                # tqdm.write(
+                #     f"phi={phi:6.3f}, psi={psi:6.3f} -> U={energy.item():8.2f} kJ/mol, F={forces_norm[i, j]:8.2f}"
+                # )
 
         # Save the energies to a file
         np.save(datafile, (energies, forces_norm, forces_normmean))
@@ -245,10 +245,10 @@ def compute_ramachandran_mace(
                 forces_norm[i, j] = torch.linalg.norm(forces).item()
                 forces_normmean[i, j] = torch.linalg.norm(forces, axis=-1).mean().item()
 
-                # Optionally, print the computed energy for each grid point.
-                tqdm.write(
-                    f"phi={phi:6.3f}, psi={psi:6.3f} -> U={energy.item():8.2f} eV?, F={forces_norm[i, j]:8.2f}"
-                )
+                # print the computed energy for each grid point.
+                # tqdm.write(
+                #     f"phi={phi:6.3f}, psi={psi:6.3f} -> U={energy.item():8.2f} eV?, F={forces_norm[i, j]:8.2f}"
+                # )
 
         # Save the energies to a file
         np.save(datafile, (energies, forces_norm, forces_normmean))
@@ -258,7 +258,7 @@ def compute_ramachandran_mace(
 def create_ramachandran_plot(
     phi_range=(-np.pi, np.pi),
     psi_range=(-np.pi, np.pi),
-    resolution=60,
+    resolution=120,
     # what to plot
     plot_type="energy",
     show=False,
@@ -268,7 +268,7 @@ def create_ramachandran_plot(
     log_scale=True,
     recompute=False,
     use_mace=True,
-    mask_out_highest_energies=-1,  # keep only the lowest mask_out_highest_energies% of energies. e.g. 95
+    keep_lowest_energies=-1,  # keep only the lowest keep_lowest_energies% of energies. e.g. 95
     positive_energies=True,
     energy_range=None,
 ):
@@ -289,7 +289,7 @@ def create_ramachandran_plot(
         log_scale (bool): Whether to use a log scale for the energy plot.
         recompute (bool): Whether to recompute the energies or load from file.
         use_mace (bool): Whether to use the MACE model.
-        mask_out_highest_energies (int): Percentage of highest energies to mask out (default 0).
+        keep_lowest_energies (int): Percentage of highest energies to mask out (default 0).
         positive_energies (bool): Whether to shift all energies to be positive (default True).
         energy_range (tuple): (min_energy, max_energy) in kJ/mol to mask out (default None).
 
@@ -322,11 +322,12 @@ def create_ramachandran_plot(
         )
         unit = "kJ/mol"
 
-    # Plot the contour (Ramachandran plot)
-    # Create a meshgrid for plotting (using 'ij' indexing so that phi_values index the first axis)
-    phi_grid, psi_grid = np.meshgrid(phi_values, psi_values, indexing="ij")
+    ############################################################################
+    # Convert to the same unit
+    ############################################################################
+    # http://wild.life.nctu.edu.tw/class/common/energy-unit-conv-table.html
 
-    # # Convert energies from kJ/mol to kcal/mol
+    # # Convert energies to kcal/mol
     # # 1 kJ/mol = 0.239006 kcal/mol
     # if unit == "kJ/mol":
     #     energies = energies * 0.239006
@@ -339,6 +340,20 @@ def create_ramachandran_plot(
     #     pass
     # else:
     #     raise ValueError(f"Invalid unit: {unit}")
+    
+    # Convert energies to kJ/mol
+    if unit == "kcal/mol":
+        # 1 kcal/mol = 4.18400 kJ/mol
+        energies = energies * 4.184
+        unit = "kJ/mol"
+    elif unit == "eV":
+        # 1 eV = 96.486 9 kJ/mol
+        energies = energies * 96.4869
+        unit = "kJ/mol"
+    elif unit == "kJ/mol":
+        pass
+    else:
+        raise ValueError(f"Invalid unit: {unit}")
 
     ############################################################################
     # Inspect the energies
@@ -351,7 +366,7 @@ def create_ramachandran_plot(
     print(f"Max energy: {np.nanmax(energies):.1f} [{unit}]")
 
     # Then modify the existing printing code to ignore nans:
-    print(f"The highest finite energies are:")
+    print(f"The highest energies are:")
     # Get indices of ten highest non-nan values in 2D array
     # print(np.sort(energies.flatten()))
     flat_indices = np.argsort(
@@ -373,19 +388,27 @@ def create_ramachandran_plot(
         print(
             f"  phi={phi_values[i]:6.3f}, psi={psi_values[j]:6.3f} -> {energies[i,j]:8.2f} [{unit}]"
         )
-
     # remove the highest energies
-    if mask_out_highest_energies > 0:
-        energies = np.where(
-            energies < np.max(energies) * mask_out_highest_energies, energies, np.nan
+    if keep_lowest_energies > 0:
+        # example: highest is 120, lowest is 20 -> delta is 100
+        # if keep_lowest_energies = 0.9, then we keep the lowest 90%
+        # and remove the highest 10%
+        print(f"Warning: keeping only the lowest {keep_lowest_energies*100:.1f}% of the energy landscape")
+        entries_before = np.sum(~np.isnan(energies))
+        # delta = np.abs(np.nanmax(energies) - np.nanmin(energies))
+        delta = np.nanmax(energies) - np.nanmin(energies)
+        print(f" energy range: {delta:.1f} [{unit}]")
+        cutoff = np.nanmin(energies) + delta * keep_lowest_energies
+        print(f" cutoff: <{cutoff:.1f} [{unit}]")
+        energies = np.where(energies < cutoff, energies, np.nan)
+        print(
+            f" Max energy after removing highest energies: {np.nanmax(energies):.1f} [{unit}]"
         )
         print(
-            f"Max energy after removing highest energies: {np.nanmax(energies):.1f} [{unit}]"
+            f" Min energy after removing highest energies: {np.nanmin(energies):.1f} [{unit}]"
         )
-        print(
-            f"Min energy after removing highest energies: {np.nanmin(energies):.1f} [{unit}]"
-        )
-
+        print(f" Entries removed: {entries_before - np.sum(~np.isnan(energies))}")
+        
     if energy_range is not None:
         # boltzmann generator: -128 - -38
         energies = np.where(energies < energy_range[1], energies, np.nan)
@@ -399,7 +422,7 @@ def create_ramachandran_plot(
             second_lowest_e = np.nanmin(energies[energies > lowest_e])
             _diff = -lowest_e + (second_lowest_e - lowest_e)
             energies += _diff
-            print(f"Warning: lowest energy is <=0, adding {_diff} to all energies")
+            print(f"Warning: lowest energy is <=0, adding {_diff:.1f} to all energies")
 
     ############################################################################
     # Compute free energy / gibbs energy from energies
@@ -433,8 +456,8 @@ def create_ramachandran_plot(
         # z = np.exp(max_energy) * np.exp(-energies/kbT - max_energy).sum() * dx
         # p = np.exp(-energies/kbT - max_energy) / (z/np.exp(max_energy))
 
-        print(f"p.sum() = {p.sum()} (should be 1)")  # * dx
         p += 1e-16
+        print(f"p.sum() = {p.sum()} (should be 1)")  # * dx
         free_energies = -kbT * np.log(p)
 
         # F(x) = -kbT ln[ exp(-E(x)/kbT) / sum_x exp(-E(x)/kbT) ]
@@ -474,11 +497,13 @@ def create_ramachandran_plot(
 
     elif plot_type == "exp":
         energies = -energies / kbT
-        print(f"Min energy before exp: {np.nanmin(energies):.1f} [{unit}]")
-        print(f"Max energy before exp: {np.nanmax(energies):.1f} [{unit}]")
-        energies = np.exp(energies)
-        log_scale = False
-        title = r"$\text{Ramachandran Plot for Alanine Dipeptide: } e^{-U/k_B T}$"
+        if log_scale:
+            title = r"$\text{Ramachandran Plot for Alanine Dipeptide: } \log_{10}(e^{-U/k_B T})$"
+        else:
+            print(f"Min arg before exp: {np.nanmin(energies):.1f} [{unit}]")
+            print(f"Max arg before exp: {np.nanmax(energies):.1f} [{unit}]")
+            energies = np.exp(energies)
+            title = r"$\text{Ramachandran Plot for Alanine Dipeptide: } e^{-U/k_B T}$"
 
     elif plot_type == "energy":
         if log_scale:
@@ -521,6 +546,9 @@ def create_ramachandran_plot(
     tempplotfolder += ("_mace" if use_mace else "_amber")
     tempplotfolder += ("_" + convention)
     os.makedirs(tempplotfolder, exist_ok=True)
+    
+    # Create a meshgrid for plotting (using 'ij' indexing so that phi_values index the first axis)
+    # phi_grid, psi_grid = np.meshgrid(phi_values, psi_values, indexing="ij")
 
     fig = go.Figure(
         data=go.Contour(
@@ -544,11 +572,15 @@ def create_ramachandran_plot(
         yaxis_title="Psi (radians)",
         margin=dict(l=0, r=0, t=50, b=0),
     )
-    fig_suffix = ("_log" if log_scale else "")
+    fig_suffix = ""
+    if log_scale:
+        fig_suffix += "_log"
     if energy_range is not None:
         fig_suffix += f"_range_{energy_range[0]}_{energy_range[1]}"
     if positive_energies:
         fig_suffix += "_positive"
+    if keep_lowest_energies > 0:
+        fig_suffix += f"_mask{keep_lowest_energies}"
     fig_suffix += ".png"
     figname = f"{tempplotfolder}/ramachandran{fig_suffix}"
     fig.write_image(figname)
@@ -567,7 +599,7 @@ def create_ramachandran_plot(
         data=go.Contour(
             x=phi_values,
             y=psi_values,
-            z=forces_norm,  # np.log10(forces_norm),
+            z=forces_norm, 
             colorscale="Viridis",
             type="contour",
             colorbar=dict(
@@ -587,7 +619,7 @@ def create_ramachandran_plot(
 
     ############################################################################
     # plot force norm mean
-    figname = f"alanine_dipeptide/plots/ramachandran_forcenormmean"
+    figname = f"{tempplotfolder}/ramachandran_forcenormmean"
     title = r"$\text{Mean Norm Force Plot for Alanine Dipeptide } \frac{1}{22}\sum_{i=1}^{22}|F_i|$"
     if log_scale:
         title = r"$\text{Mean Norm Force Plot for Alanine Dipeptide } \log_{10}(\frac{1}{22}\sum_{i=1}^{22}|F_i|)$"
@@ -596,7 +628,7 @@ def create_ramachandran_plot(
         data=go.Contour(
             x=phi_values,
             y=psi_values,
-            z=forces_normmean,  # np.log10(forces_normmean),
+            z=forces_normmean, 
             colorscale="Viridis",
             type="contour",
             colorbar=dict(
@@ -614,15 +646,113 @@ def create_ramachandran_plot(
     fig.write_image(figname)
     print(f"Saved {figname}")
 
+def compare_amber_mace_energies(
+    phi_range=(-np.pi, np.pi),
+    psi_range=(-np.pi, np.pi), 
+    resolution=120,
+    recompute=False,
+    convention="andreas",
+):
+    """Compare energy landscapes between Amber and MACE models.
+    
+    Analyzes:
+    1. Energy ranges and statistics
+    2. Correlation between high-energy regions
+    3. Location of minima/maxima
+    """
+    print("\nComparing Amber vs MACE energy landscapes:")
+    print("-" * 80)
+
+    # Create arrays for φ and ψ (in radians)
+    phi_values = np.linspace(phi_range[0], phi_range[1], resolution)
+    psi_values = np.linspace(psi_range[0], psi_range[1], resolution)
+    phi_psi_values = np.array(np.meshgrid(phi_values, psi_values)).T.reshape(-1, 2)
+    
+    # Get energies from both models
+    amber_energies, _, _ = compute_ramachandran_openmm_amber(
+        phi_values=phi_values,
+        psi_values=psi_values,
+        convention=convention,
+    )
+    # units are kJ/mol
+    
+    mace_energies, _, _ = compute_ramachandran_mace(
+        phi_values=phi_values,
+        psi_values=psi_values,
+        convention=convention,
+    )
+    # Mace units are eV
+    # 1 eV = 96.486 9 kJ/mol
+    mace_energies = mace_energies * 96.4869
+    unit = "kJ/mol"
+
+
+    # Compare energy ranges
+    print("\nEnergy ranges (kJ/mol):")
+    print(
+        f"Amber: [{np.nanmin(amber_energies):.2f}, {np.nanmax(amber_energies):.2f}],",
+        f"range={np.abs(np.nanmin(amber_energies) - np.nanmax(amber_energies)):.2f} [{unit}]"
+    )
+    print(
+        f"MACE:  [{np.nanmin(mace_energies):.2f}, {np.nanmax(mace_energies):.2f}],",
+        f"range={np.abs(np.nanmin(mace_energies) - np.nanmax(mace_energies)):.2f} [{unit}]"
+    )
+    
+    print("\nEnergy statistics (kJ/mol):")
+    print(f"Amber mean: {np.nanmean(amber_energies):.2f}, std: {np.nanstd(amber_energies):.2f}")
+    print(f"MACE mean:  {np.nanmean(mace_energies):.2f}, std: {np.nanstd(mace_energies):.2f}")
+
+    # Find locations of highest energies
+    n_highest = 5
+    amber_highest_idx = np.argpartition(amber_energies.flatten(), -n_highest)[-n_highest:]
+    mace_highest_idx = np.argpartition(mace_energies.flatten(), -n_highest)[-n_highest:]
+    
+    # sort energies in descending order and corresponding phi, psi values
+    amber_highest_energy_idx = np.argsort(amber_energies.flatten())[::-1]
+    mace_highest_energy_idx = np.argsort(mace_energies.flatten())[::-1]
+    # list of [phi, psi] in the same order
+    amber_highest_phi_psi = phi_psi_values[amber_highest_energy_idx]
+    mace_highest_phi_psi = phi_psi_values[mace_highest_energy_idx]
+
+    print(f"\nTop {n_highest} highest energy configurations:")
+    print("\nAmber highest energy locations (φ,ψ) and corresponding MACE energies:")
+    for idx in amber_highest_idx:
+        i, j = np.unravel_index(idx, amber_energies.shape)
+        phi, psi = phi_values[i], psi_values[j]
+        # find the same phi_psi in mace_highest_phi_psi
+        mace_ranking = np.where(np.all(mace_highest_phi_psi == [phi, psi], axis=1))[0][0]
+        print(f"φ={phi:.2f}, ψ={psi:.2f}: Amber={amber_energies[i,j]:.2f}, MACE={mace_energies[i,j]:.2f} (rank {mace_ranking})")
+
+    print("\nMACE highest energy locations (φ,ψ) and corresponding Amber energies:")
+    for idx in mace_highest_idx:
+        i, j = np.unravel_index(idx, mace_energies.shape)
+        phi, psi = phi_values[i], psi_values[j]
+        # find the same phi_psi in amber_highest_phi_psi
+        amber_ranking = np.where(np.all(amber_highest_phi_psi == [phi, psi], axis=1))[0][0]
+        print(f"φ={phi:.2f}, ψ={psi:.2f}: MACE={mace_energies[i,j]:.2f}, Amber={amber_energies[i,j]:.2f} (rank {amber_ranking})")
+
+    # Calculate correlation coefficient
+    # valid_mask = ~np.isnan(amber_energies) & ~np.isnan(mace_energies)
+    correlation = np.corrcoef(
+        amber_energies.flatten(),
+        mace_energies.flatten()
+    )[0,1]
+    print(f"\nCorrelation coefficient between energies: {correlation:.3f}")
+    
+    # Calculate the correlation between the phi, psi values
+    correlation = np.corrcoef(
+        amber_highest_phi_psi.flatten(),
+        mace_highest_phi_psi.flatten()
+    )[0,1]
+    print(f"\nCorrelation coefficient between phi, psi values sorted by energy: {correlation:.3f}")
+
 
 ############################################################################
 # Main
 ############################################################################
 if __name__ == "__main__":
-    # Ensure that compute_energy_and_forces is available in the current scope.
-
-    # Amber force field
     
+    # Amber force field
     create_ramachandran_plot(
         use_mace=False,
         log_scale=False,
@@ -680,36 +810,59 @@ if __name__ == "__main__":
     ############################################################
     # MACE force field
     ############################################################
-    # create_ramachandran_plot(
-    #     resolution=36,
-    #     recompute=False,
-    #     use_mace=True,
-    #     log_scale=False,
-    #     plot_type="energy",
-    #     positive_energies=True,
-    # )
-    # create_ramachandran_plot(
-    #     resolution=36,
-    #     recompute=False,
-    #     use_mace=True,
-    #     log_scale=True,
-    #     show_plt=True,
-    #     plot_type="energy",
-    #     positive_energies=True,
-    # )
-    # create_ramachandran_plot(
-    #     resolution=36,
-    #     recompute=False,
-    #     use_mace=True,
-    #     log_scale=False,
-    #     plot_type="gibbs",
-    #     positive_energies=True,
-    # )
-    # create_ramachandran_plot(
-    #     resolution=36,
-    #     recompute=False,
-    #     use_mace=True,
-    #     log_scale=False,
-    #     plot_type="exp",
-    #     positive_energies=True,
-    # )
+    create_ramachandran_plot(
+        use_mace=True,
+        log_scale=False,
+        plot_type="energy",
+        positive_energies=True,
+    )
+    create_ramachandran_plot(
+        use_mace=True,
+        log_scale=True,
+        show_plt=True,
+        plot_type="energy",
+        positive_energies=True,
+    )
+    create_ramachandran_plot(
+        use_mace=True,
+        log_scale=False,
+        plot_type="gibbs",
+        positive_energies=True,
+    )
+    
+    # Our loss is the unnormalized Boltzmann distribution = exp(-E/kbT)
+    # order: keep_lowest_energies, energy_range, positive_energies
+    create_ramachandran_plot(
+        use_mace=True,
+        log_scale=False,
+        plot_type="exp",
+        positive_energies=True,
+    )
+    # log scale
+    create_ramachandran_plot(
+        use_mace=True,
+        log_scale=True,
+        plot_type="exp",
+        positive_energies=True,
+    )
+    # mask out highest 10%
+    create_ramachandran_plot(
+        use_mace=True,
+        log_scale=False,
+        plot_type="exp",
+        positive_energies=True,
+        keep_lowest_energies=0.5,
+    )
+    # mask out highest 10%, log scale
+    create_ramachandran_plot(
+        use_mace=True,
+        log_scale=True,
+        plot_type="exp",
+        positive_energies=True,
+        keep_lowest_energies=0.5,
+    )
+    
+    ############################################################
+    # Compare Amber and MACE energy landscapes
+    ############################################################
+    compare_amber_mace_energies()

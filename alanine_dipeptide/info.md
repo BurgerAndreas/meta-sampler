@@ -67,29 +67,5 @@ XYZ coordinates (in Angstroms)
 Occupancy (1.00)
 Temperature factor (0.00)
 
-## Energy of alanine dipeptide
 
-The energy of alanine dipeptide varies depending on its conformation, but there are several key points to consider:
-
-1. The lowest energy conformations of alanine dipeptide typically have energies below 6 kcal/mol[^2].
-2. The energy landscape of alanine dipeptide is often represented by a Ramachandran plot, which shows the energy as a function of the φ and ψ dihedral angles[^3].
-3. The minimum potential energy of alanine dipeptide occurs when the backbone dihedral angles are positioned at Φ/Ψ = -80°/80°, which is denoted as a C conformation[^6].
-4. The average thermal energy (kBT) of alanine dipeptide at 300 K is 2.493 kJ/mol, which is equivalent to about 0.596 kcal/mol[^5].
-
-It's important to note that the energy of alanine dipeptide can vary based on factors such as the surrounding environment (e.g., vacuum vs. solvent) and the specific conformation it adopts. The energy landscape of alanine dipeptide is complex, with multiple local minima, making it a challenging system to study accurately[^2][^4].
-
-
-[^1]: https://pmc.ncbi.nlm.nih.gov/articles/PMC3913540/
-
-[^2]: https://onlinelibrary.wiley.com/doi/am-pdf/10.1002/jcc.25589
-
-[^3]: https://www.researchgate.net/figure/Protein-energy-and-dynamics-A-The-energy-of-alanine-dipeptide-in-the-learned-potential_fig3_354340003
-
-[^4]: https://pubs.acs.org/doi/10.1021/jp100950w
-
-[^5]: https://www.researchgate.net/figure/Free-energy-profile-of-alanine-dipeptide-as-a-function-of-the-dihedral-angles-Energies_fig2_266024359
-
-[^6]: https://www.whxb.pku.edu.cn/EN/abstract/abstract28072.shtml
-
-[^7]: https://pubs.acs.org/doi/10.1021/acs.jpcb.7b01130
 
