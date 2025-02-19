@@ -8,13 +8,24 @@ We propose to use a sampler that itself is a neural network, and can thus learn 
 The sampler, takes in the as description of the desired system as a set of atom types and periodic cell, and outputs atom coordinates. 
 The sampler is trained on a loss of the ML force field, e.g. minimal forces to target saddle points.
 
-Notes
-- First try to overfit to a single example, i.e. force field only trained on Au-water. Then show that sampler can generalize across systems (i.e. MACE trained on many materials)
-- First try to just e.g. minimize energy, then experiment with finding all extremal points
-- Possibly experiment with auxiliary loss of forces=0 at extremal points?
-- Saddle points or other point types of interest?
+## Repo Overview
 
-### Installation
+### 1d example
+- main https://github.com/BurgerAndreas/meta-sampler/blob/main/DEM/dem/energies/simple_test_function.py
+- config1 https://github.com/BurgerAndreas/meta-sampler/blob/main/DEM/configs/energy/simple_test.yaml
+- config2 without data https://github.com/BurgerAndreas/meta-sampler/blob/main/DEM/configs/experiment/simple_test_idem.yaml
+- config2 with prior replay buffer = with data https://github.com/BurgerAndreas/meta-sampler/blob/main/DEM/configs/experiment/simple_test_pdem.yaml
+
+### 2d Alanine Dipeptide (dihedral angles)
+WIP
+
+### N^3d Alanine Dipeptide (all atom)
+WIP
+
+### Surface + single atom adsorbant
+WIP
+
+## Installation
 get mamba (better than conda)
 ```bash
 wget "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
