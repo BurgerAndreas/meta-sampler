@@ -43,6 +43,15 @@ from dihedral import (
 # from torch_cluster import radius_graph
 from mace_neighbourshood import get_neighborhood
 
+# silence:
+# UserWarning: The TorchScript type system doesn't support instance-level annotations on empty non-base types in `__init__`. Instead, either 1) use a type annotation in the class body, or 2) wrap the type in `torch.jit.Attribute
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="torch.jit")
+
+# silence:
+# FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+warnings.filterwarnings("ignore", category=FutureWarning, module="torch.serialization")
+
 
 def compute_ramachandran_openmm_amber(
     phi_values,
@@ -149,12 +158,16 @@ def compute_ramachandran_openmm_amber(
     return energies, forces_norm, forces_normmean
 
 
+def num_params(model):
+    return sum(p.numel() for p in model.parameters())
+
 def compute_ramachandran_mace(
     phi_values,
     psi_values,
     recompute=False,
     convention="andreas",
-    batch_size=128,
+    batch_size=24,
+    dtypestr="float64",
 ):
     """
     Compute the Ramachandran plot for the alanine dipeptide energy landscape using the MACE model.
@@ -173,8 +186,8 @@ def compute_ramachandran_mace(
 
         # Get MACE force field: mace_off or mace_anicc
         device_str = "cuda" if torch.cuda.is_available() else "cpu"
-        calc = mace_off(model="medium", device=device_str)  # enable_cueq=True
-        # calc = mace_anicc(device=device_str)  # enable_cueq=True
+        calc = mace_off(model="medium", device=device_str, dtype=dtypestr, enable_cueq=True)
+        # calc = mace_anicc(device=device_str, dtype=dtypestr, enable_cueq=True)
         device = calc.device
         atoms.calc = calc
         atoms_calc = atoms.calc
@@ -195,6 +208,7 @@ def compute_ramachandran_mace(
             compute_stress = False
         batch_base = batch_base.to_dict()
         model = atoms_calc.models[0]
+        print(f"Number of parameters: {num_params(model)}")
 
         ############################################################################
         # Compute energies / forces in minibatches
@@ -214,7 +228,7 @@ def compute_ramachandran_mace(
         num_edges = batch_base["edge_index"].shape[1]
         num_samples = phi_psi_grid.shape[0]
         num_batches = math.ceil(num_samples / batch_size)
-        for i in range(num_batches):
+        for i in tqdm(range(num_batches), total=num_batches):
             # last batch can be truncated (not enough samples left to fill the batch)
             bs = min(batch_size, num_samples - i * batch_size)
             # Make minibatch version of batch, that is just multiple copies of the same batch
@@ -256,27 +270,17 @@ def compute_ramachandran_mace(
                 torch.linalg.norm(forces, dim=1).detach().cpu().numpy().reshape(bs, 1)
             ]
             positions_rotated_batched += [minibatch["positions"].detach().cpu().numpy()]
+            tqdm.write(f"Batch {i} done. Avg energy: {np.mean(energies_batched[-1]):.2f} kJ/mol")
 
-        # flatten the results
-        energies_batched = np.concatenate(energies_batched, axis=0)  # [num_samples, 1]
-        energies_batched = energies_batched.reshape(
-            len(phi_values), len(psi_values)
-        )  # [num_phi, num_psi]
-        forces_norm_batched = np.concatenate(
-            forces_norm_batched, axis=0
-        )  # [num_samples, 1]
-        forces_norm_batched = forces_norm_batched.reshape(
-            len(phi_values), len(psi_values)
-        )  # [num_phi, num_psi]
-        forces_normmean_batched = np.concatenate(
-            forces_normmean_batched, axis=0
-        )  # [num_samples, 1]
-        forces_normmean_batched = forces_normmean_batched.reshape(
-            len(phi_values), len(psi_values)
-        )  # [num_phi, num_psi]
-        positions_rotated_batched = np.concatenate(
-            positions_rotated_batched, axis=0
-        )  # [num_samples, 3]
+        # flatten the results [num_batches, bs] -> [num_samples, 1] -> [num_phi, num_psi]
+        energies_batched = np.concatenate(energies_batched, axis=0)  
+        energies = energies_batched.reshape(len(phi_values), len(psi_values))  
+        forces_norm_batched = np.concatenate(forces_norm_batched, axis=0)
+        forces_norm = forces_norm_batched.reshape(len(phi_values), len(psi_values))  
+        forces_normmean_batched = np.concatenate(forces_normmean_batched, axis=0)
+        forces_normmean = forces_normmean_batched.reshape(len(phi_values), len(psi_values))  
+        # positions_rotated_batched = np.concatenate(positions_rotated_batched, axis=0)
+        # positions_rotated = positions_rotated_batched.reshape(len(phi_values), len(psi_values), num_atoms, 3)
 
         # Save the energies to a file
         np.save(datafile, (energies, forces_norm, forces_normmean))

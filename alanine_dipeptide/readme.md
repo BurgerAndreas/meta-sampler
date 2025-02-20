@@ -7,6 +7,13 @@ https://openmm.org/
 amber99sb.xml (force field)
 https://github.com/lpwgroup/tinker-openmm/blob/master/wrappers/python/simtk/openmm/app/data/amber99sb.xml
 
+### Mace
+https://github.com/ACEsuit/mace
+
+MACE-OFF23, 10 elements covered, trained on SPICE v1, on DFT (wB97M+D3) data, designed for Organic Chemistry
+
+recommended to use float64 for relaxations. We mostly use float32 at the moment.
+
 ## alanine dipeptide pdb files
 
 alanine_dipeptide.pdb

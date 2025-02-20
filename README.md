@@ -30,16 +30,18 @@ pip install torch-geometric
 # mamba install pytorch pytorch-cuda=12.6 -c pytorch -c nvidia
 # mamba install pyg -c pyg
 
-# for fast mace
-# pip install cuequivariance-ops-torch-cu12
-# git clone https://github.com/ACEsuit/mace
-# pip install mace/.
-
-# for slow mace
-pip install mace-torch
+# for fast mace (5-9x speedup)
+pip uninstall mace-torch -y
+# mace==0.3.10 was designed to work with cuequivariance==0.1.0
+pip install cuequivariance==0.1.0 cuequivariance-torch cuequivariance-ops-torch-cu12
+cd ..
+git clone https://github.com/ACEsuit/mace
+pip install mace/.
+cd meta-sampler
 ```
 
 ```bash
+# install boltzmann generator utils
 pip install mdtraj==1.9.9 tables
 
 cd ..

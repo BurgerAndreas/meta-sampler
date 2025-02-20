@@ -235,9 +235,9 @@ def compute_energy_and_forces_mace(
         # Get MACE force field: mace_off or mace_anicc
         device_str = "cuda" if torch.cuda.is_available() else "cpu"
         if model_type == "off":
-            calc = mace_off(model="medium", device=device_str)  # enable_cueq=True
+            calc = mace_off(model="medium", device=device_str, enable_cueq=True)
         elif model_type == "anicc":
-            calc = mace_anicc(device=device_str)  # enable_cueq=True
+            calc = mace_anicc(device=device_str, enable_cueq=True)
         else:
             raise ValueError(f"Invalid model type: {model_type}")
         device = calc.device
@@ -327,7 +327,7 @@ def test_mace_alanine_dipeptide():
         )
 
     # Get MACE force field
-    calc = mace_off(model="medium", device=device_str)  # enable_cueq=True
+    calc = mace_off(model="medium", device=device_str, enable_cueq=True)
     device = calc.device
     atoms.calc = calc
 
@@ -350,7 +350,7 @@ def test_mace_alanine_dipeptide_dihedral_grad():
 
     # Get MACE force field: mace_off or mace_anicc
     device_str = "cuda" if torch.cuda.is_available() else "cpu"
-    calc = mace_off(model="medium", device=device_str)  # enable_cueq=True
+    calc = mace_off(model="medium", device=device_str, enable_cueq=True)
     device = calc.device
     atoms.calc = calc
     atoms_calc = atoms.calc
@@ -546,8 +546,8 @@ def test_mace_ramachandran_batched_vs_non_batched(
 
         # Get MACE force field: mace_off or mace_anicc
         device_str = "cuda" if torch.cuda.is_available() else "cpu"
-        calc = mace_off(model="medium", device=device_str)  # enable_cueq=True
-        # calc = mace_anicc(device=device_str)  # enable_cueq=True
+        calc = mace_off(model="medium", device=device_str, enable_cueq=True)
+        # calc = mace_anicc(device=device_str, enable_cueq=True) 
         device = calc.device
         atoms.calc = calc
         atoms_calc = atoms.calc
