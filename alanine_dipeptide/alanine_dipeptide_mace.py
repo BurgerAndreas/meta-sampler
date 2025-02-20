@@ -2,6 +2,8 @@ import numpy as np
 import torch
 import os
 import pathlib
+import math
+from tqdm import tqdm
 
 import mace
 from mace.calculators import mace_off, mace_anicc
@@ -20,6 +22,7 @@ from dihedral import (
     set_dihedral_torch_batched,
     compute_dihedral_torch,
     compute_dihedral_torch_batched,
+    update_neighborhood_graph_batched,
 )
 from mace_neighbourshood import get_neighborhood
 from alanine_dipeptide_openmm_amber99 import fffile, pdbfile
@@ -327,7 +330,7 @@ def test_mace_alanine_dipeptide():
         )
 
     # Get MACE force field
-    calc = mace_off(model="medium", device=device_str, enable_cueq=True)
+    calc = mace_off(model="medium", device=device_str, enable_cueq=False)
     device = calc.device
     atoms.calc = calc
 
@@ -350,7 +353,7 @@ def test_mace_alanine_dipeptide_dihedral_grad():
 
     # Get MACE force field: mace_off or mace_anicc
     device_str = "cuda" if torch.cuda.is_available() else "cpu"
-    calc = mace_off(model="medium", device=device_str, enable_cueq=True)
+    calc = mace_off(model="medium", device=device_str, enable_cueq=False)
     device = calc.device
     atoms.calc = calc
     atoms_calc = atoms.calc
@@ -511,6 +514,7 @@ def test_mace_alanine_dipeptide_batching():
     )
 
     # compute in parallel
+    raise NotImplementedError("compute_energy_and_forces_mace_batched not implemented")
     energies_parallel, forces_parallel = compute_energy_and_forces_mace(
         dihedrals_batch, model_type="off"
     )
@@ -526,11 +530,13 @@ def test_mace_ramachandran_batched_vs_non_batched(
     psi_range=(-np.pi, np.pi),
     resolution=4,
     convention="andreas",
+    dtypestr="float64",
 ):
     """
     Compute the Ramachandran plot for the alanine dipeptide energy landscape using the MACE model.
     Takes forces as derivative w.r.t. dihedral angles.
     """
+    print("-" * 60)
     # Create arrays for φ and ψ (in radians)
     phi_values = np.linspace(phi_range[0], phi_range[1], resolution)
     psi_values = np.linspace(psi_range[0], psi_range[1], resolution)
@@ -538,7 +544,7 @@ def test_mace_ramachandran_batched_vs_non_batched(
     # datafile = f"alanine_dipeptide/outputs/ramachandran_mace_{resolution}_{convention}.npy"
     # recompute = os.path.exists(datafile) and not recompute
     recompute = True
-    if recompute:
+    if not recompute:
         energies, forces_norm, forces_normmean = np.load(datafile)
     else:
         # get alanine dipeptide atoms
@@ -546,8 +552,8 @@ def test_mace_ramachandran_batched_vs_non_batched(
 
         # Get MACE force field: mace_off or mace_anicc
         device_str = "cuda" if torch.cuda.is_available() else "cpu"
-        calc = mace_off(model="medium", device=device_str, enable_cueq=True)
-        # calc = mace_anicc(device=device_str, enable_cueq=True) 
+        calc = mace_off(model="medium", device=device_str, dtype=dtypestr, enable_cueq=True)
+        # calc = mace_anicc(device=device_str, dtype=dtypestr, enable_cueq=True)
         device = calc.device
         atoms.calc = calc
         atoms_calc = atoms.calc
@@ -748,5 +754,5 @@ def test_mace_ramachandran_batched_vs_non_batched(
 if __name__ == "__main__":
     test_mace_alanine_dipeptide()
     test_mace_alanine_dipeptide_dihedral_grad()
-    test_mace_alanine_dipeptide_batching()
+    # test_mace_alanine_dipeptide_batching()
     test_mace_ramachandran_batched_vs_non_batched()
