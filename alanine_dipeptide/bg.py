@@ -527,14 +527,14 @@ if __name__ == "__main__":
     is_data_here = os.path.isdir("Ala2TSF300")
     dataset = Ala2Implicit300(download=not is_data_here, read=True)
 
-    # The dataset contains forces, energies and coordinates it also holds a reference to the system 
+    # The dataset contains forces, energies and coordinates it also holds a reference to the system
     # that defines the potential energy function.
 
     openmmsystem = dataset.system
     system = dataset.system
 
-    # The system is an OpenMMSystem object, it provides access to the openmm.system instance, 
-    # the topology, and a set of initial coordinates. 
+    # The system is an OpenMMSystem object, it provides access to the openmm.system instance,
+    # the topology, and a set of initial coordinates.
 
     integrator = LangevinIntegrator(dataset.temperature, 1, 0.001)
     simulation = openmm.app.Simulation(

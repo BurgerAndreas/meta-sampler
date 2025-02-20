@@ -15,8 +15,9 @@ import mdtraj as md
 
 from alanine_dipeptide_openmm_amber99 import pdbfile
 
+
 def test_ic_transform_energy_consistency():
-    print("-"*80)
+    print("-" * 80)
     # -------------------------
     # Load the dataset and OpenMM system
     # -------------------------
@@ -115,8 +116,9 @@ def test_ic_transform_energy_consistency():
             f"Energy difference bgmol: {np.abs(energy_calculated_bgmol - energy_calculated):.3f} kJ/mol ({energy_calculated:.1f})"
         )
 
+
 def test_system_traj_same_as_temp_traj(phi_indices, psi_indices):
-    print("-"*80)
+    print("-" * 80)
     is_data_here = os.path.isdir("Ala2TSF300")
     dataset = Ala2Implicit300(download=not is_data_here, read=True)
 
@@ -124,11 +126,11 @@ def test_system_traj_same_as_temp_traj(phi_indices, psi_indices):
 
     openmmsystem = dataset.system
     system = dataset.system
-    
+
     positions = dataset.trajectory.xyz[0]
 
-    # The system is an OpenMMSystem object, it provides access to the openmm.system instance, 
-    # the topology, and a set of initial coordinates. 
+    # The system is an OpenMMSystem object, it provides access to the openmm.system instance,
+    # the topology, and a set of initial coordinates.
 
     integrator = LangevinIntegrator(dataset.temperature, 1, 0.001)
     simulation = openmm.app.Simulation(
@@ -140,21 +142,27 @@ def test_system_traj_same_as_temp_traj(phi_indices, psi_indices):
     phi, psi = dataset.system.compute_phi_psi(dataset.trajectory)
     print("phi system.compute_phi_psi", phi)
     print("psi system.compute_phi_psi", psi)
-    
+
     # V1.5
     phi_mdtraj = md.compute_dihedrals(dataset.trajectory, [phi_indices])[0][0]
     psi_mdtraj = md.compute_dihedrals(dataset.trajectory, [psi_indices])[0][0]
     print("phi compute_dihedral", phi_mdtraj)
     print("psi compute_dihedral", psi_mdtraj)
-    
+
     # V2: from pdb file
-    traj = md.load(os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "alanine-dipeptide-nowater.pdb"))
+    traj = md.load(
+        os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "data",
+            "alanine-dipeptide-nowater.pdb",
+        )
+    )
     traj.xyz[0] = positions
     phi_pdb = md.compute_dihedrals(traj, [phi_indices])[0][0]
     psi_pdb = md.compute_dihedrals(traj, [psi_indices])[0][0]
     print("phi pdb", phi_pdb)
     print("psi pdb", psi_pdb)
-    
+
     # V3: temporary traj object from pdb
     pdb = openmm.app.PDBFile(
         os.path.join(
@@ -168,11 +176,11 @@ def test_system_traj_same_as_temp_traj(phi_indices, psi_indices):
     psi_traj = md.compute_dihedrals(traj, [psi_indices])[0][0]
     print("phi temp traj pdb topology", phi_traj)
     print("psi temp traj pdb topology", psi_traj)
-    
-    
+
+
 if __name__ == "__main__":
     from dihedral import phi_indices, psi_indices, phi_atoms_bg, psi_atoms_bg
-    
+
     test_ic_transform_energy_consistency()
-    
+
     test_system_traj_same_as_temp_traj(phi_indices, psi_indices)

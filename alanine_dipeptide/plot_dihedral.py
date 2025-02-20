@@ -91,7 +91,14 @@ def find_bonds(coords, atom_types, max_dist=2.0):
 
 
 def plot_default_structure(
-    coords, atom_types, atom_info, bonds, colors, phi_indices=None, psi_indices=None, show=False
+    coords,
+    atom_types,
+    atom_info,
+    bonds,
+    colors,
+    phi_indices=None,
+    psi_indices=None,
+    show=False,
 ):
 
     # Create scatter plot for atoms
@@ -205,12 +212,10 @@ def plot_rotated_structure(
     # radians = degrees * np.pi/180
     coords_rotated = coords.copy()
     coords_rotated = set_dihedral(
-        coords_rotated, phi_indices, phi_default + phi_rotation, "phi",
-        absolute=False
+        coords_rotated, phi_indices, phi_default + phi_rotation, "phi", absolute=False
     )
     coords_rotated = set_dihedral(
-        coords_rotated, psi_indices, psi_default + psi_rotation, "psi",
-        absolute=False
+        coords_rotated, psi_indices, psi_default + psi_rotation, "psi", absolute=False
     )
 
     # Create bond traces for original structure (transparent)
@@ -266,13 +271,11 @@ def plot_rotated_structure(
         marker=dict(
             size=10,
             color=[colors.get(atom, "gray") for atom in atom_types],
-            opacity=1.,
+            opacity=1.0,
         ),
         text=[f"Rotated {i}: {info}" for i, info in enumerate(atom_info)],
         hoverinfo="text",
     )
-
-
 
     # # Add markers for phi indices
     # phi_trace = go.Scatter3d(
@@ -495,7 +498,7 @@ def plot_dihedral_rotation_as_individual_pngs(phi_indices, psi_indices, pdbfile)
     #######################################################################
     # Rotate dihedral angles
     #######################################################################
-    
+
     # Color scheme for atoms
     colors = {"H": "lightgray", "C": "black", "N": "blue", "O": "red"}
 
@@ -544,18 +547,19 @@ def plot_dihedral_rotation_as_individual_pngs(phi_indices, psi_indices, pdbfile)
             show=True,
         )
 
+
 def animated_dihedral_rotation_as_xyz(phi_atoms, psi_atoms, pdbfile, name=None):
     # append rotated coordinates into one xyz file, then can then by animated by protein viewer
-    
+
     savefile = "alanine_dipeptide/data/alanine_dipeptide_dihedral_rotation"
     if name is not None:
         savefile += f"_{name}"
     savefile += ".xyz"
-    
+
     # load pdbfile
     pdb = PDBFile(pdbfile)
     positions0 = np.array(pdb.positions.value_in_unit(nanometer))
-    
+
     # turn positions from nanometers to angstroms
     positions0 *= 10
 
@@ -564,29 +568,35 @@ def animated_dihedral_rotation_as_xyz(phi_atoms, psi_atoms, pdbfile, name=None):
         f.write(f"{len(positions0)}\n")
         f.write("Alanine dipeptide structure\n")
         for i, pos in enumerate(positions0):
-            f.write(f"{atom_types[i]:2s} {pos[0]:10.6f} {pos[1]:10.6f} {pos[2]:10.6f}\n")
-        
+            f.write(
+                f"{atom_types[i]:2s} {pos[0]:10.6f} {pos[1]:10.6f} {pos[2]:10.6f}\n"
+            )
+
         # rotate phi by 2*pi in 100 steps
-        for phi in np.linspace(0, 2*np.pi, 100):
+        for phi in np.linspace(0, 2 * np.pi, 100):
             positions = positions0.copy()
             positions = set_dihedral(positions, phi_atoms, phi, "phi", absolute=False)
             f.write(f"{len(positions0)}\n")
             f.write("Alanine dipeptide structure\n")
             for i, pos in enumerate(positions):
-                f.write(f"{atom_types[i]:2s} {pos[0]:10.6f} {pos[1]:10.6f} {pos[2]:10.6f}\n")
-            
+                f.write(
+                    f"{atom_types[i]:2s} {pos[0]:10.6f} {pos[1]:10.6f} {pos[2]:10.6f}\n"
+                )
+
         # rotate psi by 2*pi in 100 steps
-        for psi in np.linspace(0, 2*np.pi, 100):
+        for psi in np.linspace(0, 2 * np.pi, 100):
             positions = positions0.copy()
             positions = set_dihedral(positions, psi_atoms, psi, "psi", absolute=False)
             f.write(f"{len(positions0)}\n")
             f.write("Alanine dipeptide structure\n")
             for i, pos in enumerate(positions):
-                f.write(f"{atom_types[i]:2s} {pos[0]:10.6f} {pos[1]:10.6f} {pos[2]:10.6f}\n")
-            
+                f.write(
+                    f"{atom_types[i]:2s} {pos[0]:10.6f} {pos[1]:10.6f} {pos[2]:10.6f}\n"
+                )
+
         # close the file
         f.close()
-    
+
     print(f"Saved {savefile}")
 
 
@@ -610,16 +620,16 @@ if __name__ == "__main__":
             f.write(
                 f"{atom_type:2s} {coord[0]:10.6f} {coord[1]:10.6f} {coord[2]:10.6f}\n"
             )
-            
+
     ############################################################################################
     # Animate dihedral rotation
     ############################################################################################
-    
+
     from dihedral import phi_indices, psi_indices, phi_atoms_bg, psi_atoms_bg
-    
+
     animated_dihedral_rotation_as_xyz(phi_indices, psi_indices, pdbfile)
     animated_dihedral_rotation_as_xyz(phi_atoms_bg, psi_atoms_bg, pdbfile, name="bg")
-    
+
     # Color scheme for atoms
     colors = {"H": "lightgray", "C": "black", "N": "blue", "O": "red"}
 
@@ -627,5 +637,3 @@ if __name__ == "__main__":
     # Visualize default structure using plotly
     #######################################################################
     # plot_default_structure(coords, atom_types, atom_info, bonds, colors, phi_indices, psi_indices, show=True)
-
-    

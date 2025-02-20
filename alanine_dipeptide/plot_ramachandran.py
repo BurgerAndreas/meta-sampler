@@ -8,6 +8,7 @@ import os
 from sklearn.cluster import KMeans
 from tqdm import tqdm
 import scipy.special
+import math
 
 from openmm.app import PDBFile, ForceField, Simulation, NoCutoff, HBonds
 from openmm import Context, VerletIntegrator, Platform
@@ -24,14 +25,19 @@ from alanine_dipeptide_openmm_amber99 import (
 )
 from alanine_dipeptide_mace import (
     update_alanine_dipeptide_with_grad,
+    update_alanine_dipeptide_with_grad_batched,
     load_alanine_dipeptide_ase,
     fffile,
+    _atoms_to_batch,
 )
 from dihedral import (
     set_dihedral_torch,
+    set_dihedral_torch_batched,
     set_dihedral,
     compute_dihedral_torch,
+    compute_dihedral_torch_batched,
     compute_dihedral,
+    update_neighborhood_graph_batched,
 )
 
 # from torch_cluster import radius_graph
@@ -148,6 +154,7 @@ def compute_ramachandran_mace(
     psi_values,
     recompute=False,
     convention="andreas",
+    batch_size=128,
 ):
     """
     Compute the Ramachandran plot for the alanine dipeptide energy landscape using the MACE model.
@@ -155,7 +162,9 @@ def compute_ramachandran_mace(
     """
     # if file exists, load it
     resolution = len(phi_values)
-    datafile = f"alanine_dipeptide/outputs/ramachandran_mace_{resolution}_{convention}.npy"
+    datafile = (
+        f"alanine_dipeptide/outputs/ramachandran_mace_{resolution}_{convention}.npy"
+    )
     if os.path.exists(datafile) and not recompute:
         energies, forces_norm, forces_normmean = np.load(datafile)
     else:
@@ -187,68 +196,87 @@ def compute_ramachandran_mace(
         batch_base = batch_base.to_dict()
         model = atoms_calc.models[0]
 
-        # Initialize an array to store energies.
-        energies = np.zeros((len(phi_values), len(psi_values)))
-        forces_norm = np.zeros((len(phi_values), len(psi_values)))
-        forces_normmean = np.zeros((len(phi_values), len(psi_values)))
+        ############################################################################
+        # Compute energies / forces in minibatches
+        ############################################################################
+        energies_batched = []
+        forces_norm_batched = []
+        forces_normmean_batched = []
+        positions_rotated_batched = []
 
-        # Loop over grid points.
-        for i, phi in tqdm(enumerate(phi_values), total=len(phi_values)):
-            for j, psi in enumerate(psi_values):
-                # Angles already in radians
-                dihedrals = torch.tensor([phi, psi], dtype=torch.float32)
-                dihedrals.requires_grad = True
+        # Create grid of all phi/psi combinations
+        phi_psi_grid = torch.cartesian_prod(
+            torch.tensor(phi_values), torch.tensor(psi_values)
+        )
 
-                # Update positions
-                batch = update_alanine_dipeptide_with_grad(dihedrals, batch_base, convention)
+        # compute in minibatches of batch_size
+        num_atoms = batch_base["positions"].shape[0]
+        num_edges = batch_base["edge_index"].shape[1]
+        num_samples = phi_psi_grid.shape[0]
+        num_batches = math.ceil(num_samples / batch_size)
+        for i in range(num_batches):
+            # last batch can be truncated (not enough samples left to fill the batch)
+            bs = min(batch_size, num_samples - i * batch_size)
+            # Make minibatch version of batch, that is just multiple copies of the same batch
+            # but mimicks a batch from a typical torch_geometric dataloader
+            minibatch_base = _atoms_to_batch(atoms_calc, atoms, bs=bs, repeats=bs)
+            # n_atoms = torch.tensor([torch.sum(minibatch["batch"] == i) for i in range(bs)])
 
-                # need to update edge_index
-                # no gradients for these, but should not affect forces
-                edge_index, shifts, unit_shifts, cell = get_neighborhood(
-                    positions=batch["positions"].detach().cpu().numpy(),
-                    cutoff=model.r_max.item(),
-                    cell=batch["cell"].detach().cpu().numpy(),
-                )
-                batch["edge_index"] = torch.tensor(
-                    edge_index, device=device, dtype=batch["edge_index"].dtype
-                )
-                batch["shifts"] = torch.tensor(
-                    shifts, device=device, dtype=batch["shifts"].dtype
-                )
-                batch["unit_shifts"] = torch.tensor(
-                    unit_shifts, device=device, dtype=batch["unit_shifts"].dtype
-                )
-                batch["cell"] = torch.tensor(
-                    cell, device=device, dtype=batch["cell"].dtype
-                )
+            phi_psi_batch = phi_psi_grid[i : i + bs].requires_grad_(True)
 
-                # Compute energy by calling MACE
-                out = model(
-                    batch,
-                    compute_stress=compute_stress,
-                    # training=True -> retain_graph when calculating forces=dE/dx
-                    # which is what we need to compute forces'=dE/dphi_psi
-                    training=True,  # atoms_calc.use_compile,
-                )
+            # Update positions
+            minibatch = update_alanine_dipeptide_with_grad_batched(
+                phi_psi_batch, minibatch_base, convention=convention
+            )
 
-                # Compute forces
-                forces = torch.autograd.grad(
-                    out["energy"], dihedrals, create_graph=True
-                )
-                if isinstance(forces, tuple):
-                    forces = forces[0]
+            # Update edge indices
+            # TODO: why is the cell so huge?
+            minibatch = update_neighborhood_graph_batched(
+                minibatch, model.r_max.item(), overwrite_cell=True
+            )
 
-                # Store the energy (in kJ/mol)
-                energy = out["energy"]
-                energies[i, j] = energy.item()
-                # force are shape [22,3] each row is a force vector for an atom
-                forces_norm[i, j] = torch.linalg.norm(forces).item()
-                forces_normmean[i, j] = torch.linalg.norm(forces, axis=-1).mean().item()
+            # Compute energies and forces for all configurations
+            out = model(minibatch, compute_stress=compute_stress, training=True)
+            forces = torch.autograd.grad(
+                outputs=out["energy"],  # [B]
+                inputs=phi_psi_batch,  # [B, 2]
+                grad_outputs=torch.ones_like(out["energy"]),  # [B]
+                create_graph=True,
+            )[
+                0
+            ]  # [B, 2]
 
-                # print the computed energy for each grid point.
-                # tqdm.write(
-                #     f"phi={phi:6.3f}, psi={psi:6.3f} -> U={energy.item():8.2f} eV?, F={forces_norm[i, j]:8.2f}"
-                # )
+            # append to the results
+            energies_batched += [out["energy"].detach().cpu().numpy().reshape(bs, 1)]
+            forces_norm_batched += [
+                torch.linalg.norm(forces, dim=1).detach().cpu().numpy().reshape(bs, 1)
+            ]
+            # forces_normmean_batched += [torch.linalg.norm(forces, dim=1).mean().detach().cpu().numpy().reshape(bs, 1)] # only for more than two dims
+            forces_normmean_batched += [
+                torch.linalg.norm(forces, dim=1).detach().cpu().numpy().reshape(bs, 1)
+            ]
+            positions_rotated_batched += [minibatch["positions"].detach().cpu().numpy()]
+
+        # flatten the results
+        energies_batched = np.concatenate(energies_batched, axis=0)  # [num_samples, 1]
+        energies_batched = energies_batched.reshape(
+            len(phi_values), len(psi_values)
+        )  # [num_phi, num_psi]
+        forces_norm_batched = np.concatenate(
+            forces_norm_batched, axis=0
+        )  # [num_samples, 1]
+        forces_norm_batched = forces_norm_batched.reshape(
+            len(phi_values), len(psi_values)
+        )  # [num_phi, num_psi]
+        forces_normmean_batched = np.concatenate(
+            forces_normmean_batched, axis=0
+        )  # [num_samples, 1]
+        forces_normmean_batched = forces_normmean_batched.reshape(
+            len(phi_values), len(psi_values)
+        )  # [num_phi, num_psi]
+        positions_rotated_batched = np.concatenate(
+            positions_rotated_batched, axis=0
+        )  # [num_samples, 3]
 
         # Save the energies to a file
         np.save(datafile, (energies, forces_norm, forces_normmean))
@@ -258,7 +286,7 @@ def compute_ramachandran_mace(
 def create_ramachandran_plot(
     phi_range=(-np.pi, np.pi),
     psi_range=(-np.pi, np.pi),
-    resolution=120,
+    resolution=360,
     # what to plot
     plot_type="energy",
     show=False,
@@ -340,7 +368,7 @@ def create_ramachandran_plot(
     #     pass
     # else:
     #     raise ValueError(f"Invalid unit: {unit}")
-    
+
     # Convert energies to kJ/mol
     if unit == "kcal/mol":
         # 1 kcal/mol = 4.18400 kJ/mol
@@ -393,7 +421,9 @@ def create_ramachandran_plot(
         # example: highest is 120, lowest is 20 -> delta is 100
         # if keep_lowest_energies = 0.9, then we keep the lowest 90%
         # and remove the highest 10%
-        print(f"Warning: keeping only the lowest {keep_lowest_energies*100:.1f}% of the energy landscape")
+        print(
+            f"Warning: keeping only the lowest {keep_lowest_energies*100:.1f}% of the energy landscape"
+        )
         entries_before = np.sum(~np.isnan(energies))
         # delta = np.abs(np.nanmax(energies) - np.nanmin(energies))
         delta = np.nanmax(energies) - np.nanmin(energies)
@@ -408,7 +438,7 @@ def create_ramachandran_plot(
             f" Min energy after removing highest energies: {np.nanmin(energies):.1f} [{unit}]"
         )
         print(f" Entries removed: {entries_before - np.sum(~np.isnan(energies))}")
-        
+
     if energy_range is not None:
         # boltzmann generator: -128 - -38
         energies = np.where(energies < energy_range[1], energies, np.nan)
@@ -532,7 +562,7 @@ def create_ramachandran_plot(
     energies = energies.astype(np.float64)
     phi_values = phi_values.astype(np.float64)
     psi_values = psi_values.astype(np.float64)
-    
+
     # plotly has a transposed convention
     energies = energies.T
     forces_norm = forces_norm.T
@@ -543,10 +573,10 @@ def create_ramachandran_plot(
 
     tempplotfolder = "alanine_dipeptide/plots/"
     tempplotfolder += plot_type
-    tempplotfolder += ("_mace" if use_mace else "_amber")
-    tempplotfolder += ("_" + convention)
+    tempplotfolder += "_mace" if use_mace else "_amber"
+    tempplotfolder += "_" + convention
     os.makedirs(tempplotfolder, exist_ok=True)
-    
+
     # Create a meshgrid for plotting (using 'ij' indexing so that phi_values index the first axis)
     # phi_grid, psi_grid = np.meshgrid(phi_values, psi_values, indexing="ij")
 
@@ -599,7 +629,7 @@ def create_ramachandran_plot(
         data=go.Contour(
             x=phi_values,
             y=psi_values,
-            z=forces_norm, 
+            z=forces_norm,
             colorscale="Viridis",
             type="contour",
             colorbar=dict(
@@ -628,7 +658,7 @@ def create_ramachandran_plot(
         data=go.Contour(
             x=phi_values,
             y=psi_values,
-            z=forces_normmean, 
+            z=forces_normmean,
             colorscale="Viridis",
             type="contour",
             colorbar=dict(
@@ -646,15 +676,16 @@ def create_ramachandran_plot(
     fig.write_image(figname)
     print(f"Saved {figname}")
 
+
 def compare_amber_mace_energies(
     phi_range=(-np.pi, np.pi),
-    psi_range=(-np.pi, np.pi), 
+    psi_range=(-np.pi, np.pi),
     resolution=120,
     recompute=False,
     convention="andreas",
 ):
     """Compare energy landscapes between Amber and MACE models.
-    
+
     Analyzes:
     1. Energy ranges and statistics
     2. Correlation between high-energy regions
@@ -667,7 +698,7 @@ def compare_amber_mace_energies(
     phi_values = np.linspace(phi_range[0], phi_range[1], resolution)
     psi_values = np.linspace(psi_range[0], psi_range[1], resolution)
     phi_psi_values = np.array(np.meshgrid(phi_values, psi_values)).T.reshape(-1, 2)
-    
+
     # Get energies from both models
     amber_energies, _, _ = compute_ramachandran_openmm_amber(
         phi_values=phi_values,
@@ -675,7 +706,7 @@ def compare_amber_mace_energies(
         convention=convention,
     )
     # units are kJ/mol
-    
+
     mace_energies, _, _ = compute_ramachandran_mace(
         phi_values=phi_values,
         psi_values=psi_values,
@@ -686,27 +717,32 @@ def compare_amber_mace_energies(
     mace_energies = mace_energies * 96.4869
     unit = "kJ/mol"
 
-
     # Compare energy ranges
     print("\nEnergy ranges (kJ/mol):")
     print(
         f"Amber: [{np.nanmin(amber_energies):.2f}, {np.nanmax(amber_energies):.2f}],",
-        f"range={np.abs(np.nanmin(amber_energies) - np.nanmax(amber_energies)):.2f} [{unit}]"
+        f"range={np.abs(np.nanmin(amber_energies) - np.nanmax(amber_energies)):.2f} [{unit}]",
     )
     print(
         f"MACE:  [{np.nanmin(mace_energies):.2f}, {np.nanmax(mace_energies):.2f}],",
-        f"range={np.abs(np.nanmin(mace_energies) - np.nanmax(mace_energies)):.2f} [{unit}]"
+        f"range={np.abs(np.nanmin(mace_energies) - np.nanmax(mace_energies)):.2f} [{unit}]",
     )
-    
+
     print("\nEnergy statistics (kJ/mol):")
-    print(f"Amber mean: {np.nanmean(amber_energies):.2f}, std: {np.nanstd(amber_energies):.2f}")
-    print(f"MACE mean:  {np.nanmean(mace_energies):.2f}, std: {np.nanstd(mace_energies):.2f}")
+    print(
+        f"Amber mean: {np.nanmean(amber_energies):.2f}, std: {np.nanstd(amber_energies):.2f}"
+    )
+    print(
+        f"MACE mean:  {np.nanmean(mace_energies):.2f}, std: {np.nanstd(mace_energies):.2f}"
+    )
 
     # Find locations of highest energies
     n_highest = 5
-    amber_highest_idx = np.argpartition(amber_energies.flatten(), -n_highest)[-n_highest:]
+    amber_highest_idx = np.argpartition(amber_energies.flatten(), -n_highest)[
+        -n_highest:
+    ]
     mace_highest_idx = np.argpartition(mace_energies.flatten(), -n_highest)[-n_highest:]
-    
+
     # sort energies in descending order and corresponding phi, psi values
     amber_highest_energy_idx = np.argsort(amber_energies.flatten())[::-1]
     mace_highest_energy_idx = np.argsort(mace_energies.flatten())[::-1]
@@ -720,83 +756,89 @@ def compare_amber_mace_energies(
         i, j = np.unravel_index(idx, amber_energies.shape)
         phi, psi = phi_values[i], psi_values[j]
         # find the same phi_psi in mace_highest_phi_psi
-        mace_ranking = np.where(np.all(mace_highest_phi_psi == [phi, psi], axis=1))[0][0]
-        print(f"φ={phi:.2f}, ψ={psi:.2f}: Amber={amber_energies[i,j]:.2f}, MACE={mace_energies[i,j]:.2f} (rank {mace_ranking})")
+        mace_ranking = np.where(np.all(mace_highest_phi_psi == [phi, psi], axis=1))[0][
+            0
+        ]
+        print(
+            f"φ={phi:.2f}, ψ={psi:.2f}: Amber={amber_energies[i,j]:.2f}, MACE={mace_energies[i,j]:.2f} (rank {mace_ranking})"
+        )
 
     print("\nMACE highest energy locations (φ,ψ) and corresponding Amber energies:")
     for idx in mace_highest_idx:
         i, j = np.unravel_index(idx, mace_energies.shape)
         phi, psi = phi_values[i], psi_values[j]
         # find the same phi_psi in amber_highest_phi_psi
-        amber_ranking = np.where(np.all(amber_highest_phi_psi == [phi, psi], axis=1))[0][0]
-        print(f"φ={phi:.2f}, ψ={psi:.2f}: MACE={mace_energies[i,j]:.2f}, Amber={amber_energies[i,j]:.2f} (rank {amber_ranking})")
+        amber_ranking = np.where(np.all(amber_highest_phi_psi == [phi, psi], axis=1))[
+            0
+        ][0]
+        print(
+            f"φ={phi:.2f}, ψ={psi:.2f}: MACE={mace_energies[i,j]:.2f}, Amber={amber_energies[i,j]:.2f} (rank {amber_ranking})"
+        )
 
     # Calculate correlation coefficient
     # valid_mask = ~np.isnan(amber_energies) & ~np.isnan(mace_energies)
-    correlation = np.corrcoef(
-        amber_energies.flatten(),
-        mace_energies.flatten()
-    )[0,1]
+    correlation = np.corrcoef(amber_energies.flatten(), mace_energies.flatten())[0, 1]
     print(f"\nCorrelation coefficient between energies: {correlation:.3f}")
-    
+
     # Calculate the correlation between the phi, psi values
     correlation = np.corrcoef(
-        amber_highest_phi_psi.flatten(),
-        mace_highest_phi_psi.flatten()
-    )[0,1]
-    print(f"\nCorrelation coefficient between phi, psi values sorted by energy: {correlation:.3f}")
+        amber_highest_phi_psi.flatten(), mace_highest_phi_psi.flatten()
+    )[0, 1]
+    print(
+        f"\nCorrelation coefficient between phi, psi values sorted by energy: {correlation:.3f}"
+    )
 
 
 ############################################################################
 # Main
 ############################################################################
 if __name__ == "__main__":
-    
-    # Amber force field
-    create_ramachandran_plot(
-        use_mace=False,
-        log_scale=False,
-        positive_energies=True,
-        plot_type="exp",
-    )
-    create_ramachandran_plot(
-        use_mace=False,
-        log_scale=False,
-        plot_type="gibbs",
-    )
 
-    create_ramachandran_plot(
-        use_mace=False,
-        log_scale=False,
-        positive_energies=False,
-        energy_range=(-128, -38),
-        plot_type="energy",
-        convention="andreas",
-    )
-    create_ramachandran_plot(
-        use_mace=False,
-        log_scale=True,
-        positive_energies=True,
-        # energy_range=(-128, -38),
-        plot_type="energy",
-        convention="andreas",
-    )
-    create_ramachandran_plot(
-        use_mace=False,
-        log_scale=False,
-        positive_energies=False,
-        energy_range=(-128, -38),
-        plot_type="energy",
-        convention="bg",
-    )
-    create_ramachandran_plot(
-        use_mace=False,
-        log_scale=True,
-        positive_energies=True,
-        # energy_range=(-128, -38),
-        plot_type="energy",
-        convention="bg",
-    )
+    # Amber force field
+    # create_ramachandran_plot(
+    #     use_mace=False,
+    #     log_scale=False,
+    #     positive_energies=True,
+    #     plot_type="exp",
+    # )
+    # create_ramachandran_plot(
+    #     use_mace=False,
+    #     log_scale=False,
+    #     plot_type="gibbs",
+    # )
+
+    # create_ramachandran_plot(
+    #     use_mace=False,
+    #     log_scale=False,
+    #     positive_energies=False,
+    #     energy_range=(-128, -38),
+    #     plot_type="energy",
+    #     convention="andreas",
+    # )
+    # create_ramachandran_plot(
+    #     use_mace=False,
+    #     log_scale=True,
+    #     positive_energies=True,
+    #     # energy_range=(-128, -38),
+    #     plot_type="energy",
+    #     convention="andreas",
+    # )
+    # create_ramachandran_plot(
+    #     use_mace=False,
+    #     log_scale=False,
+    #     positive_energies=False,
+    #     energy_range=(-128, -38),
+    #     plot_type="energy",
+    #     convention="bg",
+    # )
+    # create_ramachandran_plot(
+    #     use_mace=False,
+    #     log_scale=True,
+    #     positive_energies=True,
+    #     # energy_range=(-128, -38),
+    #     plot_type="energy",
+    #     convention="bg",
+    # )
 
     # create_ramachandran_plot(
     #     recompute=False,
@@ -829,7 +871,7 @@ if __name__ == "__main__":
         plot_type="gibbs",
         positive_energies=True,
     )
-    
+
     # Our loss is the unnormalized Boltzmann distribution = exp(-E/kbT)
     # order: keep_lowest_energies, energy_range, positive_energies
     create_ramachandran_plot(
@@ -861,7 +903,7 @@ if __name__ == "__main__":
         positive_energies=True,
         keep_lowest_energies=0.5,
     )
-    
+
     ############################################################
     # Compare Amber and MACE energy landscapes
     ############################################################
