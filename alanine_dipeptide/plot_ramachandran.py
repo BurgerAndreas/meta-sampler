@@ -311,7 +311,6 @@ def create_ramachandran_plot(
     psi_range=(-np.pi, np.pi),
     resolution=360,
     # what to plot
-    plot_type="energy",
     show=False,
     show_plt=False,
     convention="andreas",
@@ -325,6 +324,8 @@ def create_ramachandran_plot(
     temperature=300,
     plot_temperature=300,
     transpose=True,
+    # pltstyles=["contour", "heatmap", "imshow"],
+    pltstyles=["imshow"],
     # mace
     dtypestr="float32",
     batch_size=48,
@@ -486,7 +487,39 @@ def create_ramachandran_plot(
             print(f"Warning: lowest energy is <=0, adding {_diff:.1f} to all energies")
 
     ############################################################################
-    # Compute free energy / gibbs energy from energies
+    # Folder for plots
+    ############################################################################
+    tempplotfolder = "alanine_dipeptide/plots/"
+    if use_mace:
+        tempplotfolder += "mace"
+        tempplotfolder += f"_{dtypestr.replace('float', 'f')}"
+    else:
+        tempplotfolder += "amber"
+    tempplotfolder += f"_{resolution}"
+    tempplotfolder += "_" + convention
+    tempplotfolder += f"_T{temperature}"
+    os.makedirs(tempplotfolder, exist_ok=True)
+    fig_suffix = ""
+    if log_scale:
+        fig_suffix += "_log"
+    if energy_range is not None:
+        fig_suffix += f"_range_{energy_range[0]}_{energy_range[1]}"
+    if positive_energies:
+        fig_suffix += "_positive"
+    if keep_lowest_energies > 0:
+        fig_suffix += f"_mask{keep_lowest_energies}"
+
+    # plotly has a transposed convention
+    if transpose:
+        energies = energies.T
+        forces_norm = forces_norm.T
+        forces_normmean = forces_normmean.T
+    if log_scale:
+        forces_norm = np.log10(forces_norm)
+        forces_normmean = np.log10(forces_normmean)
+        
+    ############################################################################
+    # Compute free energy / gibbs / exp from energies
     ############################################################################
     if unit == "kJ/mol":
         # Energies are in kJ/mol, Forces in kJ/mol/nm
@@ -506,183 +539,161 @@ def create_ramachandran_plot(
 
     # finite volume element
     dx = ((phi_range[1] - phi_range[0]) / resolution) ** 2
+    
+    energies_backup = energies.copy()
+    
+    for plot_type in ["energy", "free_energy", "gibbs", "exp"]:
+        energies = energies_backup.copy()
 
-    if plot_type == "free_energy":
-        # F(x) = -kBT ln(P(x))
-        # P(x) = exp(-E(x)/kbT) / Z
-        # Z = sum_x exp(-E(x)/kbT)
-
-        z = np.nansum(np.exp(-energies / kbT))  # * dx
-        p = np.exp(-energies / kbT) / z
-        # # Use log-sum-exp trick for better numerical stability
-        # max_energy = np.max(-energies/kbT)
-        # z = np.exp(max_energy) * np.exp(-energies/kbT - max_energy).sum() * dx
-        # p = np.exp(-energies/kbT - max_energy) / (z/np.exp(max_energy))
-
-        p += 1e-16
-        print(f"p.sum() = {p.sum()} (should be 1)")  # * dx
-        free_energies = -kbT * np.log(p)
-
-        # F(x) = -kbT ln[ exp(-E(x)/kbT) / sum_x exp(-E(x)/kbT) ]
-        # = -kbT ln[ exp(-E(x)/kbT) ] + kbT ln[ sum_x exp(-E(x)/kbT) ]
-        # = E(x) + kbT ln[ sum_x exp(-E(x)/kbT) ]
-        free_energies2 = energies + kbT * np.log(z)
-        print(
-            f"max abs difference between methods: {np.nanmax(np.abs(free_energies - free_energies2))}"
-        )
-
-        # free_energies = free_energies2
-        if log_scale:
-            energies = np.log10(free_energies)
-            title = r"$\text{Ramachandran Plot for Alanine Dipeptide: } \log_{10}(F=-k_B T \ln(P))$"
-        else:
-            energies = free_energies
-            title = (
-                r"$\text{Ramachandran Plot for Alanine Dipeptide: } F=-k_B T \ln(P)$"
-            )
-
-    elif plot_type == "gibbs":
-        if log_scale:
+        if plot_type == "free_energy":
+            # F(x) = -kBT ln(P(x))
             # P(x) = exp(-E(x)/kbT) / Z
-            # ln P(x) = -E(x)/kbT - ln Z
-            # ln Z = - E(x)/kbT - ln(dx) - ln(sum_x exp(-E(x)/kbT))
-            _e = np.where(
-                np.isnan(energies), -1.0 * 1e10, energies
-            )  # large negative values will become 0 in exp
-            ln_p = -energies / kbT - scipy.special.logsumexp(_e / kbT)  # - np.log(dx)
-            energies = ln_p
-            title = r"$\text{Ramachandran Plot for Alanine Dipeptide: } \log_{10}(P=e^{-U/k_B T})$"
-        else:
+            # Z = sum_x exp(-E(x)/kbT)
+
             z = np.nansum(np.exp(-energies / kbT))  # * dx
             p = np.exp(-energies / kbT) / z
-            energies = p
-            title = r"$\text{Ramachandran Plot for Alanine Dipeptide: } P=e^{-U/k_B T}$"
+            # # Use log-sum-exp trick for better numerical stability
+            # max_energy = np.max(-energies/kbT)
+            # z = np.exp(max_energy) * np.exp(-energies/kbT - max_energy).sum() * dx
+            # p = np.exp(-energies/kbT - max_energy) / (z/np.exp(max_energy))
 
-    elif plot_type == "exp":
-        energies = -energies / kbT
-        if log_scale:
-            title = r"$\text{Ramachandran Plot for Alanine Dipeptide: } \log_{10}(e^{-U/k_B T})$"
-        else:
-            print(f"Min arg before exp: {np.nanmin(energies):.1f} [{unit}]")
-            print(f"Max arg before exp: {np.nanmax(energies):.1f} [{unit}]")
-            energies = np.exp(energies)
-            title = r"$\text{Ramachandran Plot for Alanine Dipeptide: } e^{-U/k_B T}$"
+            p += 1e-16
+            print(f"p.sum() = {p.sum()} (should be 1)")  # * dx
+            free_energies = -kbT * np.log(p)
 
-    elif plot_type == "energy":
-        if log_scale:
-            # energies = np.clip(energies, 1e0, None)
-            # energies = np.clip(energies, energies.min(), None)
-            # energies += np.abs(energies.min()) + 1e0
-            # mask out non-positive energies
-            energies = np.where(energies > 0, energies, np.nan)
-            energies = np.log10(energies)
-            title = r"$\text{Ramachandran Plot for Alanine Dipeptide: } \log_{10}(U)$"
-        else:
-            energies = energies
-            title = r"$\text{Ramachandran Plot for Alanine Dipeptide: } U$"
-
-    else:
-        raise ValueError(f"Invalid plot type: {plot_type}")
-
-    print(f"Min value in plot: {np.nanmin(energies):.1f} [{unit}]")
-    print(f"Max value in plot: {np.nanmax(energies):.1f} [{unit}]")
-
-    # values to float32
-    energies = energies.astype(np.float32)
-    phi_values = phi_values.astype(np.float32)
-    psi_values = psi_values.astype(np.float32)
-
-    # plotly has a transposed convention
-    if transpose:
-        energies = energies.T
-        forces_norm = forces_norm.T
-        forces_normmean = forces_normmean.T
-    if log_scale:
-        forces_norm = np.log10(forces_norm)
-        forces_normmean = np.log10(forces_normmean)
-
-    ############################################################################
-    # Folder for plots
-    ############################################################################
-    tempplotfolder = "alanine_dipeptide/plots/"
-    tempplotfolder += plot_type
-    if use_mace:
-        tempplotfolder += "_mace"
-        tempplotfolder += f"_{dtypestr}"
-    else:
-        tempplotfolder += "_amber"
-    tempplotfolder += f"_{resolution}"
-    tempplotfolder += "_" + convention
-    tempplotfolder += f"_T{temperature}"
-    os.makedirs(tempplotfolder, exist_ok=True)
-
-    ############################################################################
-    # Plot the energies, create a contour plot
-    ############################################################################
-    # plot once as contour, once as heatmap/imshow
-    for pltstyle in ["contour", "heatmap"]:
-        figname = f"{tempplotfolder}/pltstyle_contour"
-        figname = figname.replace("pltstyle", pltstyle)
-        if pltstyle == "contour":
-            fig = go.Figure(
-                data=go.Contour(
-                    x=phi_values,
-                    y=psi_values,
-                    z=energies,
-                    colorscale="Viridis",
-                    type="contour",
-                    line_smoothing=0,
-                    connectgaps=False,
-                    colorbar=dict(
-                        title="[kJ/mol]",
-                    ),
-                    # contours=dict(
-                    #     start=np.nanmin(energies),
-                    #     end=np.nanmax(energies),
-                    # ),
-                )
+            # F(x) = -kbT ln[ exp(-E(x)/kbT) / sum_x exp(-E(x)/kbT) ]
+            # = -kbT ln[ exp(-E(x)/kbT) ] + kbT ln[ sum_x exp(-E(x)/kbT) ]
+            # = E(x) + kbT ln[ sum_x exp(-E(x)/kbT) ]
+            free_energies2 = energies + kbT * np.log(z)
+            print(
+                f"max abs difference between methods: {np.nanmax(np.abs(free_energies - free_energies2))}"
             )
-        elif pltstyle == "heatmap":
-            fig = go.Figure(
-                data=go.Heatmap(
-                    x=phi_values,
-                    y=psi_values,
-                    z=energies,
-                    colorscale="Viridis",
+
+            # free_energies = free_energies2
+            if log_scale:
+                valuestoplot = np.log10(free_energies)
+                title = r"$\text{Ramachandran Plot for Alanine Dipeptide: } \log_{10}(F=-k_B T \ln(P))$"
+            else:
+                valuestoplot = free_energies
+                title = (
+                    r"$\text{Ramachandran Plot for Alanine Dipeptide: } F=-k_B T \ln(P)$"
                 )
+
+        elif plot_type == "gibbs":
+            if log_scale:
+                # P(x) = exp(-E(x)/kbT) / Z
+                # ln P(x) = -E(x)/kbT - ln Z
+                # ln Z = - E(x)/kbT - ln(dx) - ln(sum_x exp(-E(x)/kbT))
+                _e = np.where(
+                    np.isnan(energies), -1.0 * 1e10, energies
+                )  # large negative values will become 0 in exp
+                ln_p = -energies / kbT - scipy.special.logsumexp(_e / kbT)  # - np.log(dx)
+                valuestoplot = ln_p
+                title = r"$\text{Ramachandran Plot for Alanine Dipeptide: } \log_{10}(P=e^{-U/k_B T})$"
+            else:
+                z = np.nansum(np.exp(-energies / kbT))  # * dx
+                p = np.exp(-energies / kbT) / z
+                valuestoplot = p
+                title = r"$\text{Ramachandran Plot for Alanine Dipeptide: } P=e^{-U/k_B T}$"
+
+        elif plot_type == "exp":
+            valuestoplot = -energies / kbT
+            if log_scale:
+                title = r"$\text{Ramachandran Plot for Alanine Dipeptide: } \log_{10}(e^{-U/k_B T})$"
+            else:
+                print(f"Min arg before exp: {np.nanmin(valuestoplot):.1f} [{unit}]")
+                print(f"Max arg before exp: {np.nanmax(valuestoplot):.1f} [{unit}]")
+                valuestoplot = np.exp(valuestoplot)
+                title = r"$\text{Ramachandran Plot for Alanine Dipeptide: } e^{-U/k_B T}$"
+
+        elif plot_type == "energy":
+            if log_scale:
+                valuestoplot = energies
+                # valuestoplot = np.clip(valuestoplot, 1e0, None)
+                # valuestoplot = np.clip(valuestoplot, valuestoplot.min(), None)
+                # valuestoplot = valuestoplot + np.abs(valuestoplot.min()) + 1e0
+                # mask out non-positive valuestoplot
+                valuestoplot = np.where(valuestoplot > 0, valuestoplot, np.nan)
+                valuestoplot = np.log10(valuestoplot)
+                title = r"$\text{Ramachandran Plot for Alanine Dipeptide: } \log_{10}(U)$"
+            else:
+                valuestoplot = energies
+                title = r"$\text{Ramachandran Plot for Alanine Dipeptide: } U$"
+
+        else:
+            raise ValueError(f"Invalid plot type: {plot_type}")
+
+        print(f"Min value in plot: {np.nanmin(valuestoplot):.1f} [{unit}]")
+        print(f"Max value in plot: {np.nanmax(valuestoplot):.1f} [{unit}]")
+
+        # values to float32
+        valuestoplot = valuestoplot.astype(np.float32)
+        phi_values = phi_values.astype(np.float32)
+        psi_values = psi_values.astype(np.float32)
+
+
+        ############################################################################
+        # Plot the energies / free energies / gibbs / exp
+        ############################################################################
+        
+        figname = f"{tempplotfolder}/{plot_type}{fig_suffix}_pltstyle"
+        # plot once as contour, once as heatmap/imshow
+        for pltstyle in pltstyles:
+            if pltstyle == "contour":
+                fig = go.Figure(
+                    data=go.Contour(
+                        x=phi_values,
+                        y=psi_values,
+                        z=valuestoplot,
+                        colorscale="Viridis",
+                        type="contour",
+                        line_smoothing=0,
+                        connectgaps=False,
+                        colorbar=dict(
+                            title="[kJ/mol]",
+                        ),
+                        # contours=dict(
+                        #     start=np.nanmin(valuestoplot),
+                        #     end=np.nanmax(valuestoplot),
+                        # ),
+                    )
+                )
+            elif pltstyle == "heatmap":
+                fig = go.Figure(
+                    data=go.Heatmap(
+                        x=phi_values,
+                        y=psi_values,
+                        z=valuestoplot,
+                        colorscale="Viridis",
+                    )
+                )
+            elif pltstyle == "imshow":
+                fig = px.imshow(
+                    valuestoplot, color_continuous_scale='RdBu_r', origin='lower'
+                )
+            fig.update_layout(
+                title=title,
+                xaxis_title="Phi (radians)",
+                yaxis_title="Psi (radians)",
+                margin=dict(l=0, r=0, t=50, b=0),
             )
-        fig.update_layout(
-            title=title,
-            xaxis_title="Phi (radians)",
-            yaxis_title="Psi (radians)",
-            margin=dict(l=0, r=0, t=50, b=0),
-        )
-        fig_suffix = ""
-        if log_scale:
-            fig_suffix += "_log"
-        if energy_range is not None:
-            fig_suffix += f"_range_{energy_range[0]}_{energy_range[1]}"
-        if positive_energies:
-            fig_suffix += "_positive"
-        if keep_lowest_energies > 0:
-            fig_suffix += f"_mask{keep_lowest_energies}"
-        fig_suffix += ".png"
-        figname = f"{tempplotfolder}/contour{fig_suffix}"
-        fig.write_image(figname)
-        print(f"Saved {figname}")
-        if show:
-            fig.show()
+            _figname = figname.replace("pltstyle", pltstyle)
+            fig.write_image(_figname + ".png")
+            print(f"Saved {_figname}")
+            if show:
+                fig.show()
 
     ############################################################################
     # plot force norm
-    figname = f"{tempplotfolder}/pltstyle_forcenorm"
+    ############################################################################
+    figname = f"{tempplotfolder}/forcenorm"
     title = r"$\text{Norm Force Plot for Alanine Dipeptide } |F|$"
     if log_scale:
         title = r"$\text{Norm Force Plot for Alanine Dipeptide } \log_{10}(|F|)$"
         figname += "_log"
+    figname += "_pltstyle"
     # plot once as contour, once as heatmap/imshow
-    for pltstyle in ["contour", "heatmap"]:
-        figname = figname.replace("pltstyle", pltstyle)
+    for pltstyle in pltstyles:
         if pltstyle == "contour":
             fig = go.Figure(
                 data=go.Contour(
@@ -705,27 +716,32 @@ def create_ramachandran_plot(
                     colorscale="Viridis",
                 )
             )
+        elif pltstyle == "imshow":
+            fig = px.imshow(
+                forces_norm, color_continuous_scale='RdBu_r', origin='lower'
+            )
         fig.update_layout(
             title=title,
             xaxis_title="Phi (radians)",
             yaxis_title="Psi (radians)",
             margin=dict(l=0, r=5, t=50, b=0),
         )
-        figname += ".png"
-        fig.write_image(figname)
-        print(f"Saved {figname}")
+        _figname = figname.replace("pltstyle", pltstyle)
+        fig.write_image(_figname + ".png")
+        print(f"Saved {_figname}")
     
     ############################################################################
     # plot Gibbs/Boltzmann distribution of force norm
+    ############################################################################
     forces_norm_gibbs = np.exp(-forces_norm / kbTplot)
-    figname = f"{tempplotfolder}/pltstyle_forcenorm_gibbs_T{plot_temperature}"
+    figname = f"{tempplotfolder}/forcenorm_gibbs_T{plot_temperature}"
     title = r"$\text{Gibbs/Boltzmann Distribution of Force Norm for Alanine Dipeptide } e^{-|F|/k_B T}$"
     if log_scale:
         title = r"$\text{Gibbs/Boltzmann Distribution of Force Norm for Alanine Dipeptide } \log_{10}(e^{-|F|/k_B T})$"
         figname += "_log"
+    figname += "_pltstyle"
     # plot once as contour, once as heatmap/imshow
-    for pltstyle in ["contour", "heatmap"]:
-        figname = figname.replace("pltstyle", pltstyle)
+    for pltstyle in pltstyles:
         if pltstyle == "contour":
             fig = go.Figure(
                 data=go.Contour(
@@ -750,19 +766,22 @@ def create_ramachandran_plot(
                     colorscale="Viridis",
                 )
             )
+        elif pltstyle == "imshow":
+            fig = px.imshow(
+                forces_norm_gibbs, color_continuous_scale='RdBu_r', origin='lower'
+            )
         fig.update_layout(
             title=title,
             xaxis_title="Phi (radians)",
             yaxis_title="Psi (radians)",
             margin=dict(l=0, r=5, t=50, b=0),
         )
-        figname += ".png"
-        fig.write_image(figname)
-        print(f"Saved {figname}")
+        _figname = figname.replace("pltstyle", pltstyle)
+        fig.write_image(_figname + ".png")
+        print(f"Saved {_figname}")
 
     # ############################################################################
     # # plot force norm mean
-    # figname = f"{tempplotfolder}/contour_forcenormmean"
     # title = r"$\text{Mean Norm Force Plot for Alanine Dipeptide } \frac{1}{22}\sum_{i=1}^{22}|F_i|$"
     # if log_scale:
     #     title = r"$\text{Mean Norm Force Plot for Alanine Dipeptide } \log_{10}(\frac{1}{22}\sum_{i=1}^{22}|F_i|)$"
@@ -785,6 +804,7 @@ def create_ramachandran_plot(
     #     yaxis_title="Psi (radians)",
     #     margin=dict(l=0, r=5, t=50, b=0),
     # )
+    # figname = f"{tempplotfolder}/contour_forcenormmean"
     # figname += ".png"
     # fig.write_image(figname)
     # print(f"Saved {figname}")
@@ -912,13 +932,11 @@ if __name__ == "__main__":
         use_mace=False,
         log_scale=True,
         positive_energies=True,
-        plot_type="energy",
     )
     create_ramachandran_plot(
         use_mace=False,
         log_scale=False,
         positive_energies=True,
-        plot_type="exp",
     )
 
     ############################################################
@@ -929,14 +947,12 @@ if __name__ == "__main__":
     create_ramachandran_plot(
         use_mace=True,
         log_scale=True,
-        plot_type="energy",
         positive_energies=True,
         temperature=300,
     )
     create_ramachandran_plot(
         use_mace=True,
         log_scale=False,
-        plot_type="exp",
         positive_energies=True,
         temperature=300,
     )
@@ -945,14 +961,12 @@ if __name__ == "__main__":
     create_ramachandran_plot(
         use_mace=True,
         log_scale=True,
-        plot_type="energy",
         positive_energies=True,
         temperature=3000,
     )
     create_ramachandran_plot(
         use_mace=True,
         log_scale=False,
-        plot_type="exp",
         positive_energies=True,
         temperature=3000,
     )
@@ -960,7 +974,6 @@ if __name__ == "__main__":
     # create_ramachandran_plot(
     #     use_mace=True,
     #     log_scale=True,
-    #     plot_type="exp",
     #     positive_energies=True,
     #     temperature=300,
     #     plot_temperature=300,
