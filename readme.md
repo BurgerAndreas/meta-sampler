@@ -17,7 +17,19 @@ The sampler is trained on a loss of the ML force field, e.g. minimal forces to t
 - config2 with prior replay buffer = with data https://github.com/BurgerAndreas/meta-sampler/blob/main/DEM/configs/experiment/simple_test_pdem.yaml
 
 ### 2d Alanine Dipeptide (dihedral angles)
-WIP by Andreas at https://github.com/BurgerAndreas/meta-sampler/tree/tps-1d/alanine_dipeptide
+WIP by Andreas at https://github.com/BurgerAndreas/meta-sampler/tree/tps-1d/alanine_dipeptide and
+
+```python
+mamba activate sampler
+cd DEM
+
+# 1d toy example
+python dem/train.py experiment=gmm_idem
+python dem/train.py experiment=simple_test_idem
+
+# 2d alanine dipeptide
+python alanine_dipeptide/alanine_dipeptide_mace.py
+```
 
 ### N^3d Alanine Dipeptide (all atom)
 WIP

@@ -62,8 +62,7 @@ The current repository contains code for experiments for iDEM and pDEM as specif
 ## Update January 2025
 
 In this update we provide code and more detailed instructions on how to run the CFM models including log Z and ESS computation.
-In doing this, we also found a few bugs in the public code implementation for LJ55 (note that this codebase is an adaptation of
-a large number of notebooks used for the paper) which we have fixed in a set of code updates just merged to the repository.
+In doing this, we also found a few bugs in the public code implementation for LJ55 (note that this codebase is an adaptation of a large number of notebooks used for the paper) which we have fixed in a set of code updates just merged to the repository.
 
 ### CFM for Computing NLL Pipeline
 
