@@ -322,7 +322,6 @@ def create_ramachandran_plot(
     positive_energies=True,
     energy_range=None,
     temperature=300,
-    plot_temperature=300,
     transpose=True,
     # pltstyles=["contour", "heatmap", "imshow"],
     pltstyles=["imshow"],
@@ -526,13 +525,11 @@ def create_ramachandran_plot(
         # kb = 8.314462618 * 10^-3 kJ/(mol⋅K)
         # T = 300 K
         kbT = 0.00831446261815324 * temperature  # kJ/mol/K
-        kbTplot = 0.00831446261815324 * plot_temperature  # kJ/mol/K
     elif unit == "kcal/mol":
         # Energies are in kcal/mol, Forces in kcal/mol/nm
         # kb = 1.9872041 * 10^-3 kcal/(mol⋅K)
         # kbT = 0.0019872041 * 300.0 # kcal/mol/K
         kbT = 0.0019872041 * temperature  # kcal/mol/K
-        kbTplot = 0.0019872041 * plot_temperature  # kcal/mol/K
     else:
         raise ValueError(f"Invalid unit: {unit}")
 
@@ -734,8 +731,8 @@ def create_ramachandran_plot(
     ############################################################################
     # plot Gibbs/Boltzmann distribution of force norm
     ############################################################################
-    forces_norm_gibbs = np.exp(-forces_norm / kbTplot)
-    figname = f"{tempplotfolder}/forcenorm_gibbs_T{plot_temperature}"
+    forces_norm_gibbs = np.exp(-forces_norm / kbT)
+    figname = f"{tempplotfolder}/forcenorm_gibbs_T{temperature}"
     title = r"$\text{Unnormalized Boltzmann Distribution of Force Norm } e^{-|F|/k_B T}$"
     if log_scale:
         title = r"$\text{Unnormalized Boltzmann Distribution of Force Norm } \log_{10}(e^{-|F|/k_B T})$"
@@ -950,12 +947,14 @@ if __name__ == "__main__":
         log_scale=True,
         positive_energies=True,
         temperature=300,
+        convention="bg",
     )
     create_ramachandran_plot(
         use_mace=True,
         log_scale=False,
         positive_energies=True,
         temperature=300,
+        convention="bg",
     )
     
     # high temperature
@@ -964,21 +963,15 @@ if __name__ == "__main__":
         log_scale=True,
         positive_energies=True,
         temperature=3000,
+        convention="bg",
     )
     create_ramachandran_plot(
         use_mace=True,
         log_scale=False,
         positive_energies=True,
         temperature=3000,
+        convention="bg",
     )
-    # we will sample a Boltzmann distribution of the force norm at some temperature
-    # create_ramachandran_plot(
-    #     use_mace=True,
-    #     log_scale=True,
-    #     positive_energies=True,
-    #     temperature=300,
-    #     plot_temperature=300,
-    # )
     
     ############################################################
     # Compare Amber and MACE energy landscapes

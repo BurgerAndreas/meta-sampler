@@ -625,10 +625,10 @@ if __name__ == "__main__":
     # Animate dihedral rotation
     ############################################################################################
 
-    from dihedral import phi_indices, psi_indices, phi_atoms_bg, psi_atoms_bg
+    from dihedral import phi_indices, psi_indices, phi_indices_bg, psi_indices_bg
 
     animated_dihedral_rotation_as_xyz(phi_indices, psi_indices, pdbfile)
-    animated_dihedral_rotation_as_xyz(phi_atoms_bg, psi_atoms_bg, pdbfile, name="bg")
+    animated_dihedral_rotation_as_xyz(phi_indices_bg, psi_indices_bg, pdbfile, name="bg")
 
     # Color scheme for atoms
     colors = {"H": "lightgray", "C": "black", "N": "blue", "O": "red"}

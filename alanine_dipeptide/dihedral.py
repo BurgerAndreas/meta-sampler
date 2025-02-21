@@ -29,14 +29,14 @@ import mdtraj as md
 phi_indices_andreas = [10, 8, 6, 4]
 psi_indices_andreas = [10, 8, 14, 15]
 
-phi_atoms_bg = [4, 6, 8, 14]
-psi_atoms_bg = [6, 8, 14, 16]  # [16, 14, 8, 6]
+phi_indices_bg = [4, 6, 8, 14]
+psi_indices_bg = [6, 8, 14, 16]  # [16, 14, 8, 6]
 
-phi_indices = phi_indices_andreas
-psi_indices = psi_indices_andreas
+# phi_indices = phi_indices_andreas
+# psi_indices = psi_indices_andreas
 
-phi_indices = phi_atoms_bg
-psi_indices = psi_atoms_bg
+phi_indices = phi_indices_bg
+psi_indices = psi_indices_bg
 
 
 def get_indices(indices, convention):
@@ -696,20 +696,20 @@ def test_set_is_inverse_of_compute():
 
     # test phi
     phi_before = compute_dihedral(
-        positions_np[phi_atoms_bg[0]],
-        positions_np[phi_atoms_bg[1]],
-        positions_np[phi_atoms_bg[2]],
-        positions_np[phi_atoms_bg[3]],
+        positions_np[phi_indices_bg[0]],
+        positions_np[phi_indices_bg[1]],
+        positions_np[phi_indices_bg[2]],
+        positions_np[phi_indices_bg[3]],
     )
     print(f"Phi before: {phi_before:.3f} rad")
     positions_np_modified = set_dihedral(
         positions_np.copy(), "phi", target_angle, "phi"
     )
     phi_after = compute_dihedral(
-        positions_np_modified[phi_atoms_bg[0]],
-        positions_np_modified[phi_atoms_bg[1]],
-        positions_np_modified[phi_atoms_bg[2]],
-        positions_np_modified[phi_atoms_bg[3]],
+        positions_np_modified[phi_indices_bg[0]],
+        positions_np_modified[phi_indices_bg[1]],
+        positions_np_modified[phi_indices_bg[2]],
+        positions_np_modified[phi_indices_bg[3]],
     )
     print(
         np.allclose(phi_after, target_angle),
@@ -718,19 +718,19 @@ def test_set_is_inverse_of_compute():
 
     # test psi
     psi_before = compute_dihedral(
-        positions_np[psi_atoms_bg[0]],
-        positions_np[psi_atoms_bg[1]],
-        positions_np[psi_atoms_bg[2]],
-        positions_np[psi_atoms_bg[3]],
+        positions_np[psi_indices_bg[0]],
+        positions_np[psi_indices_bg[1]],
+        positions_np[psi_indices_bg[2]],
+        positions_np[psi_indices_bg[3]],
     )
     positions_np_modified = set_dihedral(
         positions_np.copy(), "psi", target_angle, "psi"
     )
     psi_after = compute_dihedral(
-        positions_np_modified[psi_atoms_bg[0]],
-        positions_np_modified[psi_atoms_bg[1]],
-        positions_np_modified[psi_atoms_bg[2]],
-        positions_np_modified[psi_atoms_bg[3]],
+        positions_np_modified[psi_indices_bg[0]],
+        positions_np_modified[psi_indices_bg[1]],
+        positions_np_modified[psi_indices_bg[2]],
+        positions_np_modified[psi_indices_bg[3]],
     )
     print(
         np.allclose(psi_after, target_angle),
@@ -770,10 +770,10 @@ def test_compute_dihedral_is_mdtraj():
 
     # test phi
     phi_after = compute_dihedral(
-        positions_np[phi_atoms_bg[0]],
-        positions_np[phi_atoms_bg[1]],
-        positions_np[phi_atoms_bg[2]],
-        positions_np[phi_atoms_bg[3]],
+        positions_np[phi_indices_bg[0]],
+        positions_np[phi_indices_bg[1]],
+        positions_np[phi_indices_bg[2]],
+        positions_np[phi_indices_bg[3]],
     )
     # compute dihedral with mdtraj
     phi_mdtraj = md.compute_dihedrals(traj, [phi_indices])[0][0]
@@ -784,10 +784,10 @@ def test_compute_dihedral_is_mdtraj():
 
     # test psi
     psi_after = compute_dihedral(
-        positions_np[psi_atoms_bg[0]],
-        positions_np[psi_atoms_bg[1]],
-        positions_np[psi_atoms_bg[2]],
-        positions_np[psi_atoms_bg[3]],
+        positions_np[psi_indices_bg[0]],
+        positions_np[psi_indices_bg[1]],
+        positions_np[psi_indices_bg[2]],
+        positions_np[psi_indices_bg[3]],
     )
     # compute dihedral with mdtraj
     psi_mdtraj = md.compute_dihedrals(traj, [psi_indices])[0][0]
@@ -856,10 +856,10 @@ def test_absolute_vs_relative_rotation():
 
     # test phi
     phi_before = compute_dihedral(
-        positions_np[phi_atoms_bg[0]],
-        positions_np[phi_atoms_bg[1]],
-        positions_np[phi_atoms_bg[2]],
-        positions_np[phi_atoms_bg[3]],
+        positions_np[phi_indices_bg[0]],
+        positions_np[phi_indices_bg[1]],
+        positions_np[phi_indices_bg[2]],
+        positions_np[phi_indices_bg[3]],
     )
 
     # set absolute angle multiple times
@@ -870,10 +870,10 @@ def test_absolute_vs_relative_rotation():
             positions_np_modified, "phi", target_angle, "phi"
         )
         phi_after = compute_dihedral(
-            positions_np_modified[phi_atoms_bg[0]],
-            positions_np_modified[phi_atoms_bg[1]],
-            positions_np_modified[phi_atoms_bg[2]],
-            positions_np_modified[phi_atoms_bg[3]],
+            positions_np_modified[phi_indices_bg[0]],
+            positions_np_modified[phi_indices_bg[1]],
+            positions_np_modified[phi_indices_bg[2]],
+            positions_np_modified[phi_indices_bg[3]],
         )
         # should be the same
         print(f"Phi after {i}: {phi_after:.3f} rad")
@@ -887,10 +887,10 @@ def test_absolute_vs_relative_rotation():
             positions_np_modified, "phi", target_angle, "phi", absolute=False
         )
         phi_after = compute_dihedral(
-            positions_np_modified[phi_atoms_bg[0]],
-            positions_np_modified[phi_atoms_bg[1]],
-            positions_np_modified[phi_atoms_bg[2]],
-            positions_np_modified[phi_atoms_bg[3]],
+            positions_np_modified[phi_indices_bg[0]],
+            positions_np_modified[phi_indices_bg[1]],
+            positions_np_modified[phi_indices_bg[2]],
+            positions_np_modified[phi_indices_bg[3]],
         )
         print(f"Phi after {i}: {phi_after:.3f} rad")
 

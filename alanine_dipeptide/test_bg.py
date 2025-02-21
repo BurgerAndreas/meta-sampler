@@ -179,7 +179,7 @@ def test_system_traj_same_as_temp_traj(phi_indices, psi_indices):
 
 
 if __name__ == "__main__":
-    from dihedral import phi_indices, psi_indices, phi_atoms_bg, psi_atoms_bg
+    from dihedral import phi_indices, psi_indices, phi_indices_bg, psi_indices_bg
 
     test_ic_transform_energy_consistency()
 
