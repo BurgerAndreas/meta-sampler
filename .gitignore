@@ -4,6 +4,11 @@ src.egg-info
 .env
 dem_results
 
+**/*.png
+outputs
+**/plots
+Ala2Im*
+
 # Byte-compiled / optimized / DLL files
 */**/__pycache__/
 *.py[cod]
