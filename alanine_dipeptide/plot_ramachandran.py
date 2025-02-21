@@ -497,7 +497,6 @@ def create_ramachandran_plot(
         tempplotfolder += "amber"
     tempplotfolder += f"_{resolution}"
     tempplotfolder += "_" + convention
-    tempplotfolder += f"_T{temperature}"
     os.makedirs(tempplotfolder, exist_ok=True)
     fig_suffix = ""
     if log_scale:
@@ -637,6 +636,8 @@ def create_ramachandran_plot(
         ############################################################################
         
         figname = f"{tempplotfolder}/{plot_type}{fig_suffix}_pltstyle"
+        if plot_type in ["free_energy", "gibbs", "exp"]:
+            figname += f"_T{temperature}"
         # plot once as contour, once as heatmap/imshow
         for pltstyle in pltstyles:
             if pltstyle == "contour":
@@ -687,9 +688,9 @@ def create_ramachandran_plot(
     # plot force norm
     ############################################################################
     figname = f"{tempplotfolder}/forcenorm"
-    title = r"$\text{Norm Force Plot for Alanine Dipeptide } |F|$"
+    title = r"$\text{Force Norm for Alanine Dipeptide } |F|$"
     if log_scale:
-        title = r"$\text{Norm Force Plot for Alanine Dipeptide } \log_{10}(|F|)$"
+        title = r"$\text{Force Norm for Alanine Dipeptide } \log_{10}(|F|)$"
         figname += "_log"
     figname += "_pltstyle"
     # plot once as contour, once as heatmap/imshow
@@ -735,9 +736,9 @@ def create_ramachandran_plot(
     ############################################################################
     forces_norm_gibbs = np.exp(-forces_norm / kbTplot)
     figname = f"{tempplotfolder}/forcenorm_gibbs_T{plot_temperature}"
-    title = r"$\text{Gibbs/Boltzmann Distribution of Force Norm for Alanine Dipeptide } e^{-|F|/k_B T}$"
+    title = r"$\text{Unnormalized Boltzmann Distribution of Force Norm } e^{-|F|/k_B T}$"
     if log_scale:
-        title = r"$\text{Gibbs/Boltzmann Distribution of Force Norm for Alanine Dipeptide } \log_{10}(e^{-|F|/k_B T})$"
+        title = r"$\text{Unnormalized Boltzmann Distribution of Force Norm } \log_{10}(e^{-|F|/k_B T})$"
         figname += "_log"
     figname += "_pltstyle"
     # plot once as contour, once as heatmap/imshow
