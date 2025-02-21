@@ -9,6 +9,7 @@ from sklearn.cluster import KMeans
 from tqdm import tqdm
 import scipy.special
 import math
+import copy
 
 from openmm.app import PDBFile, ForceField, Simulation, NoCutoff, HBonds
 from openmm import Context, VerletIntegrator, Platform
@@ -43,14 +44,7 @@ from dihedral import (
 # from torch_cluster import radius_graph
 from mace_neighbourshood import get_neighborhood
 
-# silence:
-# UserWarning: The TorchScript type system doesn't support instance-level annotations on empty non-base types in `__init__`. Instead, either 1) use a type annotation in the class body, or 2) wrap the type in `torch.jit.Attribute
-import warnings
-warnings.filterwarnings("ignore", category=UserWarning, module="torch.jit")
-
-# silence:
-# FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
-warnings.filterwarnings("ignore", category=FutureWarning, module="torch.serialization")
+import silence_warnings
 
 
 def compute_ramachandran_openmm_amber(
@@ -161,6 +155,7 @@ def compute_ramachandran_openmm_amber(
 def num_params(model):
     return sum(p.numel() for p in model.parameters())
 
+
 def compute_ramachandran_mace(
     phi_values,
     psi_values,
@@ -176,7 +171,7 @@ def compute_ramachandran_mace(
     # if file exists, load it
     resolution = len(phi_values)
     datafile = (
-        f"alanine_dipeptide/outputs/ramachandran_mace_{resolution}_{convention}.npy"
+        f"alanine_dipeptide/outputs/ramachandran_mace_{resolution}_{convention}_{dtypestr}.npy"
     )
     if os.path.exists(datafile) and not recompute:
         energies, forces_norm, forces_normmean = np.load(datafile)
@@ -186,7 +181,9 @@ def compute_ramachandran_mace(
 
         # Get MACE force field: mace_off or mace_anicc
         device_str = "cuda" if torch.cuda.is_available() else "cpu"
-        calc = mace_off(model="medium", device=device_str, dtype=dtypestr, enable_cueq=True)
+        calc = mace_off(
+            model="medium", device=device_str, dtype=dtypestr, enable_cueq=True
+        )
         # calc = mace_anicc(device=device_str, dtype=dtypestr, enable_cueq=True)
         device = calc.device
         atoms.calc = calc
@@ -228,17 +225,29 @@ def compute_ramachandran_mace(
         num_edges = batch_base["edge_index"].shape[1]
         num_samples = phi_psi_grid.shape[0]
         num_batches = math.ceil(num_samples / batch_size)
-        for i in tqdm(range(num_batches), total=num_batches):
+        for batch_idx in tqdm(range(num_batches), total=num_batches):
             # last batch can be truncated (not enough samples left to fill the batch)
-            bs = min(batch_size, num_samples - i * batch_size)
+            bs = min(batch_size, num_samples - batch_idx * batch_size)
+            
             # Make minibatch version of batch, that is just multiple copies of the same batch
             # but mimicks a batch from a typical torch_geometric dataloader
-            minibatch_base = _atoms_to_batch(atoms_calc, atoms, bs=bs, repeats=bs)
+            minibatch_base = _atoms_to_batch(atoms_calc, copy.deepcopy(atoms), bs=bs, repeats=bs)
             # n_atoms = torch.tensor([torch.sum(minibatch["batch"] == i) for i in range(bs)])
-
-            phi_psi_batch = phi_psi_grid[i : i + bs].requires_grad_(True)
+            
+            # TODO: does this do anything?
+            # if atoms_calc.model_type in ["MACE", "EnergyDipoleMACE"]:
+            #     minibatch = atoms_calc._clone_batch(minibatch_base)
+            #     node_heads = minibatch["head"][minibatch["batch"]]
+            #     num_atoms_arange = torch.arange(minibatch["positions"].shape[0])
+            #     node_e0 = atoms_calc.models[0].atomic_energies_fn(minibatch["node_attrs"])[
+            #         num_atoms_arange, node_heads
+            #     ]
+            #     compute_stress = not atoms_calc.use_compile
+            # else:
+            #     compute_stress = False
 
             # Update positions
+            phi_psi_batch = phi_psi_grid[batch_idx * batch_size : (batch_idx + 1) * batch_size].requires_grad_(True)
             minibatch = update_alanine_dipeptide_with_grad_batched(
                 phi_psi_batch, minibatch_base, convention=convention
             )
@@ -251,14 +260,12 @@ def compute_ramachandran_mace(
 
             # Compute energies and forces for all configurations
             out = model(minibatch, compute_stress=compute_stress, training=True)
-            forces = torch.autograd.grad(
+            forces = torch.autograd.grad( # [B, 2]
                 outputs=out["energy"],  # [B]
                 inputs=phi_psi_batch,  # [B, 2]
                 grad_outputs=torch.ones_like(out["energy"]),  # [B]
                 create_graph=True,
-            )[
-                0
-            ]  # [B, 2]
+            )[0]  
 
             # append to the results
             energies_batched += [out["energy"].detach().cpu().numpy().reshape(bs, 1)]
@@ -270,20 +277,32 @@ def compute_ramachandran_mace(
                 torch.linalg.norm(forces, dim=1).detach().cpu().numpy().reshape(bs, 1)
             ]
             positions_rotated_batched += [minibatch["positions"].detach().cpu().numpy()]
-            tqdm.write(f"Batch {i} done. Avg energy: {np.mean(energies_batched[-1]):.2f} kJ/mol")
+            tqdm.write(
+                f"Batch {batch_idx} done. Avg energy: {np.mean(energies_batched[-1]):.2f} kJ/mol"
+            )
 
         # flatten the results [num_batches, bs] -> [num_samples, 1] -> [num_phi, num_psi]
-        energies_batched = np.concatenate(energies_batched, axis=0)  
-        energies = energies_batched.reshape(len(phi_values), len(psi_values))  
+        energies_batched = np.concatenate(energies_batched, axis=0)
+        energies = energies_batched.reshape(len(phi_values), len(psi_values))
         forces_norm_batched = np.concatenate(forces_norm_batched, axis=0)
-        forces_norm = forces_norm_batched.reshape(len(phi_values), len(psi_values))  
+        forces_norm = forces_norm_batched.reshape(len(phi_values), len(psi_values))
         forces_normmean_batched = np.concatenate(forces_normmean_batched, axis=0)
-        forces_normmean = forces_normmean_batched.reshape(len(phi_values), len(psi_values))  
-        # positions_rotated_batched = np.concatenate(positions_rotated_batched, axis=0)
-        # positions_rotated = positions_rotated_batched.reshape(len(phi_values), len(psi_values), num_atoms, 3)
+        forces_normmean = forces_normmean_batched.reshape(len(phi_values), len(psi_values))
 
         # Save the energies to a file
         np.save(datafile, (energies, forces_norm, forces_normmean))
+        
+        # Save positions as xyz file
+        positions_rotated_batched = np.concatenate(positions_rotated_batched, axis=0)
+        with open(f"alanine_dipeptide/outputs/ramachandran_mace_{resolution}_{convention}_{dtypestr}.xyz", "w") as f:
+            for _idx in range(positions_rotated_batched.shape[0] // 22):
+                struc = positions_rotated_batched[_idx*22:(_idx+1)*22]
+                # Convert to xyz format
+                f.write(f"{len(struc)}\n")
+                f.write("Alanine dipeptide structure\n")
+                for i, pos in enumerate(struc):
+                    f.write(f"{atoms.symbols[i]} {pos[0]:.6f} {pos[1]:.6f} {pos[2]:.6f}\n")
+            
     return energies, forces_norm, forces_normmean
 
 
@@ -303,6 +322,12 @@ def create_ramachandran_plot(
     keep_lowest_energies=-1,  # keep only the lowest keep_lowest_energies% of energies. e.g. 95
     positive_energies=True,
     energy_range=None,
+    temperature=300,
+    plot_temperature=300,
+    transpose=True,
+    # mace
+    dtypestr="float32",
+    batch_size=48,
 ):
     """
     Generate a Ramachandran plot for the alanine dipeptide energy landscape.
@@ -343,6 +368,8 @@ def create_ramachandran_plot(
             psi_values,
             recompute=recompute,
             convention=convention,
+            dtypestr=dtypestr,
+            batch_size=batch_size,
         )
         unit = "eV"
     else:
@@ -466,12 +493,14 @@ def create_ramachandran_plot(
         # kb = 1.380649 * 10^-23 J K^-1
         # kb = 8.314462618 * 10^-3 kJ/(mol⋅K)
         # T = 300 K
-        kbT = 0.00831446261815324 * 300.0  # kJ/mol/K
+        kbT = 0.00831446261815324 * temperature  # kJ/mol/K
+        kbTplot = 0.00831446261815324 * plot_temperature  # kJ/mol/K
     elif unit == "kcal/mol":
         # Energies are in kcal/mol, Forces in kcal/mol/nm
         # kb = 1.9872041 * 10^-3 kcal/(mol⋅K)
         # kbT = 0.0019872041 * 300.0 # kcal/mol/K
-        kbT = 0.0019872041 * 300.0  # kcal/mol/K
+        kbT = 0.0019872041 * temperature  # kcal/mol/K
+        kbTplot = 0.0019872041 * plot_temperature  # kcal/mol/K
     else:
         raise ValueError(f"Invalid unit: {unit}")
 
@@ -558,127 +587,207 @@ def create_ramachandran_plot(
     print(f"Min value in plot: {np.nanmin(energies):.1f} [{unit}]")
     print(f"Max value in plot: {np.nanmax(energies):.1f} [{unit}]")
 
-    ############################################################################
-    # Plot the energies, create a contour plot
-    ############################################################################
-
     # values to float32
-    energies = energies.astype(np.float64)
-    phi_values = phi_values.astype(np.float64)
-    psi_values = psi_values.astype(np.float64)
+    energies = energies.astype(np.float32)
+    phi_values = phi_values.astype(np.float32)
+    psi_values = psi_values.astype(np.float32)
 
     # plotly has a transposed convention
-    energies = energies.T
-    forces_norm = forces_norm.T
-    forces_normmean = forces_normmean.T
+    if transpose:
+        energies = energies.T
+        forces_norm = forces_norm.T
+        forces_normmean = forces_normmean.T
     if log_scale:
         forces_norm = np.log10(forces_norm)
         forces_normmean = np.log10(forces_normmean)
 
+    ############################################################################
+    # Folder for plots
+    ############################################################################
     tempplotfolder = "alanine_dipeptide/plots/"
     tempplotfolder += plot_type
-    tempplotfolder += "_mace" if use_mace else "_amber"
+    if use_mace:
+        tempplotfolder += "_mace"
+        tempplotfolder += f"_{dtypestr}"
+    else:
+        tempplotfolder += "_amber"
+    tempplotfolder += f"_{resolution}"
     tempplotfolder += "_" + convention
+    tempplotfolder += f"_T{temperature}"
     os.makedirs(tempplotfolder, exist_ok=True)
 
-    # Create a meshgrid for plotting (using 'ij' indexing so that phi_values index the first axis)
-    # phi_grid, psi_grid = np.meshgrid(phi_values, psi_values, indexing="ij")
-
-    fig = go.Figure(
-        data=go.Contour(
-            x=phi_values,
-            y=psi_values,
-            z=energies,
-            colorscale="Viridis",
-            type="contour",
-            colorbar=dict(
-                title="[kJ/mol]",
-            ),
-            contours=dict(
-                start=np.nanmin(energies),
-                end=np.nanmax(energies),
-            ),
+    ############################################################################
+    # Plot the energies, create a contour plot
+    ############################################################################
+    # plot once as contour, once as heatmap/imshow
+    for pltstyle in ["contour", "heatmap"]:
+        figname = f"{tempplotfolder}/pltstyle_contour"
+        figname = figname.replace("pltstyle", pltstyle)
+        if pltstyle == "contour":
+            fig = go.Figure(
+                data=go.Contour(
+                    x=phi_values,
+                    y=psi_values,
+                    z=energies,
+                    colorscale="Viridis",
+                    type="contour",
+                    line_smoothing=0,
+                    connectgaps=False,
+                    colorbar=dict(
+                        title="[kJ/mol]",
+                    ),
+                    # contours=dict(
+                    #     start=np.nanmin(energies),
+                    #     end=np.nanmax(energies),
+                    # ),
+                )
+            )
+        elif pltstyle == "heatmap":
+            fig = go.Figure(
+                data=go.Heatmap(
+                    x=phi_values,
+                    y=psi_values,
+                    z=energies,
+                    colorscale="Viridis",
+                )
+            )
+        fig.update_layout(
+            title=title,
+            xaxis_title="Phi (radians)",
+            yaxis_title="Psi (radians)",
+            margin=dict(l=0, r=0, t=50, b=0),
         )
-    )
-    fig.update_layout(
-        title=title,
-        xaxis_title="Phi (radians)",
-        yaxis_title="Psi (radians)",
-        margin=dict(l=0, r=0, t=50, b=0),
-    )
-    fig_suffix = ""
-    if log_scale:
-        fig_suffix += "_log"
-    if energy_range is not None:
-        fig_suffix += f"_range_{energy_range[0]}_{energy_range[1]}"
-    if positive_energies:
-        fig_suffix += "_positive"
-    if keep_lowest_energies > 0:
-        fig_suffix += f"_mask{keep_lowest_energies}"
-    fig_suffix += ".png"
-    figname = f"{tempplotfolder}/ramachandran{fig_suffix}"
-    fig.write_image(figname)
-    print(f"Saved {figname}")
-    if show:
-        fig.show()
+        fig_suffix = ""
+        if log_scale:
+            fig_suffix += "_log"
+        if energy_range is not None:
+            fig_suffix += f"_range_{energy_range[0]}_{energy_range[1]}"
+        if positive_energies:
+            fig_suffix += "_positive"
+        if keep_lowest_energies > 0:
+            fig_suffix += f"_mask{keep_lowest_energies}"
+        fig_suffix += ".png"
+        figname = f"{tempplotfolder}/contour{fig_suffix}"
+        fig.write_image(figname)
+        print(f"Saved {figname}")
+        if show:
+            fig.show()
 
     ############################################################################
     # plot force norm
-    figname = f"{tempplotfolder}/ramachandran_forcenorm"
+    figname = f"{tempplotfolder}/pltstyle_forcenorm"
     title = r"$\text{Norm Force Plot for Alanine Dipeptide } |F|$"
     if log_scale:
         title = r"$\text{Norm Force Plot for Alanine Dipeptide } \log_{10}(|F|)$"
         figname += "_log"
-    fig = go.Figure(
-        data=go.Contour(
-            x=phi_values,
-            y=psi_values,
-            z=forces_norm,
-            colorscale="Viridis",
-            type="contour",
-            colorbar=dict(
-                title=f"[{unit}]",
-            ),
+    # plot once as contour, once as heatmap/imshow
+    for pltstyle in ["contour", "heatmap"]:
+        figname = figname.replace("pltstyle", pltstyle)
+        if pltstyle == "contour":
+            fig = go.Figure(
+                data=go.Contour(
+                    x=phi_values,
+                    y=psi_values,
+                    z=forces_norm,
+                    colorscale="Viridis",
+                    type="contour",
+                    colorbar=dict(
+                        title=f"[{unit}]",
+                    ),
+                )
+            )
+        elif pltstyle == "heatmap":
+            fig = go.Figure(
+                data=go.Heatmap(
+                    x=phi_values,
+                    y=psi_values,
+                    z=forces_norm,
+                    colorscale="Viridis",
+                )
+            )
+        fig.update_layout(
+            title=title,
+            xaxis_title="Phi (radians)",
+            yaxis_title="Psi (radians)",
+            margin=dict(l=0, r=5, t=50, b=0),
         )
-    )
-    fig.update_layout(
-        title=title,
-        xaxis_title="Phi (radians)",
-        yaxis_title="Psi (radians)",
-        margin=dict(l=0, r=5, t=50, b=0),
-    )
-    figname += ".png"
-    fig.write_image(figname)
-    print(f"Saved {figname}")
-
+        figname += ".png"
+        fig.write_image(figname)
+        print(f"Saved {figname}")
+    
     ############################################################################
-    # plot force norm mean
-    figname = f"{tempplotfolder}/ramachandran_forcenormmean"
-    title = r"$\text{Mean Norm Force Plot for Alanine Dipeptide } \frac{1}{22}\sum_{i=1}^{22}|F_i|$"
+    # plot Gibbs/Boltzmann distribution of force norm
+    forces_norm_gibbs = np.exp(-forces_norm / kbTplot)
+    figname = f"{tempplotfolder}/pltstyle_forcenorm_gibbs_T{plot_temperature}"
+    title = r"$\text{Gibbs/Boltzmann Distribution of Force Norm for Alanine Dipeptide } e^{-|F|/k_B T}$"
     if log_scale:
-        title = r"$\text{Mean Norm Force Plot for Alanine Dipeptide } \log_{10}(\frac{1}{22}\sum_{i=1}^{22}|F_i|)$"
+        title = r"$\text{Gibbs/Boltzmann Distribution of Force Norm for Alanine Dipeptide } \log_{10}(e^{-|F|/k_B T})$"
         figname += "_log"
-    fig = go.Figure(
-        data=go.Contour(
-            x=phi_values,
-            y=psi_values,
-            z=forces_normmean,
-            colorscale="Viridis",
-            type="contour",
-            colorbar=dict(
-                title=f"[{unit}]",
-            ),
+    # plot once as contour, once as heatmap/imshow
+    for pltstyle in ["contour", "heatmap"]:
+        figname = figname.replace("pltstyle", pltstyle)
+        if pltstyle == "contour":
+            fig = go.Figure(
+                data=go.Contour(
+                    x=phi_values,
+                    y=psi_values,
+                    z=forces_norm_gibbs,
+                    colorscale="Viridis",
+                    type="contour",
+                    line_smoothing=0,
+                    connectgaps=False,
+                    colorbar=dict(
+                        title=f"[{unit}]",
+                    ),
+                )
+            )
+        elif pltstyle == "heatmap":
+            fig = go.Figure(
+                data=go.Heatmap(
+                    x=phi_values,
+                    y=psi_values,
+                    z=forces_norm_gibbs,
+                    colorscale="Viridis",
+                )
+            )
+        fig.update_layout(
+            title=title,
+            xaxis_title="Phi (radians)",
+            yaxis_title="Psi (radians)",
+            margin=dict(l=0, r=5, t=50, b=0),
         )
-    )
-    fig.update_layout(
-        title=title,
-        xaxis_title="Phi (radians)",
-        yaxis_title="Psi (radians)",
-        margin=dict(l=0, r=5, t=50, b=0),
-    )
-    figname += ".png"
-    fig.write_image(figname)
-    print(f"Saved {figname}")
+        figname += ".png"
+        fig.write_image(figname)
+        print(f"Saved {figname}")
+
+    # ############################################################################
+    # # plot force norm mean
+    # figname = f"{tempplotfolder}/contour_forcenormmean"
+    # title = r"$\text{Mean Norm Force Plot for Alanine Dipeptide } \frac{1}{22}\sum_{i=1}^{22}|F_i|$"
+    # if log_scale:
+    #     title = r"$\text{Mean Norm Force Plot for Alanine Dipeptide } \log_{10}(\frac{1}{22}\sum_{i=1}^{22}|F_i|)$"
+    #     figname += "_log"
+    # fig = go.Figure(
+    #     data=go.Contour(
+    #         x=phi_values,
+    #         y=psi_values,
+    #         z=forces_normmean,
+    #         colorscale="Viridis",
+    #         type="contour",
+    #         colorbar=dict(
+    #             title=f"[{unit}]",
+    #         ),
+    #     )
+    # )
+    # fig.update_layout(
+    #     title=title,
+    #     xaxis_title="Phi (radians)",
+    #     yaxis_title="Psi (radians)",
+    #     margin=dict(l=0, r=5, t=50, b=0),
+    # )
+    # figname += ".png"
+    # fig.write_image(figname)
+    # print(f"Saved {figname}")
 
 
 def compare_amber_mace_energies(
@@ -799,115 +908,64 @@ def compare_amber_mace_energies(
 if __name__ == "__main__":
 
     # Amber force field
-    # create_ramachandran_plot(
-    #     use_mace=False,
-    #     log_scale=False,
-    #     positive_energies=True,
-    #     plot_type="exp",
-    # )
-    # create_ramachandran_plot(
-    #     use_mace=False,
-    #     log_scale=False,
-    #     plot_type="gibbs",
-    # )
-
-    # create_ramachandran_plot(
-    #     use_mace=False,
-    #     log_scale=False,
-    #     positive_energies=False,
-    #     energy_range=(-128, -38),
-    #     plot_type="energy",
-    #     convention="andreas",
-    # )
-    # create_ramachandran_plot(
-    #     use_mace=False,
-    #     log_scale=True,
-    #     positive_energies=True,
-    #     # energy_range=(-128, -38),
-    #     plot_type="energy",
-    #     convention="andreas",
-    # )
-    # create_ramachandran_plot(
-    #     use_mace=False,
-    #     log_scale=False,
-    #     positive_energies=False,
-    #     energy_range=(-128, -38),
-    #     plot_type="energy",
-    #     convention="bg",
-    # )
-    # create_ramachandran_plot(
-    #     use_mace=False,
-    #     log_scale=True,
-    #     positive_energies=True,
-    #     # energy_range=(-128, -38),
-    #     plot_type="energy",
-    #     convention="bg",
-    # )
-
-    # create_ramachandran_plot(
-    #     recompute=False,
-    #     use_mace=False,
-    #     log_scale=False,
-    #     show_plt=True,
-    #     positive_energies=True,
-    #     plot_type="exp",
-    # )
+    create_ramachandran_plot(
+        use_mace=False,
+        log_scale=True,
+        positive_energies=True,
+        plot_type="energy",
+    )
+    create_ramachandran_plot(
+        use_mace=False,
+        log_scale=False,
+        positive_energies=True,
+        plot_type="exp",
+    )
 
     ############################################################
     # MACE force field
     ############################################################
+    
+    # normal temperature
     create_ramachandran_plot(
         use_mace=True,
-        log_scale=False,
+        log_scale=True,
         plot_type="energy",
         positive_energies=True,
+        temperature=300,
     )
     create_ramachandran_plot(
         use_mace=True,
+        log_scale=False,
+        plot_type="exp",
+        positive_energies=True,
+        temperature=300,
+    )
+    
+    # high temperature
+    create_ramachandran_plot(
+        use_mace=True,
         log_scale=True,
-        show_plt=True,
         plot_type="energy",
         positive_energies=True,
+        temperature=3000,
     )
     create_ramachandran_plot(
         use_mace=True,
         log_scale=False,
-        plot_type="gibbs",
-        positive_energies=True,
-    )
-
-    # Our loss is the unnormalized Boltzmann distribution = exp(-E/kbT)
-    # order: keep_lowest_energies, energy_range, positive_energies
-    create_ramachandran_plot(
-        use_mace=True,
-        log_scale=False,
         plot_type="exp",
         positive_energies=True,
+        temperature=3000,
     )
-    # log scale
-    create_ramachandran_plot(
-        use_mace=True,
-        log_scale=True,
-        plot_type="exp",
-        positive_energies=True,
-    )
-    # mask out highest 10%
-    create_ramachandran_plot(
-        use_mace=True,
-        log_scale=False,
-        plot_type="exp",
-        positive_energies=True,
-        keep_lowest_energies=0.5,
-    )
-    # mask out highest 10%, log scale
-    create_ramachandran_plot(
-        use_mace=True,
-        log_scale=True,
-        plot_type="exp",
-        positive_energies=True,
-        keep_lowest_energies=0.5,
-    )
-
+    # we will sample a Boltzmann distribution of the force norm at some temperature
+    # create_ramachandran_plot(
+    #     use_mace=True,
+    #     log_scale=True,
+    #     plot_type="exp",
+    #     positive_energies=True,
+    #     temperature=300,
+    #     plot_temperature=300,
+    # )
+    
     ############################################################
     # Compare Amber and MACE energy landscapes
     ############################################################

@@ -227,7 +227,7 @@ def compute_dihedral_torch(p0, p1, p2, p3):
     v = b0 - torch.dot(b0, b1) * b1
     w = b2 - torch.dot(b2, b1) * b1
     x = torch.dot(v, w)
-    y = torch.dot(torch.cross(b1, v), w)
+    y = torch.dot(torch.linalg.cross(b1, v), w)
     return torch.atan2(y, x)
 
 
@@ -237,6 +237,7 @@ def set_dihedral_torch(
     target_angle: torch.Tensor,
     atoms_to_rotate: Iterable[int] | str,
     convention: str = "andreas",
+    absolute: bool = True,
 ) -> torch.Tensor:
     """
     Adjust the dihedral angle defined by the four atoms specified in 'indices'
@@ -263,7 +264,10 @@ def set_dihedral_torch(
     p3 = positions[l].clone()
 
     current_angle = compute_dihedral_torch(p0, p1, p2, p3)
-    delta = target_angle - current_angle
+    if absolute:
+        delta = target_angle - current_angle
+    else:
+        delta = target_angle
 
     # Define the rotation axis (passing through atoms 1 and 2)
     axis = positions[k] - positions[j]
@@ -319,7 +323,7 @@ def update_neighborhood_graph_batched(
     n_edges_list = []
     # loop over batches in superbatch
     # better to do via
-    # tg.utils.unbatch(src=batch["positions"], batch=batch["batch"], dim=0) # [B, N_atoms, 3]
+    # positions_list = tg.utils.unbatch(src=batch["positions"], batch=batch["batch"], dim=0) # [B, N_atoms, 3]
     cnt = 0
     bs = batch["batch"].max() + 1
     for i in range(bs):
@@ -451,6 +455,7 @@ def set_dihedral_torch_batched(
     target_angle: torch.Tensor,
     atoms_to_rotate: Iterable[int] | str,
     convention: str = "andreas",
+    absolute: bool = True,
 ) -> torch.Tensor:
     """
     Batched Torch version: Adjust the dihedral angle defined by the four atoms,
@@ -486,7 +491,10 @@ def set_dihedral_torch_batched(
     p3 = positions[:, l].clone()
 
     current_angle = compute_dihedral_torch_batched(p0, p1, p2, p3)  # (B,)
-    delta = target_angle - current_angle  # (B,)
+    if absolute:
+        delta = target_angle - current_angle  # (B,)
+    else:
+        delta = target_angle  # (B,)
 
     # Define the rotation axis (through atoms j and k).
     axis = positions[:, k] - positions[:, j]  # (B, 3)
