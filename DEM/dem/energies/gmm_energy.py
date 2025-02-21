@@ -13,6 +13,27 @@ from dem.utils.logging_utils import fig_to_image
 
 
 class GMM(BaseEnergyFunction):
+    """Gaussian Mixture Model energy function for DEM.
+    
+    This class implements a GMM energy function that can be used for training and evaluating DEM models.
+    Used in train.py and eval.py as the energy_function parameter.
+
+    Args:
+        dimensionality (int, optional): Dimension of input space. Defaults to 2.
+        n_mixes (int, optional): Number of Gaussian components. Defaults to 40.
+        loc_scaling (float, optional): Scale factor for component means. Defaults to 40.
+        log_var_scaling (float, optional): Scale factor for component variances. Defaults to 1.0.
+        device (str, optional): Device to place tensors on. Defaults to "cpu".
+        true_expectation_estimation_n_samples (int, optional): Number of samples for expectation estimation. Defaults to 1e5.
+        plotting_buffer_sample_size (int, optional): Number of samples to plot. Defaults to 512.
+        plot_samples_epoch_period (int, optional): How often to plot samples. Defaults to 5.
+        should_unnormalize (bool, optional): Whether to unnormalize samples. Defaults to False.
+        data_normalization_factor (float, optional): Factor for data normalization. Defaults to 50.
+        train_set_size (int, optional): Size of training set. Defaults to 100000.
+        test_set_size (int, optional): Size of test set. Defaults to 2000.
+        val_set_size (int, optional): Size of validation set. Defaults to 2000.
+        data_path_train (str, optional): Path to training data file. Defaults to None.
+    """
     def __init__(
         self,
         dimensionality=2,
@@ -64,11 +85,23 @@ class GMM(BaseEnergyFunction):
         )
 
     def setup_test_set(self):
+        """Sets up test dataset by sampling from GMM.
+        Used in train.py and eval.py during model testing.
+
+        Returns:
+            torch.Tensor: Test dataset tensor
+        """
         # test_sample = self.gmm.sample((self.test_set_size,))
         # return test_sample
         return self.gmm.test_set
 
     def setup_train_set(self):
+        """Sets up training dataset by sampling from GMM or loading from file.
+        Used in train.py during model training.
+
+        Returns:
+            torch.Tensor: Training dataset tensor
+        """
         if self.data_path_train is None:
             train_samples = self.normalize(self.gmm.sample((self.train_set_size,)))
 
@@ -86,10 +119,25 @@ class GMM(BaseEnergyFunction):
         return train_samples
 
     def setup_val_set(self):
+        """Sets up validation dataset by sampling from GMM.
+        Used in train.py during model validation.
+
+        Returns:
+            torch.Tensor: Validation dataset tensor
+        """
         val_samples = self.gmm.sample((self.val_set_size,))
         return val_samples
 
     def __call__(self, samples: torch.Tensor) -> torch.Tensor:
+        """Evaluates GMM log probability at given samples.
+        Used in train.py and eval.py for computing model loss.
+
+        Args:
+            samples (torch.Tensor): Input points to evaluate
+
+        Returns:
+            torch.Tensor: Log probability values at input points
+        """
         if self.should_unnormalize:
             samples = self.unnormalize(samples)
 
@@ -97,6 +145,12 @@ class GMM(BaseEnergyFunction):
 
     @property
     def dimensionality(self):
+        """Dimension of input space.
+        Used in train.py and eval.py for model initialization.
+
+        Returns:
+            int: Input dimensionality
+        """
         return 2
 
     def log_on_epoch_end(
@@ -109,6 +163,18 @@ class GMM(BaseEnergyFunction):
         replay_buffer=None,
         prefix: str = "",
     ) -> None:
+        """Logs metrics and visualizations at the end of each epoch.
+        Used in train.py for logging training progress.
+
+        Args:
+            latest_samples (torch.Tensor): Most recent generated samples
+            latest_energies (torch.Tensor): Energy values for latest samples
+            wandb_logger (WandbLogger): Logger for metrics and visualizations
+            unprioritized_buffer_samples (torch.Tensor, optional): Samples from unprioritized buffer
+            cfm_samples (torch.Tensor, optional): Samples from CFM model
+            replay_buffer (ReplayBuffer, optional): Replay buffer containing past samples
+            prefix (str, optional): Prefix for logged metrics. Defaults to ""
+        """
         if wandb_logger is None:
             return
 
@@ -158,6 +224,15 @@ class GMM(BaseEnergyFunction):
         name: str = "",
         should_unnormalize: bool = False,
     ) -> None:
+        """Logs sample visualizations.
+        Used in train.py for logging sample distributions.
+
+        Args:
+            samples (torch.Tensor): Samples to visualize
+            wandb_logger (WandbLogger): Logger for visualizations
+            name (str, optional): Name for logged images. Defaults to ""
+            should_unnormalize (bool, optional): Whether to unnormalize samples. Defaults to False
+        """
         if wandb_logger is None:
             return
 
@@ -167,6 +242,17 @@ class GMM(BaseEnergyFunction):
         wandb_logger.log_image(f"{name}", [samples_fig])
 
     def get_single_dataset_fig(self, samples, name, plotting_bounds=(-1.4 * 40, 1.4 * 40)):
+        """Creates visualization of samples against GMM contours.
+        Used in train.py for sample visualization.
+
+        Args:
+            samples (torch.Tensor): Samples to plot
+            name (str): Title for plot
+            plotting_bounds (tuple, optional): Plot bounds. Defaults to (-1.4*40, 1.4*40)
+
+        Returns:
+            numpy.ndarray: Plot as image array
+        """
         fig, ax = plt.subplots(1, 1, figsize=(8, 8))
 
         self.gmm.to("cpu")
@@ -186,6 +272,17 @@ class GMM(BaseEnergyFunction):
         return fig_to_image(fig)
 
     def get_dataset_fig(self, samples, gen_samples=None, plotting_bounds=(-1.4 * 40, 1.4 * 40)):
+        """Creates side-by-side visualization of buffer and generated samples.
+        Used in train.py for comparing sample distributions.
+
+        Args:
+            samples (torch.Tensor): Buffer samples to plot
+            gen_samples (torch.Tensor, optional): Generated samples to plot. Defaults to None
+            plotting_bounds (tuple, optional): Plot bounds. Defaults to (-1.4*40, 1.4*40)
+
+        Returns:
+            numpy.ndarray: Plot as image array
+        """
         fig, axs = plt.subplots(1, 2, figsize=(12, 4))
 
         self.gmm.to("cpu")
