@@ -1,4 +1,4 @@
-_target_: dem.energies.aldanine_dipeptide_pseudoenergy.MaceAlDiForcePseudoEnergy
+_target_: dem.energies.alanine_dipeptide_pesudoenergy.MaceAlDiForcePseudoEnergy
 
 dimensionality: 2
 device: ${trainer.accelerator}

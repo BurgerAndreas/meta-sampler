@@ -18,7 +18,7 @@ import openmm
 from openmm.unit import nanometer
 from openmm.unit import Quantity
 
-from dihedral import (
+from alanine_dipeptide.dihedral import (
     set_dihedral_torch,
     set_dihedral_torch_batched,
     compute_dihedral_torch,

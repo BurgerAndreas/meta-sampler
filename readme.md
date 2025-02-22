@@ -23,12 +23,13 @@ WIP by Andreas at https://github.com/BurgerAndreas/meta-sampler/tree/tps-1d/alan
 mamba activate sampler
 cd DEM
 
-# 1d toy example
 python dem/train.py experiment=gmm_idem
+
+# 1d toy example
 python dem/train.py experiment=simple_test_idem
 
 # 2d alanine dipeptide
-python alanine_dipeptide/alanine_dipeptide_mace.py
+python dem/train.py experiment=aldi_2d
 ```
 
 ### N^3d Alanine Dipeptide (all atom)

@@ -8,6 +8,19 @@ from lightning.pytorch.loggers import WandbLogger
 from dem.energies.base_energy_function import BaseEnergyFunction
 from dem.utils.logging_utils import fig_to_image
 
+import copy
+import mace
+from mace.calculators import mace_off, mace_anicc
+from mace.tools import torch_geometric, torch_tools, utils
+import mace.data
+import ase
+import ase.io
+import ase.build
+from ase.calculators.calculator import Calculator, all_changes
+import openmm
+from openmm.unit import nanometer
+from openmm.unit import Quantity
+
 import torch_geometric as tg
 
 from alanine_dipeptide.mace_neighbourhood import update_neighborhood_graph_batched
@@ -26,6 +39,7 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
         plotting_buffer_sample_size=512,
         plot_samples_epoch_period=5,
         should_unnormalize=False,
+        data_normalization_factor=2.0, # ?
         # loss weights
         force_weight=1.0,
         energy_weight=0.1,
@@ -99,7 +113,7 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
         Is a 2d grid of points in the range [-pi, pi] x [-pi, pi].
         """
         samples = torch.linspace(-np.pi, np.pi, self.test_set_size, device=self.device)
-        samples = torch.linalg.cross(samples, torch.ones_like(samples), dim=-1)
+        samples = torch.cartesian_prod(samples, samples)
         return samples
 
     def setup_train_set(self):
@@ -107,6 +121,7 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
         Is a random set of 2D points in the range [-pi, pi] x [-pi, pi].
         """
         samples = torch.rand(self.train_set_size, 2, device=self.device) * 2 * np.pi - np.pi
+        # samples = torch.cartesian_prod(samples, samples)
         return samples
 
     def setup_val_set(self):
@@ -114,7 +129,7 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
         Is a 2d grid of points in the range [-pi, pi] x [-pi, pi].
         """
         samples = torch.linspace(-np.pi, np.pi, self.val_set_size, device=self.device)
-        samples = torch.linalg.cross(samples, torch.ones_like(samples), dim=-1)
+        samples = torch.cartesian_prod(samples, samples)
         return samples
 
     def __call__(self, samples: torch.Tensor) -> torch.Tensor:
@@ -126,6 +141,7 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
         Returns:
             torch.Tensor: Energy values at input points
         """
+        bs = samples.shape[0]
         # Make minibatch version of batch, that is just multiple copies of the same AlDi configuration
         # but mimicks a batch from a typical torch_geometric dataloader
         # and that we can then rotate to get different phi/psi values

@@ -6,8 +6,9 @@
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 defaults:
-  - override /energy: aldi2d
-  - override /model/net: geometric # geometric, egnn
+  - override /energy: aldi_2d
+  # - override /model/net: egnn 
+  # - override /model/noise_schedule: geometric
 
 # alanine dipeptide 2d
 tags: ["AlDi", "iDEM"]
