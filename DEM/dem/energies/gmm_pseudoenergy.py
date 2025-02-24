@@ -238,8 +238,8 @@ class GMMPseudoEnergy(BaseEnergyFunction):
         True transition states (index-1 saddle points) should have exactly one negative eigenvalue.
 
         Args:
-            transition_points (torch.Tensor): Tensor of shape (n_points, dimensionality) containing
-                                            candidate transition state coordinates
+            transition_points (torch.Tensor): 
+                Tensor of shape (n_points, dimensionality) containing candidate transition state coordinates
 
         Returns:
             dict: Dictionary containing:
