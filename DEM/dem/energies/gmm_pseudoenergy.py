@@ -47,6 +47,8 @@ class GMMPseudoEnergy(GMM):
         
         # Initialize base class
         super().__init__(**gmm_kwargs)
+        
+        self._is_molecule = False
 
         self.energy_weight = energy_weight
         self.force_weight = force_weight

@@ -42,7 +42,17 @@ from .components.sdes import VEReverseSDE
 
 
 def t_stratified_loss(batch_t, batch_loss, num_bins=5, loss_name=None):
-    """Stratify loss by binning t."""
+    """Stratify loss by binning time values.
+    
+    Args:
+        batch_t: Batch of time values
+        batch_loss: Batch of loss values
+        num_bins: Number of bins to stratify into
+        loss_name: Name prefix for the loss
+        
+    Returns:
+        Dictionary mapping time ranges to average loss in that range
+    """
     flat_losses = batch_loss.flatten().detach().cpu().numpy()
     flat_t = batch_t.flatten().detach().cpu().numpy()
     bin_edges = np.linspace(0.0, 1.0 + 1e-3, num_bins + 1)
@@ -62,7 +72,14 @@ def t_stratified_loss(batch_t, batch_loss, num_bins=5, loss_name=None):
 
 
 def get_wandb_logger(loggers):
-    """Gets the wandb logger if it is the list of loggers otherwise returns None."""
+    """Gets the Weights & Biases logger from a list of loggers.
+    
+    Args:
+        loggers: List of PyTorch Lightning loggers
+        
+    Returns:
+        The WandbLogger instance if present, otherwise None
+    """
     wandb_logger = None
     for logger in loggers:
         if isinstance(logger, WandbLogger):
@@ -716,6 +733,18 @@ class DEMLitModule(LightningModule):
         )
 
     def _compute_total_var(self, generated_samples, data_set):
+        """Compute total variation distance between histograms of interatomic distances.
+
+        Calculates the total variation distance between normalized histograms of interatomic 
+        distances from generated samples and a reference dataset.
+
+        Args:
+            generated_samples (torch.Tensor): Tensor of generated molecular configurations
+            data_set (torch.Tensor): Tensor of reference molecular configurations from training/test set
+
+        Returns:
+            float: Total variation distance between the normalized histograms, in range [0,1]
+        """
         generated_samples_dists = (
             self.energy_function.interatomic_dist(generated_samples)
             .cpu()
@@ -1096,9 +1125,10 @@ class DEMLitModule(LightningModule):
         names = [f"test/full_batch/{name}" for name in names]
         d = dict(zip(names, dists))
 
-        d["test/full_batch/dist_total_var"] = self._compute_total_var(
-            self.energy_function.unnormalize(final_samples), test_set
-        )
+        if self.energy_function.is_molecule:
+            d["test/full_batch/dist_total_var"] = self._compute_total_var(
+                self.energy_function.unnormalize(final_samples), test_set
+            )
 
         self.log_dict(d, sync_dist=True)
         print(f"Done computing large batch distribution distances. W2 = {dists[1]}")
