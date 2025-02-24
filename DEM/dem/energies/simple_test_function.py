@@ -115,7 +115,7 @@ class SimpleTestFunction(BaseEnergyFunction):
         samples = torch.linspace(-2, 2, self.val_set_size, device=self.device)
         return samples.unsqueeze(-1)
 
-    def __call__(self, samples: torch.Tensor) -> torch.Tensor:
+    def __call__(self, samples: torch.Tensor, return_aux_output: bool = False) -> torch.Tensor:
         """Evaluates the negative energy at the given samples.
 
         Args:
@@ -126,6 +126,9 @@ class SimpleTestFunction(BaseEnergyFunction):
         """
         if self.should_unnormalize:
             samples = self.unnormalize(samples)
+        if return_aux_output:
+            aux_output = {}
+            return -energy(samples.squeeze(-1)), aux_output
         return -energy(samples.squeeze(-1))
 
     def log_on_epoch_end(

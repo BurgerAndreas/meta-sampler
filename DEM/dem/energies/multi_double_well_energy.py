@@ -76,7 +76,10 @@ class MultiDoubleWellEnergy(BaseEnergyFunction):
 
         super().__init__(dimensionality=dimensionality, is_molecule=is_molecule)
 
-    def __call__(self, samples: torch.Tensor) -> torch.Tensor:
+    def __call__(self, samples: torch.Tensor, return_aux_output: bool = False) -> torch.Tensor:
+        if return_aux_output:
+            aux_output = {}
+            return -self.multi_double_well.energy(samples).squeeze(-1), aux_output
         return -self.multi_double_well.energy(samples).squeeze(-1)
 
     def setup_test_set(self):

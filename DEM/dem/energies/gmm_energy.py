@@ -129,7 +129,7 @@ class GMM(BaseEnergyFunction):
         val_samples = self.gmm.sample((self.val_set_size,))
         return val_samples
 
-    def __call__(self, samples: torch.Tensor) -> torch.Tensor:
+    def __call__(self, samples: torch.Tensor, return_aux_output: bool = False) -> torch.Tensor:
         """Evaluates GMM log probability at given samples.
         Used in train.py and eval.py for computing model loss.
 
@@ -142,6 +142,9 @@ class GMM(BaseEnergyFunction):
         if self.should_unnormalize:
             samples = self.unnormalize(samples)
 
+        if return_aux_output:
+            aux_output = {}
+            return self.gmm.log_prob(samples), aux_output
         return self.gmm.log_prob(samples)
 
     @property
@@ -258,7 +261,8 @@ class GMM(BaseEnergyFunction):
         wandb_logger.log_image(f"{name}", [samples_fig])
 
     def get_single_dataset_fig(
-        self, samples, name, n_contour_levels=50, plotting_bounds=(-1.4 * 40, 1.4 * 40)
+        self, samples, name, n_contour_levels=50, plotting_bounds=(-1.4 * 40, 1.4 * 40),
+        plot_gaussian_means=False,
     ):
         """Creates visualization of samples against GMM contours.
         Used in train.py for sample visualization.
@@ -285,6 +289,11 @@ class GMM(BaseEnergyFunction):
             plot_marginal_pair(samples, ax=ax, bounds=plotting_bounds)
         if name is not None:
             ax.set_title(f"{name}")
+        
+        if plot_gaussian_means:
+            means = self.gmm.distribution.component_distribution.loc
+            ax.scatter(*means.detach().cpu().T, color="red", marker="x")
+            ax.legend()
 
         self.gmm.to(self.device)
 
@@ -296,6 +305,7 @@ class GMM(BaseEnergyFunction):
         gen_samples=None,
         n_contour_levels=50,
         plotting_bounds=(-1.4 * 40, 1.4 * 40),
+        plot_gaussian_means=False,
     ):
         """Creates side-by-side visualization of buffer and generated samples.
         Used in train.py for comparing sample distributions.
@@ -335,6 +345,11 @@ class GMM(BaseEnergyFunction):
             # plot generated samples
             plot_marginal_pair(gen_samples, ax=axs[1], bounds=plotting_bounds)
             axs[1].set_title("Generated samples")
+
+        if plot_gaussian_means:
+            means = self.gmm.distribution.component_distribution.loc
+            axs[1].scatter(*means.detach().cpu().T, color="red", marker="x")
+            axs[1].legend()
 
         # delete subplot
         else:

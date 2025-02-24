@@ -380,14 +380,20 @@ class DEMLitModule(LightningModule):
         error_norms = (predicted_score - true_score).pow(2).mean(-1)
         return error_norms
 
-    def get_loss(self, times: torch.Tensor, samples: torch.Tensor) -> torch.Tensor:
-        estimated_score = estimate_grad_Rt(
+    def get_loss(self, times: torch.Tensor, samples: torch.Tensor, return_aux_output: bool = False) -> torch.Tensor:
+        _out = estimate_grad_Rt(
             times,
             samples,
             self.energy_function,
             self.noise_schedule,
             num_mc_samples=self.num_estimator_mc_samples,
+            # use_vmap=self.use_vmap,
+            return_aux_output=return_aux_output,
         )
+        if return_aux_output:
+            estimated_score, aux_output = _out
+        else:
+            estimated_score = _out
 
         if self.clipper is not None and self.clipper.should_clip_scores:
             if self.energy_function.is_molecule:
@@ -413,7 +419,10 @@ class DEMLitModule(LightningModule):
 
         error_norms = (predicted_score - estimated_score).pow(2).mean(-1)
 
-        return self.lambda_weighter(times) * error_norms
+        if return_aux_output:
+            return self.lambda_weighter(times) * error_norms, aux_output
+        else:
+            return self.lambda_weighter(times) * error_norms
 
     def training_step(self, batch, batch_idx):
         loss = 0.0
@@ -443,7 +452,7 @@ class DEMLitModule(LightningModule):
                     self.energy_function.n_spatial_dim,
                 )
 
-            dem_loss = self.get_loss(times, noised_samples)
+            dem_loss, aux_output = self.get_loss(times, noised_samples, return_aux_output=True)
             # Uncomment for SM
             # dem_loss = self.get_score_loss(times, iter_samples, noised_samples)
             self.log_dict(
@@ -463,6 +472,14 @@ class DEMLitModule(LightningModule):
                 on_epoch=True,
                 prog_bar=True,
             )
+            for key, value in aux_output.items():
+                self.log(
+                    f"train/dem_{key}",
+                    value.mean(),
+                    on_step=False,
+                    on_epoch=True,
+                    prog_bar=False,
+                )
 
         if self.should_train_cfm(batch_idx):
             if self.hparams.debug_use_train_data:
@@ -615,6 +632,7 @@ class DEMLitModule(LightningModule):
             self._log_dist_total_var(prefix="val")
 
     def _log_energy_w2(self, prefix="val"):
+        """Wasserstein distance (EMD) between energy of data set and energy of generated samples"""
         if prefix == "test":
             data_set = self.energy_function.sample_val_set(self.eval_batch_size)
             generated_samples = self.generate_samples(

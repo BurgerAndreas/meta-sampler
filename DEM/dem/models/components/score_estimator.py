@@ -39,6 +39,7 @@ def log_expectation_reward(
     noise_schedule: BaseNoiseSchedule,
     num_mc_samples: int,
     clipper: Clipper = None,
+    return_aux_output: bool = False,
 ):
     """Computes the log expectation of rewards using Monte Carlo sampling.
 
@@ -61,14 +62,22 @@ def log_expectation_reward(
     samples = repeated_x + (torch.randn_like(repeated_x) * h_t.sqrt())
 
     # Compute log rewards
-    log_rewards = energy_function(samples)
+    if return_aux_output:
+        log_rewards, aux_output = energy_function(samples, return_losses=True)
+    else:
+        log_rewards = energy_function(samples)
 
     # Clip log rewards if necessary
     if clipper is not None and clipper.should_clip_log_rewards:
         log_rewards = clipper.clip_log_rewards(log_rewards)
 
     # Average log rewards
-    return torch.logsumexp(log_rewards, dim=-1) - np.log(num_mc_samples)
+    reward_val = torch.logsumexp(log_rewards, dim=-1) - np.log(num_mc_samples)
+    
+    if return_aux_output:
+        return reward_val, aux_output
+    else:
+        return reward_val
 
 
 def estimate_grad_Rt(
@@ -78,6 +87,7 @@ def estimate_grad_Rt(
     noise_schedule: BaseNoiseSchedule,
     num_mc_samples: int,
     use_vmap: bool = True,
+    return_aux_output: bool = False,
 ):
     """Estimates the gradient of the reward function with respect to position.
 
@@ -92,18 +102,24 @@ def estimate_grad_Rt(
         energy_function: Energy function to evaluate samples
         noise_schedule: Noise schedule for perturbing samples
         num_mc_samples: Number of Monte Carlo samples to use
-
+        return_aux_output: Whether to return the auxiliary output
     Returns:
         Gradient of reward function with respect to position
     """
     if t.ndim == 0:
         t = t.unsqueeze(0).repeat(len(x))
 
+    def _log_expectation_reward(t, x, energy_function, noise_schedule, num_mc_samples):
+        return log_expectation_reward(t, x, energy_function, noise_schedule, num_mc_samples, return_aux_output=return_aux_output)
+    
     if use_vmap:
-        grad_fxn = torch.func.grad(log_expectation_reward, argnums=1)
+        # argnums=1 -> computes grad w.r.t. to t and x
+        grad_fxn = torch.func.grad(_log_expectation_reward, argnums=1, has_aux=return_aux_output)
         vmapped_fxn = torch.vmap(
             grad_fxn, in_dims=(0, 0, None, None, None), randomness="different"
         )
+        # grad_output, aux_output = vmapped_fxn(t, x, energy_function, noise_schedule, num_mc_samples)
+        # return grad_output, aux_output
         return vmapped_fxn(t, x, energy_function, noise_schedule, num_mc_samples)
     else:
         raise NotImplementedError("Non-vmap gradient estimation not implemented")
