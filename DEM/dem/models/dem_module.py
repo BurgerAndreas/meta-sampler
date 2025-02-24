@@ -153,6 +153,7 @@ class DEMLitModule(LightningModule):
         num_negative_time_steps=100,
         seed=None,
         nll_batch_size=256,
+        use_vmap=True,
     ) -> None:
         """Initialize a `MNISTLitModule`.
 
@@ -331,7 +332,8 @@ class DEMLitModule(LightningModule):
 
         self.negative_time = negative_time
         self.num_negative_time_steps = num_negative_time_steps
-
+        self.use_vmap = use_vmap
+        
     def forward(self, t: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
         """Perform a forward pass through the model `self.net`.
 
@@ -1063,6 +1065,7 @@ class DEMLitModule(LightningModule):
                 self.energy_function,
                 self.noise_schedule,
                 self.num_estimator_mc_samples,
+                # use_vmap=self.use_vmap,
             )
 
         reverse_sde = VEReverseSDE(_grad_fxn, self.noise_schedule)

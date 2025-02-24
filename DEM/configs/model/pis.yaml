@@ -72,3 +72,5 @@ debug_use_train_data: false
 
 pis_scale: 1.
 time_range: 1.
+
+use_vmap: ${use_vmap

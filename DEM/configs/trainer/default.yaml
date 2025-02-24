@@ -8,6 +8,8 @@ max_epochs: 1000
 accelerator: cuda
 devices: 1
 
+# num_workers: 15
+
 # mixed precision for extra speed-up
 # precision: 16
 

@@ -23,10 +23,14 @@ WIP by Andreas at https://github.com/BurgerAndreas/meta-sampler/tree/tps-1d/alan
 mamba activate sampler
 cd DEM
 
+# 2d GMM (from the DEM paper)
 python dem/train.py experiment=gmm_idem
 
 # 1d toy example
 python dem/train.py experiment=simple_test_idem
+
+# 2d GMM with pseudo-energy
+python dem/train.py experiment=gmm_idem_pseudo
 
 # 2d alanine dipeptide
 python dem/train.py experiment=aldi_2d

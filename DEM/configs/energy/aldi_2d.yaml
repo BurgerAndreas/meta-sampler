@@ -5,6 +5,8 @@ device: ${trainer.accelerator}
 
 plot_samples_epoch_period: 1
 
+use_vmap: ${use_vmap}
+
 data_normalization_factor: 2.0
 should_unnormalize: false
 

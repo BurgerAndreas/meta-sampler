@@ -87,3 +87,6 @@ num_negative_time_steps: 100
 nll_batch_size: 256
 
 seed: ${seed}
+
+# dem_module.py
+use_vmap: ${use_vmap}

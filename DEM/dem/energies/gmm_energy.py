@@ -162,6 +162,7 @@ class GMM(BaseEnergyFunction):
         cfm_samples=None,
         replay_buffer=None,
         prefix: str = "",
+        return_fig: bool = False,
     ) -> None:
         """Logs metrics and visualizations at the end of each epoch.
         Used in train.py for logging training progress.
@@ -175,7 +176,7 @@ class GMM(BaseEnergyFunction):
             replay_buffer (ReplayBuffer, optional): Replay buffer containing past samples
             prefix (str, optional): Prefix for logged metrics. Defaults to ""
         """
-        if wandb_logger is None:
+        if wandb_logger is None and not return_fig:
             return
 
         if len(prefix) > 0 and prefix[-1] != "/":
@@ -241,7 +242,7 @@ class GMM(BaseEnergyFunction):
         samples_fig = self.get_single_dataset_fig(samples, name)
         wandb_logger.log_image(f"{name}", [samples_fig])
 
-    def get_single_dataset_fig(self, samples, name, plotting_bounds=(-1.4 * 40, 1.4 * 40)):
+    def get_single_dataset_fig(self, samples, name, n_contour_levels=50, plotting_bounds=(-1.4 * 40, 1.4 * 40)):
         """Creates visualization of samples against GMM contours.
         Used in train.py for sample visualization.
 
@@ -260,18 +261,19 @@ class GMM(BaseEnergyFunction):
             self.gmm.log_prob,
             bounds=plotting_bounds,
             ax=ax,
-            n_contour_levels=50,
+            n_contour_levels=n_contour_levels,
             grid_width_n_points=200,
         )
-
-        plot_marginal_pair(samples, ax=ax, bounds=plotting_bounds)
-        ax.set_title(f"{name}")
+        if samples is not None:
+            plot_marginal_pair(samples, ax=ax, bounds=plotting_bounds)
+        if name is not None:
+            ax.set_title(f"{name}")
 
         self.gmm.to(self.device)
 
         return fig_to_image(fig)
 
-    def get_dataset_fig(self, samples, gen_samples=None, plotting_bounds=(-1.4 * 40, 1.4 * 40)):
+    def get_dataset_fig(self, samples, gen_samples=None, n_contour_levels=50, plotting_bounds=(-1.4 * 40, 1.4 * 40)):
         """Creates side-by-side visualization of buffer and generated samples.
         Used in train.py for comparing sample distributions.
 
@@ -290,13 +292,14 @@ class GMM(BaseEnergyFunction):
             self.gmm.log_prob,
             bounds=plotting_bounds,
             ax=axs[0],
-            n_contour_levels=50,
+            n_contour_levels=n_contour_levels,
             grid_width_n_points=200,
         )
 
         # plot dataset samples
-        plot_marginal_pair(samples, ax=axs[0], bounds=plotting_bounds)
-        axs[0].set_title("Buffer")
+        if samples is not None:
+            plot_marginal_pair(samples, ax=axs[0], bounds=plotting_bounds)
+            axs[0].set_title("Buffer")
 
         if gen_samples is not None:
             plot_contours(
