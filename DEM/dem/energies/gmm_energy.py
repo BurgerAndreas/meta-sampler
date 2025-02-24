@@ -1,6 +1,10 @@
 from typing import Optional
 
-import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Agg')  # Force non-interactive backend
+import matplotlib.pyplot as plt  # Import pyplot after setting backend
+plt.ioff()  # Turn off interactive model
+
 import numpy as np
 import torch
 from fab.target_distributions import gmm

@@ -1,6 +1,11 @@
 import torch
 import numpy as np
-import matplotlib.pyplot as plt
+
+import matplotlib
+matplotlib.use('Agg')  # Force non-interactive backend
+import matplotlib.pyplot as plt  # Import pyplot after setting backend
+plt.ioff()  # Turn off interactive model
+
 from fab.target_distributions import gmm
 from fab.utils.plotting import plot_contours, plot_marginal_pair
 from dem.energies.base_energy_function import BaseEnergyFunction
@@ -9,6 +14,8 @@ from dem.utils.logging_utils import fig_to_image
 import scipy.optimize
 from tqdm import tqdm
 import wandb
+
+
 
 class GMMPseudoEnergy(GMM):
     """GMM pseudo-energy function to find transition points (index-1 saddle points).
