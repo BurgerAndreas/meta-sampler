@@ -11,33 +11,35 @@ from dem.utils.logging_utils import fig_to_image
 
 def f_prime(x):
     """Calculates the derivative of f(x) = x^2(x^2-1)^2.
-    
+
     Args:
         x (torch.Tensor): Input tensor
-        
+
     Returns:
         torch.Tensor: The derivative evaluated at x
     """
-    return 6 * x * (x**2 - 1)**2
+    return 6 * x * (x**2 - 1) ** 2
+
 
 def energy(x):
     """Calculates the energy as the absolute value of f'(x).
-    
+
     Args:
         x (torch.Tensor): Input tensor
-        
+
     Returns:
         torch.Tensor: The energy evaluated at x
     """
     # Energy defined as the absolute value of f'(x)
     return torch.abs(f_prime(x))
 
+
 class SimpleTestFunction(BaseEnergyFunction):
     """A simple 1D test energy function for validating DEM implementations.
-    
+
     The energy function is defined as the absolute value of the derivative of f(x) = x^2(x^2-1)^2.
     This creates a double-well potential with minima at x=-1 and x=1.
-    
+
     Args:
         dimensionality (int, optional): Must be 1. Defaults to 1.
         device (str, optional): Device to place tensors on. Defaults to "cpu".
@@ -49,6 +51,7 @@ class SimpleTestFunction(BaseEnergyFunction):
         test_set_size (int, optional): Size of test set. Defaults to 2000.
         val_set_size (int, optional): Size of validation set. Defaults to 2000.
     """
+
     def __init__(
         self,
         dimensionality=1,
@@ -63,19 +66,19 @@ class SimpleTestFunction(BaseEnergyFunction):
     ):
         if dimensionality != 1:
             raise ValueError("SimpleTestFunction only supports dimensionality=1")
-            
+
         torch.manual_seed(0)
         self.device = device
         self.plotting_buffer_sample_size = plotting_buffer_sample_size
         self.plot_samples_epoch_period = plot_samples_epoch_period
-        
+
         self.should_unnormalize = should_unnormalize
         self.data_normalization_factor = data_normalization_factor
-        
+
         self.train_set_size = train_set_size
         self.test_set_size = test_set_size
         self.val_set_size = val_set_size
-        
+
         self.curr_epoch = 0
         self.name = "simple_test"
 
@@ -87,7 +90,7 @@ class SimpleTestFunction(BaseEnergyFunction):
 
     def setup_test_set(self):
         """Creates evenly spaced test samples between -2 and 2.
-        
+
         Returns:
             torch.Tensor: Test samples of shape (test_set_size, 1)
         """
@@ -96,7 +99,7 @@ class SimpleTestFunction(BaseEnergyFunction):
 
     def setup_train_set(self):
         """Creates uniformly random training samples between -2 and 2.
-        
+
         Returns:
             torch.Tensor: Training samples of shape (train_set_size, 1)
         """
@@ -105,7 +108,7 @@ class SimpleTestFunction(BaseEnergyFunction):
 
     def setup_val_set(self):
         """Creates evenly spaced validation samples between -2 and 2.
-        
+
         Returns:
             torch.Tensor: Validation samples of shape (val_set_size, 1)
         """
@@ -114,10 +117,10 @@ class SimpleTestFunction(BaseEnergyFunction):
 
     def __call__(self, samples: torch.Tensor) -> torch.Tensor:
         """Evaluates the negative energy at the given samples.
-        
+
         Args:
             samples (torch.Tensor): Input samples to evaluate
-            
+
         Returns:
             torch.Tensor: Negative energy values at the samples
         """
@@ -136,7 +139,7 @@ class SimpleTestFunction(BaseEnergyFunction):
         prefix: str = "",
     ) -> None:
         """Logs visualization of samples to wandb at the end of each epoch.
-        
+
         Args:
             latest_samples (torch.Tensor): Most recent samples to visualize
             latest_energies (torch.Tensor): Energies of the latest samples
@@ -161,15 +164,15 @@ class SimpleTestFunction(BaseEnergyFunction):
 
     def get_dataset_fig(self, samples):
         """Creates a figure comparing samples to the target distribution.
-        
+
         Args:
             samples (torch.Tensor): Samples to visualize
-            
+
         Returns:
             numpy.ndarray: The figure as an image array
         """
         fig, ax = plt.subplots(figsize=(10, 6))
-        
+
         # Plot the normalized energy function
         x = torch.linspace(-2, 2, 1000, device=self.device)
         y = torch.exp(-energy(x))
@@ -177,17 +180,24 @@ class SimpleTestFunction(BaseEnergyFunction):
         dx = x[1] - x[0]
         Z = torch.trapz(y, x)
         y = y / Z
-        
-        ax.plot(x.cpu(), y.cpu(), 'b-', label='Target Distribution')
-        
+
+        ax.plot(x.cpu(), y.cpu(), "b-", label="Target Distribution")
+
         # Plot the histogram of samples
         if samples is not None:
             samples = samples.squeeze(-1)
-            ax.hist(samples.cpu(), bins=50, density=True, alpha=0.5, color='r', label='Samples')
-        
-        ax.set_xlabel('x')
-        ax.set_ylabel('Density')
+            ax.hist(
+                samples.cpu(),
+                bins=50,
+                density=True,
+                alpha=0.5,
+                color="r",
+                label="Samples",
+            )
+
+        ax.set_xlabel("x")
+        ax.set_ylabel("Density")
         ax.legend()
         ax.grid(True)
-        
-        return fig_to_image(fig) 
+
+        return fig_to_image(fig)

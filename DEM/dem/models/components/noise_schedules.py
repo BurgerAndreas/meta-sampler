@@ -71,7 +71,11 @@ class GeometricNoiseSchedule(BaseNoiseSchedule):
         # Let sigma_d = sigma_max / sigma_min
         # Then g(t) = sigma_min * sigma_d^t * sqrt{2 * log(sigma_d)}
         # See Eq 192 in https://arxiv.org/pdf/2206.00364.pdf
-        return self.sigma_min * (self.sigma_diff**t) * ((2 * np.log(self.sigma_diff)) ** 0.5)
+        return (
+            self.sigma_min
+            * (self.sigma_diff**t)
+            * ((2 * np.log(self.sigma_diff)) ** 0.5)
+        )
 
     def h(self, t):
         # Let sigma_d = sigma_max / sigma_min

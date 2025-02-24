@@ -29,7 +29,9 @@ class Clipper:
     def clip_scores(self, scores: torch.Tensor) -> torch.Tensor:
         score_norms = torch.linalg.vector_norm(scores, dim=-1).detach()
 
-        clip_coefficient = torch.clamp(self.max_score_norm / (score_norms + _EPSILON), max=1)
+        clip_coefficient = torch.clamp(
+            self.max_score_norm / (score_norms + _EPSILON), max=1
+        )
 
         return scores * clip_coefficient.unsqueeze(-1)
 

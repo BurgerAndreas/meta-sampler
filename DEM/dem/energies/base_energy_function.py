@@ -136,7 +136,9 @@ class BaseEnergyFunction(ABC):
 
         return outs
 
-    def sample_train_set(self, num_points: int, normalize: bool = False) -> Optional[torch.Tensor]:
+    def sample_train_set(
+        self, num_points: int, normalize: bool = False
+    ) -> Optional[torch.Tensor]:
         """Samples points from the training set.
 
         Args:
@@ -156,7 +158,9 @@ class BaseEnergyFunction(ABC):
 
         return outs
 
-    def sample_val_set(self, num_points: int, normalize: bool = False) -> Optional[torch.Tensor]:
+    def sample_val_set(
+        self, num_points: int, normalize: bool = False
+    ) -> Optional[torch.Tensor]:
         """Samples points from the validation set.
 
         Args:

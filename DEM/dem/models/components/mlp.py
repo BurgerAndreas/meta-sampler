@@ -98,7 +98,9 @@ class PositionalEmbedding(nn.Module):
 
 
 class Block(nn.Module):
-    def __init__(self, size: int, t_emb_size: int = 0, add_t_emb=False, concat_t_emb=False):
+    def __init__(
+        self, size: int, t_emb_size: int = 0, add_t_emb=False, concat_t_emb=False
+    ):
         super().__init__()
 
         in_size = size + t_emb_size if concat_t_emb else size
@@ -145,7 +147,10 @@ class FourierMLP(nn.Module):
         )
         self.layers = nn.Sequential(
             nn.GELU(),
-            *[nn.Sequential(nn.Linear(channels, channels), nn.GELU()) for _ in range(num_layers)],
+            *[
+                nn.Sequential(nn.Linear(channels, channels), nn.GELU())
+                for _ in range(num_layers)
+            ],
             nn.Linear(channels, int(np.prod(self.out_shape))),
         )
         if zero_init:
@@ -154,8 +159,12 @@ class FourierMLP(nn.Module):
 
     def forward(self, cond, inputs):
         cond = cond.view(-1, 1).expand((inputs.shape[0], 1))
-        sin_embed_cond = torch.sin((self.timestep_coeff * cond.float()) + self.timestep_phase)
-        cos_embed_cond = torch.cos((self.timestep_coeff * cond.float()) + self.timestep_phase)
+        sin_embed_cond = torch.sin(
+            (self.timestep_coeff * cond.float()) + self.timestep_phase
+        )
+        cos_embed_cond = torch.cos(
+            (self.timestep_coeff * cond.float()) + self.timestep_phase
+        )
         embed_cond = self.timestep_embed(
             rearrange([sin_embed_cond, cos_embed_cond], "d b w -> b (d w)")
         )

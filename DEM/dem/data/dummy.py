@@ -23,7 +23,7 @@ class DummyDataModule(LightningDataModule):
         return DataLoader(
             np.arange(size * self.batch_size)[:, None],
             batch_size=self.batch_size,
-            num_workers=self.num_workers
+            num_workers=self.num_workers,
         )
 
     def train_dataloader(self):

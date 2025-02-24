@@ -132,7 +132,6 @@ def update_neighborhood_graph_batched(
     return batch
 
 
-
 if __name__ == "__main__":
     positions = np.random.rand(10, 3)
     edge_index, shifts, unit_shifts, cell = get_neighborhood(positions, 1.0)

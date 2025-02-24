@@ -44,7 +44,9 @@ def compute_distribution_distances(
     dists = []
     to_return = []
     names = []
-    filtered_names = [name for name in NAMES if not is_jagged or not name.endswith("MMD")]
+    filtered_names = [
+        name for name in NAMES if not is_jagged or not name.endswith("MMD")
+    ]
     ts = len(pred) if pred_is_jagged else pred.shape[1]
     for t in np.arange(ts):
         if pred_is_jagged:
@@ -60,8 +62,12 @@ def compute_distribution_distances(
 
         if energy_function.is_molecule:
             eq_emd2 = eot(
-                a.reshape(-1, energy_function.n_particles, energy_function.n_spatial_dim).cpu(),
-                b.reshape(-1, energy_function.n_particles, energy_function.n_spatial_dim).cpu(),
+                a.reshape(
+                    -1, energy_function.n_particles, energy_function.n_spatial_dim
+                ).cpu(),
+                b.reshape(
+                    -1, energy_function.n_particles, energy_function.n_spatial_dim
+                ).cpu(),
             )
 
         if not pred_is_jagged and not is_jagged:
@@ -69,16 +75,29 @@ def compute_distribution_distances(
             mmd_poly = poly_mmd2(a, b, d=2, alpha=1.0, c=2.0).item()
             mmd_rbf = mix_rbf_mmd2(a, b, sigma_list=[0.01, 0.1, 1, 10, 100]).item()
         mean_dists = compute_distances(torch.mean(a, dim=0), torch.mean(b, dim=0))
-        median_dists = compute_distances(torch.median(a, dim=0)[0], torch.median(b, dim=0)[0])
+        median_dists = compute_distances(
+            torch.median(a, dim=0)[0], torch.median(b, dim=0)[0]
+        )
         if pred_is_jagged or is_jagged:
             dists.append((w1, w2, *mean_dists, *median_dists))
         else:
             if energy_function.is_molecule:
                 dists.append(
-                    (w1, w2, mmd_linear, mmd_poly, mmd_rbf, *mean_dists, *median_dists, eq_emd2)
+                    (
+                        w1,
+                        w2,
+                        mmd_linear,
+                        mmd_poly,
+                        mmd_rbf,
+                        *mean_dists,
+                        *median_dists,
+                        eq_emd2,
+                    )
                 )
             else:
-                dists.append((w1, w2, mmd_linear, mmd_poly, mmd_rbf, *mean_dists, *median_dists))
+                dists.append(
+                    (w1, w2, mmd_linear, mmd_poly, mmd_rbf, *mean_dists, *median_dists)
+                )
         # For multipoint datasets add timepoint specific distances
         if ts > 1:
             names.extend([f"t{t+1}/{name}" for name in filtered_names])
@@ -113,7 +132,9 @@ def compute_full_dataset_distribution_distances(
     dists = []
     to_return = []
     names = []
-    filtered_names = [name for name in NAMES if not is_jagged or not name.endswith("MMD")]
+    filtered_names = [
+        name for name in NAMES if not is_jagged or not name.endswith("MMD")
+    ]
     ts = len(pred) if pred_is_jagged else pred.shape[1]
     for t in np.arange(ts):
         if pred_is_jagged:
@@ -128,7 +149,9 @@ def compute_full_dataset_distribution_distances(
         w2 = wasserstein(a, b, power=2)
 
         mean_dists = compute_distances(torch.mean(a, dim=0), torch.mean(b, dim=0))
-        median_dists = compute_distances(torch.median(a, dim=0)[0], torch.median(b, dim=0)[0])
+        median_dists = compute_distances(
+            torch.median(a, dim=0)[0], torch.median(b, dim=0)[0]
+        )
         if pred_is_jagged or is_jagged:
             dists.append((w1, w2, *mean_dists, *median_dists))
         else:
@@ -210,8 +233,12 @@ def eot(x0, x1):
             x1_reordered = ot(x0[i], x1[j])
             reordered.append(x1_reordered)
         reordered = torch.stack(reordered)
-        R, t = torch.vmap(find_rigid_alignment)(x0[i][None].repeat(len(x1), 1, 1), reordered)
+        R, t = torch.vmap(find_rigid_alignment)(
+            x0[i][None].repeat(len(x1), 1, 1), reordered
+        )
         superimposed = torch.matmul(reordered, R)
         M.append(torch.cdist(x0[i].reshape(1, -1), superimposed.reshape(len(x1), -1)))
     M = torch.stack(M).squeeze()
-    return pot.emd2(M=M, a=torch.ones(len(x0)) / len(x0), b=torch.ones(len(x1)) / len(x1))
+    return pot.emd2(
+        M=M, a=torch.ones(len(x0)) / len(x0), b=torch.ones(len(x1)) / len(x1)
+    )

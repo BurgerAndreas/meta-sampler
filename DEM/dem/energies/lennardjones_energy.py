@@ -84,10 +84,14 @@ class LennardJonesPotential(Energy):
 
         lj_energies = lennard_jones_energy_torch(dists, self._eps, self._rm)
         # lj_energies = torch.clip(lj_energies, -1e4, 1e4)
-        lj_energies = lj_energies.view(*batch_shape, -1).sum(dim=-1) * self._energy_factor
+        lj_energies = (
+            lj_energies.view(*batch_shape, -1).sum(dim=-1) * self._energy_factor
+        )
 
         if self.oscillator:
-            osc_energies = 0.5 * self._remove_mean(x).pow(2).sum(dim=(-2, -1)).view(*batch_shape)
+            osc_energies = 0.5 * self._remove_mean(x).pow(2).sum(dim=(-2, -1)).view(
+                *batch_shape
+            )
             lj_energies = lj_energies + osc_energies * self._oscillator_scale
 
         return lj_energies[:, None]
@@ -200,7 +204,8 @@ class LennardJonesEnergy(BaseEnergyFunction):
         distances = x[:, None, :, :] - x[:, :, None, :]
         distances = distances[
             :,
-            torch.triu(torch.ones((self.n_particles, self.n_particles)), diagonal=1) == 1,
+            torch.triu(torch.ones((self.n_particles, self.n_particles)), diagonal=1)
+            == 1,
         ]
         dist = torch.linalg.norm(distances, dim=-1)
         return dist
@@ -232,7 +237,9 @@ class LennardJonesEnergy(BaseEnergyFunction):
             if cfm_samples is not None:
                 cfm_samples_fig = self.get_dataset_fig(cfm_samples)
 
-                wandb_logger.log_image(f"{prefix}cfm_generated_samples", [cfm_samples_fig])
+                wandb_logger.log_image(
+                    f"{prefix}cfm_generated_samples", [cfm_samples_fig]
+                )
 
         self.curr_epoch += 1
 

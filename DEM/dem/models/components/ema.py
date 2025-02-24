@@ -1,4 +1,5 @@
 """Exponential moving average wrapper for torch.nn.Module."""
+
 import torch
 
 
@@ -50,7 +51,9 @@ class EMAWrapper(torch.nn.Module):
 
     def _get_decay(self, num_updates: int) -> float:
         """Decay warmup magic from meta."""
-        return min(self.decay, (1 + num_updates) / (self.warmup_denominator + num_updates))
+        return min(
+            self.decay, (1 + num_updates) / (self.warmup_denominator + num_updates)
+        )
 
     def update_ema(self) -> None:
         """Update the shadow params with a new EMA update."""

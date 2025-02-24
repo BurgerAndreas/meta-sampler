@@ -48,7 +48,9 @@ def load_alanine_dipeptide_ase():
 
 
 # from mace.calculators.mace import MACECalculator
-def repeated_atoms_to_batch(calc: mace.calculators.mace.MACECalculator, atoms, bs=1, repeats=1):
+def repeated_atoms_to_batch(
+    calc: mace.calculators.mace.MACECalculator, atoms, bs=1, repeats=1
+):
     config = mace.data.config_from_atoms(atoms, charges_key=calc.charges_key)
     data_loader = torch_geometric.dataloader.DataLoader(
         dataset=[
@@ -91,6 +93,7 @@ def update_alanine_dipeptide_xyz_from_dihedrals(
 
     return atoms
 
+
 def update_alanine_dipeptide_xyz_from_dihedrals_batched(
     phi_psi: torch.Tensor,
     batch: dict,
@@ -123,7 +126,7 @@ def update_alanine_dipeptide_xyz_from_dihedrals_batched(
     bs = batch["batch"].max() + 1
     positions = tg.utils.unbatch(src=batch["positions"], batch=batch["batch"], dim=0)
     positions = torch.stack(list(positions), dim=0).reshape(bs, -1, 3)
-    
+
     if set_phi:
         positions = set_dihedral_torch_batched(
             positions, "phi", phi_psi[:, 0], "phi", convention
@@ -132,7 +135,7 @@ def update_alanine_dipeptide_xyz_from_dihedrals_batched(
         positions = set_dihedral_torch_batched(
             positions, "psi", phi_psi[:, 1], "psi", convention
         )
-    
+
     # Update positions in the new batch
     if return_unbatched:
         new_batch["positions"] = positions

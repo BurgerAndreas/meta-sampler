@@ -92,13 +92,17 @@ class PrioritisedReplayBuffer:
             print("Buffer not initialised, expected that checkpoint will be loaded.")
 
     @torch.no_grad()
-    def add(self, x: torch.Tensor, log_w: torch.Tensor, log_q_old: torch.Tensor) -> None:
+    def add(
+        self, x: torch.Tensor, log_w: torch.Tensor, log_q_old: torch.Tensor
+    ) -> None:
         """Add a new batch of generated data to the replay buffer."""
         batch_size = x.shape[0]
         x = x.to(self.device)
         log_w = log_w.to(self.device)
         log_q_old = log_q_old.to(self.device)
-        indices = (torch.arange(batch_size) + self.current_index).to(self.device) % self.max_length
+        indices = (torch.arange(batch_size) + self.current_index).to(
+            self.device
+        ) % self.max_length
         self.buffer.x[indices] = x
         self.buffer.log_w[indices] = log_w
         self.buffer.log_q_old[indices] = log_q_old
@@ -113,7 +117,8 @@ class PrioritisedReplayBuffer:
         self, batch_size: int, prioritize: Optional[bool] = None
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Return a batch of sampled data, if the batch size is specified then the batch will have
-        a leading axis of length batch_size, otherwise the default self.batch_size will be used."""
+        a leading axis of length batch_size, otherwise the default self.batch_size will be used.
+        """
         if not self.can_sample:
             raise Exception("Buffer must be at minimum length before calling sample")
 
@@ -130,9 +135,9 @@ class PrioritisedReplayBuffer:
                 indices = torch.randint(max_index, (batch_size,)).to(self.device)
         else:
             if prioritize:
-                indices = sample_without_replacement(self.buffer.log_w[:max_index], batch_size).to(
-                    self.device
-                )
+                indices = sample_without_replacement(
+                    self.buffer.log_w[:max_index], batch_size
+                ).to(self.device)
             else:
                 indices = torch.randperm(max_index)[:batch_size].to(self.device)
         x, log_w, log_q_old, indices = (
@@ -275,7 +280,9 @@ class SimpleBuffer:
         batch_size = x.shape[0]
         x = x.to(self.device)
         energy = energy.to(self.device)
-        indices = (torch.arange(batch_size) + self.current_index).to(self.device) % self.max_length
+        indices = (torch.arange(batch_size) + self.current_index).to(
+            self.device
+        ) % self.max_length
         self.buffer.x[indices] = x
         self.buffer.energy[indices] = energy
         new_index = self.current_index + batch_size
@@ -304,7 +311,8 @@ class SimpleBuffer:
         self, batch_size: int, prioritize: Optional[bool] = None
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Return a batch of sampled data, if the batch size is specified then the batch will have
-        a leading axis of length batch_size, otherwise the default self.batch_size will be used."""
+        a leading axis of length batch_size, otherwise the default self.batch_size will be used.
+        """
         if not self.can_sample:
             raise Exception("Buffer must be at minimum length before calling sample")
 
@@ -342,7 +350,8 @@ class SimpleBuffer:
         log_w_batches = torch.chunk(log_w, n_batches)
         indices_batches = torch.chunk(indices, n_batches)
         dataset = [
-            (x, log_w, indxs) for x, log_w, indxs in zip(x_batches, log_w_batches, indices_batches)
+            (x, log_w, indxs)
+            for x, log_w, indxs in zip(x_batches, log_w_batches, indices_batches)
         ]
         return dataset
 
@@ -386,6 +395,8 @@ if __name__ == "__main__":
     buffer = PrioritisedReplayBuffer(dim, length, min_sample_length, initial_sampler)
     n_batches = 3
     for i in range(100):
-        buffer.add(torch.ones(batch_size, dim), torch.zeros(batch_size), torch.ones(batch_size))
+        buffer.add(
+            torch.ones(batch_size, dim), torch.zeros(batch_size), torch.ones(batch_size)
+        )
         x, log_w, log_q_old, indices = buffer.sample(batch_size)
         buffer.adjust(log_w + 1, log_q_old + 0.1, indices)

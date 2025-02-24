@@ -17,8 +17,11 @@ def wrap_for_richardsons(score_estimator):
         Function that applies Richardson's extrapolation to improve score estimates by combining
         results from different sample sizes.
     """
+
     def _fxn(t, x, energy_function, noise_schedule, num_mc_samples):
-        bigger_samples = score_estimator(t, x, energy_function, noise_schedule, num_mc_samples)
+        bigger_samples = score_estimator(
+            t, x, energy_function, noise_schedule, num_mc_samples
+        )
 
         smaller_samples = score_estimator(
             t, x, energy_function, noise_schedule, int(num_mc_samples / 2)
@@ -77,7 +80,7 @@ def estimate_grad_Rt(
     use_vmap: bool = True,
 ):
     """Estimates the gradient of the reward function with respect to position.
-    
+
     This is not directly computing ∇E (gradient of energy), but rather computing:
     \[ \nabla_x \log \mathbb{E}[\exp(E(x + \sqrt{h(t)}\epsilon))] \]
 
@@ -98,13 +101,13 @@ def estimate_grad_Rt(
 
     if use_vmap:
         grad_fxn = torch.func.grad(log_expectation_reward, argnums=1)
-        vmapped_fxn = torch.vmap(grad_fxn, in_dims=(0, 0, None, None, None), randomness="different")
+        vmapped_fxn = torch.vmap(
+            grad_fxn, in_dims=(0, 0, None, None, None), randomness="different"
+        )
         return vmapped_fxn(t, x, energy_function, noise_schedule, num_mc_samples)
     else:
         raise NotImplementedError("Non-vmap gradient estimation not implemented")
         # func must return a single-element Tensor
-        return torch.func.grad(
-            func=log_expectation_reward, argnums=1
-            )(
-                t, x, energy_function, noise_schedule, num_mc_samples
-            )
+        return torch.func.grad(func=log_expectation_reward, argnums=1)(
+            t, x, energy_function, noise_schedule, num_mc_samples
+        )

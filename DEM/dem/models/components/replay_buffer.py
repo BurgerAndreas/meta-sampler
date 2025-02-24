@@ -73,7 +73,9 @@ class ReplayBuffer:
         batch_size = x.shape[0]
         x = x.to(self.device)
         log_w = log_w.to(self.device)
-        indices = (torch.arange(batch_size) + self.current_index).to(self.device) % self.max_length
+        indices = (torch.arange(batch_size) + self.current_index).to(
+            self.device
+        ) % self.max_length
         self.buffer.x[indices] = x
         self.buffer.log_w[indices] = log_w
         self.buffer.add_count[indices] = self.current_add_count
@@ -102,13 +104,16 @@ class ReplayBuffer:
     @torch.no_grad()
     def sample(self, batch_size: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """Return a batch of sampled data, if the batch size is specified then the batch will have
-        a leading axis of length batch_size, otherwise the default self.batch_size will be used."""
+        a leading axis of length batch_size, otherwise the default self.batch_size will be used.
+        """
         if not self.can_sample:
             raise Exception("Buffer must be at minimum length before calling sample")
         max_index = self.max_length if self.is_full else self.current_index
         rank = self.current_add_count - self.buffer.add_count[:max_index]
         probs = torch.pow(1 / rank, self.temperature)
-        indices = torch.multinomial(probs, num_samples=batch_size, replacement=False).to(
+        indices = torch.multinomial(
+            probs, num_samples=batch_size, replacement=False
+        ).to(
             self.device
         )  # sample uniformly
         return self.buffer.x[indices], self.buffer.log_w[indices]
@@ -135,7 +140,9 @@ if __name__ == "__main__":
     def initial_sampler():
         return (torch.ones(batch_size, dim), torch.zeros(batch_size))
 
-    buffer = ReplayBuffer(dim, length, min_sample_length, initial_sampler, temperature=0.0)
+    buffer = ReplayBuffer(
+        dim, length, min_sample_length, initial_sampler, temperature=0.0
+    )
     n_batches = 3
     for i in range(100):
         buffer.add(torch.ones(batch_size, dim), torch.zeros(batch_size))

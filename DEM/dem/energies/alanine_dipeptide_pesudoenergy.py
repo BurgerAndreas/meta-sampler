@@ -24,7 +24,12 @@ from openmm.unit import Quantity
 import torch_geometric as tg
 
 from alanine_dipeptide.mace_neighbourhood import update_neighborhood_graph_batched
-from alanine_dipeptide.alanine_dipeptide_mace import load_alanine_dipeptide_ase, repeated_atoms_to_batch, update_alanine_dipeptide_xyz_from_dihedrals_batched
+from alanine_dipeptide.alanine_dipeptide_mace import (
+    load_alanine_dipeptide_ase,
+    repeated_atoms_to_batch,
+    update_alanine_dipeptide_xyz_from_dihedrals_batched,
+)
+
 
 class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
     """
@@ -32,6 +37,7 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
     Pseudonergy is defined as the absolute value of the force on the alanine dipeptide.
     Energy and forces are computed using MACE.
     """
+
     def __init__(
         self,
         dimensionality=2,
@@ -39,7 +45,7 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
         plotting_buffer_sample_size=512,
         plot_samples_epoch_period=5,
         should_unnormalize=False,
-        data_normalization_factor=2.0, # ?
+        data_normalization_factor=2.0,  # ?
         # loss weights
         force_weight=1.0,
         energy_weight=0.1,
@@ -57,28 +63,30 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
         self.device = device
         self.plotting_buffer_sample_size = plotting_buffer_sample_size
         self.plot_samples_epoch_period = plot_samples_epoch_period
-        
+
         self.train_set_size = train_set_size
         self.test_set_size = test_set_size
         self.val_set_size = val_set_size
-        
+
         self.curr_epoch = 0
         self.name = "aldanine_dipeptide_mace_pesudoenergy"
-        
+
         self.energy_weight = energy_weight
         self.force_weight = force_weight
         self.batch_size = batch_size
         self.use_vmap = use_vmap
-        
+
         ######################################################
         # Get MACE model
         ######################################################
         # mace_off or mace_anicc
         device_str = "cuda" if torch.cuda.is_available() else "cpu"
-        calc = mace_off(model="medium", device=device_str, dtype=dtypestr, enable_cueq=use_cueq)
+        calc = mace_off(
+            model="medium", device=device_str, dtype=dtypestr, enable_cueq=use_cueq
+        )
         # calc = mace_anicc(device=device_str, dtype=dtypestr, enable_cueq=True)
         device = calc.device
-        
+
         ######################################################
         # get alanine dipeptide atoms
         ######################################################
@@ -103,22 +111,23 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
         self.model = atoms_calc.models[0]
         self.atoms_calc = atoms_calc
         self.atoms = atoms
-        
+
         # Make minibatch version of batch, that is just multiple copies of the same AlDi configuration
         # but mimicks a batch from a typical torch_geometric dataloader
         # and that we can then rotate to get different phi/psi values
         if self.use_vmap:
             # batch_size of one that is duplicated by vmap
             self.minibatch = repeated_atoms_to_batch(
-                self.atoms_calc, copy.deepcopy(self.atoms), 
-                bs=1, repeats=1
+                self.atoms_calc, copy.deepcopy(self.atoms), bs=1, repeats=1
             )
         else:
             self.minibatch = repeated_atoms_to_batch(
-                self.atoms_calc, copy.deepcopy(self.atoms), 
-                bs=batch_size, repeats=batch_size
+                self.atoms_calc,
+                copy.deepcopy(self.atoms),
+                bs=batch_size,
+                repeats=batch_size,
             )
-        
+
         ######################################################
         # Initialize BaseEnergyFunction
         ######################################################
@@ -126,8 +135,8 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
             dimensionality=2,
             is_molecule=True,
             # normalization for the force?
-            normalization_min=-4000, 
-            normalization_max=-3000, # TODO: change this
+            normalization_min=-4000,
+            normalization_max=-3000,  # TODO: change this
         )
 
     def setup_test_set(self):
@@ -142,7 +151,9 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
         """Returns a training set of 2D points (dihedral angles).
         Is a random set of 2D points in the range [-pi, pi] x [-pi, pi].
         """
-        samples = torch.rand(self.train_set_size, 2, device=self.device) * 2 * np.pi - np.pi
+        samples = (
+            torch.rand(self.train_set_size, 2, device=self.device) * 2 * np.pi - np.pi
+        )
         # samples = torch.cartesian_prod(samples, samples)
         return samples
 
@@ -167,13 +178,13 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
             return self._forward_vmap(samples)
         else:
             return self._forward_batched(samples)
-    
+
     def _forward_vmap(self, samples: torch.Tensor) -> torch.Tensor:
         """Takes in a single sample and returns the pseudoenergy.
         No batch dimension
         """
         minibatch = self.minibatch.clone()
-        
+
         # TODO: does this do anything?
         if self.atoms_calc.model_type in ["MACE", "EnergyDipoleMACE"]:
             minibatch = self.atoms_calc._clone_batch(minibatch)
@@ -185,10 +196,10 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
             compute_stress = not self.atoms_calc.use_compile
         else:
             compute_stress = False
-        
+
         # Update xyz positions of atoms based on phi/psi values
         # forces = gradient of energy with respect to phi/psi
-        phi_psi_batch = samples.requires_grad_(True) 
+        phi_psi_batch = samples.requires_grad_(True)
         # TODO: code up non-batched version
         minibatch = update_alanine_dipeptide_xyz_from_dihedrals_batched(
             phi_psi_batch, minibatch, convention=convention
@@ -199,7 +210,7 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
         minibatch = update_neighborhood_graph_batched(
             minibatch, model.r_max.item(), overwrite_cell=True
         )
-        
+
         # TODO: non-batched version
         # Compute energies and forces
         out = self.model(minibatch, compute_stress=compute_stress, training=True)
@@ -209,14 +220,16 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
             inputs=phi_psi_batch,  # [B, 2]
             grad_outputs=torch.ones_like(out["energy"]),  # [B]
             create_graph=True,
-        )[0]  
-        
+        )[0]
+
         forces_norm = torch.linalg.norm(forces, dim=1)
-        
+
         # TODO: normalize energies and maybe forces to a reasonable range
-        pseudoenergy = self.energy_weight * out["energy"] + self.force_weight * forces_norm
+        pseudoenergy = (
+            self.energy_weight * out["energy"] + self.force_weight * forces_norm
+        )
         return pseudoenergy
-    
+
     def _forward_batched(self, samples: torch.Tensor) -> torch.Tensor:
         bs = samples.shape[0]
         if bs == self.batch_size:
@@ -224,10 +237,9 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
         else:
             # construct a minibatch with the correct batch size
             self.minibatch = repeated_atoms_to_batch(
-                self.atoms_calc, copy.deepcopy(self.atoms), 
-                bs=bs, repeats=bs
+                self.atoms_calc, copy.deepcopy(self.atoms), bs=bs, repeats=bs
             )
-        
+
         # TODO: does this do anything?
         if self.atoms_calc.model_type in ["MACE", "EnergyDipoleMACE"]:
             minibatch = self.atoms_calc._clone_batch(minibatch)
@@ -239,10 +251,10 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
             compute_stress = not self.atoms_calc.use_compile
         else:
             compute_stress = False
-        
+
         # Update xyz positions of atoms based on phi/psi values
         # forces = gradient of energy with respect to phi/psi
-        phi_psi_batch = samples.requires_grad_(True) 
+        phi_psi_batch = samples.requires_grad_(True)
         minibatch = update_alanine_dipeptide_xyz_from_dihedrals_batched(
             phi_psi_batch, minibatch, convention=convention
         )
@@ -252,7 +264,7 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
         minibatch = update_neighborhood_graph_batched(
             minibatch, model.r_max.item(), overwrite_cell=True
         )
-        
+
         # Compute energies and forces for all configurations
         out = self.model(minibatch, compute_stress=compute_stress, training=True)
         # [B, 2]
@@ -261,12 +273,14 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
             inputs=phi_psi_batch,  # [B, 2]
             grad_outputs=torch.ones_like(out["energy"]),  # [B]
             create_graph=True,
-        )[0]  
-        
+        )[0]
+
         forces_norm = torch.linalg.norm(forces, dim=1)
-        
+
         # TODO: normalize energies and maybe forces to a reasonable range
-        pseudoenergy = self.energy_weight * out["energy"] + self.force_weight * forces_norm
+        pseudoenergy = (
+            self.energy_weight * out["energy"] + self.force_weight * forces_norm
+        )
         return pseudoenergy
 
     def log_on_epoch_end(
@@ -294,31 +308,38 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
 
     def get_dataset_fig(self, samples):
         fig, ax = plt.subplots(figsize=(10, 6))
-        
+
         # Plot the normalized energy function
-        x = torch.linspace(-np.pi, np.pi, 1000, device=self.device) # phi
-        y = torch.linspace(-np.pi, np.pi, 1000, device=self.device) # psi
+        x = torch.linspace(-np.pi, np.pi, 1000, device=self.device)  # phi
+        y = torch.linspace(-np.pi, np.pi, 1000, device=self.device)  # psi
         x, y = torch.meshgrid(x, y, indexing="ij")
         x = x.reshape(-1, 1)
         y = y.reshape(-1, 1)
         z = self(torch.cat([x, y], dim=-1))
         z = z.reshape(x.shape[0], -1)
-        
+
         # Normalize using trapezoidal rule
         dx = x[1] - x[0]
         Z = torch.trapz(z, x)
         z = z / Z
-        
-        ax.plot(x.cpu(), z.cpu(), 'b-', label='Target Distribution')
-        
+
+        ax.plot(x.cpu(), z.cpu(), "b-", label="Target Distribution")
+
         # Plot the histogram of samples
         if samples is not None:
             samples = samples.squeeze(-1)
-            ax.hist(samples.cpu(), bins=50, density=True, alpha=0.5, color='r', label='Samples')
-        
-        ax.set_xlabel('phi')
-        ax.set_ylabel('psi')
+            ax.hist(
+                samples.cpu(),
+                bins=50,
+                density=True,
+                alpha=0.5,
+                color="r",
+                label="Samples",
+            )
+
+        ax.set_xlabel("phi")
+        ax.set_ylabel("psi")
         ax.legend()
         ax.grid(True)
-        
-        return fig_to_image(fig) 
+
+        return fig_to_image(fig)

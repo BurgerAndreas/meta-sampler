@@ -14,7 +14,7 @@ from dem.utils.logging_utils import fig_to_image
 
 class GMM(BaseEnergyFunction):
     """Gaussian Mixture Model energy function for DEM.
-    
+
     This class implements a GMM energy function that can be used for training and evaluating DEM models.
     Used in train.py and eval.py as the energy_function parameter.
 
@@ -34,6 +34,7 @@ class GMM(BaseEnergyFunction):
         val_set_size (int, optional): Size of validation set. Defaults to 2000.
         data_path_train (str, optional): Path to training data file. Defaults to None.
     """
+
     def __init__(
         self,
         dimensionality=2,
@@ -190,28 +191,42 @@ class GMM(BaseEnergyFunction):
                     latest_samples = self.unnormalize(latest_samples)
 
                 if unprioritized_buffer_samples is not None:
-                    unprioritized_buffer_samples = self.unnormalize(unprioritized_buffer_samples)
+                    unprioritized_buffer_samples = self.unnormalize(
+                        unprioritized_buffer_samples
+                    )
 
             if unprioritized_buffer_samples is not None:
-                buffer_samples, _, _ = replay_buffer.sample(self.plotting_buffer_sample_size)
+                buffer_samples, _, _ = replay_buffer.sample(
+                    self.plotting_buffer_sample_size
+                )
                 if self.should_unnormalize:
                     buffer_samples = self.unnormalize(buffer_samples)
 
                 samples_fig = self.get_dataset_fig(buffer_samples, latest_samples)
 
-                wandb_logger.log_image(f"{prefix}unprioritized_buffer_samples", [samples_fig])
+                wandb_logger.log_image(
+                    f"{prefix}unprioritized_buffer_samples", [samples_fig]
+                )
 
             if cfm_samples is not None:
-                cfm_samples_fig = self.get_dataset_fig(unprioritized_buffer_samples, cfm_samples)
+                cfm_samples_fig = self.get_dataset_fig(
+                    unprioritized_buffer_samples, cfm_samples
+                )
 
-                wandb_logger.log_image(f"{prefix}cfm_generated_samples", [cfm_samples_fig])
+                wandb_logger.log_image(
+                    f"{prefix}cfm_generated_samples", [cfm_samples_fig]
+                )
 
             if latest_samples is not None:
                 fig, ax = plt.subplots()
                 ax.scatter(*latest_samples.detach().cpu().T)
 
-                wandb_logger.log_image(f"{prefix}generated_samples_scatter", [fig_to_image(fig)])
-                img = self.get_single_dataset_fig(latest_samples, "dem_generated_samples")
+                wandb_logger.log_image(
+                    f"{prefix}generated_samples_scatter", [fig_to_image(fig)]
+                )
+                img = self.get_single_dataset_fig(
+                    latest_samples, "dem_generated_samples"
+                )
                 wandb_logger.log_image(f"{prefix}generated_samples", [img])
 
             plt.close()
@@ -242,7 +257,9 @@ class GMM(BaseEnergyFunction):
         samples_fig = self.get_single_dataset_fig(samples, name)
         wandb_logger.log_image(f"{name}", [samples_fig])
 
-    def get_single_dataset_fig(self, samples, name, n_contour_levels=50, plotting_bounds=(-1.4 * 40, 1.4 * 40)):
+    def get_single_dataset_fig(
+        self, samples, name, n_contour_levels=50, plotting_bounds=(-1.4 * 40, 1.4 * 40)
+    ):
         """Creates visualization of samples against GMM contours.
         Used in train.py for sample visualization.
 
@@ -273,7 +290,13 @@ class GMM(BaseEnergyFunction):
 
         return fig_to_image(fig)
 
-    def get_dataset_fig(self, samples, gen_samples=None, n_contour_levels=50, plotting_bounds=(-1.4 * 40, 1.4 * 40)):
+    def get_dataset_fig(
+        self,
+        samples,
+        gen_samples=None,
+        n_contour_levels=50,
+        plotting_bounds=(-1.4 * 40, 1.4 * 40),
+    ):
         """Creates side-by-side visualization of buffer and generated samples.
         Used in train.py for comparing sample distributions.
 

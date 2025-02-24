@@ -34,7 +34,9 @@ def negative_time_descent(x, energy_function, num_steps, dt=1e-4, clipper=None):
         x = x + drift * dt
 
         if energy_function.is_molecule:
-            x = remove_mean(x, energy_function.n_particles, energy_function.n_spatial_dim)
+            x = remove_mean(
+                x, energy_function.n_particles, energy_function.n_spatial_dim
+            )
 
         samples.append(x)
     return torch.stack(samples)
@@ -61,7 +63,9 @@ def integrate_pfode(
     start_time = 1.0 if reverse_time else 0.0
     end_time = 1.0 - start_time
 
-    times = torch.linspace(start_time, end_time, num_integration_steps + 1, device=x0.device)[:-1]
+    times = torch.linspace(
+        start_time, end_time, num_integration_steps + 1, device=x0.device
+    )[:-1]
 
     x = x0
     samples = []
@@ -89,7 +93,9 @@ def integrate_sde(
     start_time = time_range if reverse_time else 0.0
     end_time = time_range - start_time
 
-    times = torch.linspace(start_time, end_time, num_integration_steps + 1, device=x0.device)[:-1]
+    times = torch.linspace(
+        start_time, end_time, num_integration_steps + 1, device=x0.device
+    )[:-1]
 
     x = x0
     samples = []
@@ -100,7 +106,9 @@ def integrate_sde(
                 sde, t, x, time_range / num_integration_steps, diffusion_scale
             )
             if energy_function.is_molecule:
-                x = remove_mean(x, energy_function.n_particles, energy_function.n_spatial_dim)
+                x = remove_mean(
+                    x, energy_function.n_particles, energy_function.n_spatial_dim
+                )
             samples.append(x)
 
     samples = torch.stack(samples)

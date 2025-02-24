@@ -306,6 +306,7 @@ def unbatch_alanine_dipeptide(batch: dict) -> dict:
     batch["positions"] = positions
     return batch
 
+
 def rotation_matrix_torch_batched(
     axis: torch.Tensor, theta: torch.Tensor
 ) -> torch.Tensor:

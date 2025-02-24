@@ -120,7 +120,9 @@ class CNF(torch.nn.Module):
 
         time = torch.linspace(start_time, end_time, self.num_steps + 1, device=x.device)
         try:
-            return odeint(self, x, t=time, method=method, atol=self.atol, rtol=self.rtol)
+            return odeint(
+                self, x, t=time, method=method, atol=self.atol, rtol=self.rtol
+            )
 
         except (RuntimeError, AssertionError) as e:
             print(e)

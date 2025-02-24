@@ -115,7 +115,9 @@ class MultiDoubleWellEnergy(BaseEnergyFunction):
 
         else:
             all_data = np.load(self.data_path, allow_pickle=True)
-            data = all_data[0][-self.test_set_size - self.val_set_size : -self.test_set_size]
+            data = all_data[0][
+                -self.test_set_size - self.val_set_size : -self.test_set_size
+            ]
             del all_data
 
         data = remove_mean(torch.tensor(data), self.n_particles, self.n_spatial_dim).to(
@@ -132,7 +134,8 @@ class MultiDoubleWellEnergy(BaseEnergyFunction):
         distances = x[:, None, :, :] - x[:, :, None, :]
         distances = distances[
             :,
-            torch.triu(torch.ones((self.n_particles, self.n_particles)), diagonal=1) == 1,
+            torch.triu(torch.ones((self.n_particles, self.n_particles)), diagonal=1)
+            == 1,
         ]
         dist = torch.linalg.norm(distances, dim=-1)
         return dist
@@ -177,7 +180,9 @@ class MultiDoubleWellEnergy(BaseEnergyFunction):
             if unprioritized_buffer_samples is not None:
                 cfm_samples_fig = self.get_dataset_fig(cfm_samples)
 
-                wandb_logger.log_image(f"{prefix}cfm_generated_samples", [cfm_samples_fig])
+                wandb_logger.log_image(
+                    f"{prefix}cfm_generated_samples", [cfm_samples_fig]
+                )
 
         self.curr_epoch += 1
 
@@ -240,4 +245,6 @@ class MultiDoubleWellEnergy(BaseEnergyFunction):
         axs[1].legend()
 
         fig.canvas.draw()
-        return PIL.Image.frombytes("RGB", fig.canvas.get_width_height(), fig.canvas.tostring_rgb())
+        return PIL.Image.frombytes(
+            "RGB", fig.canvas.get_width_height(), fig.canvas.tostring_rgb()
+        )
