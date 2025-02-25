@@ -14,7 +14,7 @@ from dem.utils.logging_utils import fig_to_image
 import scipy.optimize
 from tqdm import tqdm
 import wandb
-
+from lightning.pytorch.loggers import WandbLogger
 
 
 class GMMPseudoEnergy(GMM):
@@ -71,14 +71,15 @@ class GMMPseudoEnergy(GMM):
         self.n_loss_samples = 0
 
     def __call__(self, x: torch.Tensor, return_losses: bool = False) -> torch.Tensor:
-        """Compute pseudo-energy combining energy and force terms.
+        """Compute pseudo-energy combining energy, force, and Hessian terms.
+        Returns log-probability = -pseudo-energy.
 
         Args:
             x: Input positions tensor of shape (dimensionality,)
                 When used with vmap, this will be automatically vectorized
 
         Returns:
-            Pseudo-energy value (scalar)
+            Negative of pseudo-energy value (scalar)
         """
         # Compute energy
         energy = self.gmm_potential(x)
@@ -152,8 +153,8 @@ class GMMPseudoEnergy(GMM):
                 'force_loss': force_loss,
                 'hessian_loss': hessian_loss
             }
-            return total_loss, aux_output
-        return total_loss
+            return -total_loss, aux_output
+        return -total_loss
 
     # Inherit other methods from GMM
     def setup_test_set(self):
@@ -218,9 +219,157 @@ class GMMPseudoEnergy(GMM):
                 # del fig, ax, img
                 print(f"Plotted pseudo-energy surface at epoch {self.curr_epoch}")
         
+    def get_single_dataset_fig(
+        self, samples, name, n_contour_levels=50, plotting_bounds=(-1.4 * 40, 1.4 * 40),
+        plot_gaussian_means=False,
+    ):
+        """Creates visualization of samples against GMM contours.
+        Used in train.py for sample visualization.
 
-    def log_samples(self, *args, **kwargs):
-        return self.gmm_potential.log_samples(*args, **kwargs)
+        Args:
+            samples (torch.Tensor): Samples to plot
+            name (str): Title for plot
+            plotting_bounds (tuple, optional): Plot bounds. Defaults to (-1.4*40, 1.4*40)
+
+        Returns:
+            numpy.ndarray: Plot as image array
+        """
+        plt.close()
+        fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+
+        self.gmm.to("cpu")
+        plot_contours(
+            self.log_prob,
+            bounds=plotting_bounds,
+            ax=ax,
+            n_contour_levels=n_contour_levels,
+            grid_width_n_points=200,
+        )
+        if samples is not None:
+            plot_marginal_pair(samples, ax=ax, bounds=plotting_bounds)
+        if name is not None:
+            ax.set_title(f"{name}")
+        
+        if plot_gaussian_means:
+            means = self.gmm.distribution.component_distribution.loc
+            ax.scatter(*means.detach().cpu().T, color="red", marker="x")
+            # ax.legend()
+
+        self.gmm.to(self.device)
+
+        return fig_to_image(fig)
+    
+    # TODO: plot gmm or pseudo-energy?
+    def get_dataset_fig(
+        self,
+        samples,
+        gen_samples=None,
+        n_contour_levels=50,
+        plotting_bounds=(-1.4 * 40, 1.4 * 40),
+        plot_gaussian_means=False,
+    ):
+        """Creates side-by-side visualization of buffer and generated samples.
+        Used in train.py for comparing sample distributions.
+
+        Args:
+            samples (torch.Tensor): Buffer samples to plot
+            gen_samples (torch.Tensor, optional): Generated samples to plot. Defaults to None
+            plotting_bounds (tuple, optional): Plot bounds. Defaults to (-1.4*40, 1.4*40)
+
+        Returns:
+            numpy.ndarray: Plot as image array
+        """
+        plt.close()
+        fig, axs = plt.subplots(1, 2, figsize=(12, 4))
+
+        self.gmm.to("cpu")
+        plot_contours(
+            self.gmm.log_prob,
+            bounds=plotting_bounds,
+            ax=axs[0],
+            n_contour_levels=n_contour_levels,
+            grid_width_n_points=200,
+        )
+
+        # plot dataset samples
+        if samples is not None:
+            plot_marginal_pair(samples, ax=axs[0], bounds=plotting_bounds)
+            axs[0].set_title("Buffer")
+
+        if gen_samples is not None:
+            plot_contours(
+                self.gmm.log_prob,
+                bounds=plotting_bounds,
+                ax=axs[1],
+                n_contour_levels=50,
+                grid_width_n_points=200,
+            )
+            # plot generated samples
+            plot_marginal_pair(gen_samples, ax=axs[1], bounds=plotting_bounds)
+            axs[1].set_title("Generated samples")
+
+        if plot_gaussian_means:
+            means = self.gmm.distribution.component_distribution.loc
+            axs[1].scatter(*means.detach().cpu().T, color="red", marker="x")
+            # axs[1].legend()
+
+        # delete subplot
+        else:
+            fig.delaxes(axs[1])
+
+        self.gmm.to(self.device)
+
+        return fig_to_image(fig)
+
+
+    def log_prob(self, x):
+        return -self.__call__(x, return_losses=False)
+    
+    def log_samples(
+        self,
+        samples: torch.Tensor,
+        wandb_logger: WandbLogger,
+        name: str = "",
+        should_unnormalize: bool = False,
+    ) -> None:
+        """Logs sample visualizations against the pseudopotential energy surface.
+        Used in train.py for logging sample distributions.
+
+        Args:
+            samples (torch.Tensor): Samples to visualize
+            wandb_logger (WandbLogger): Logger for visualizations 
+            name (str, optional): Name for logged images. Defaults to ""
+            should_unnormalize (bool, optional): Whether to unnormalize samples. Defaults to False
+        """
+        if wandb_logger is None:
+            return
+
+        if self.should_unnormalize and should_unnormalize:
+            samples = self.unnormalize(samples)
+
+        # Create visualization showing samples against pseudopotential surface
+        plt.close()
+        fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+
+        # Plot contours of pseudopotential energy surface
+        plot_contours(
+            self.log_prob,
+            bounds=(-1.4 * 40, 1.4 * 40),
+            ax=ax,
+            n_contour_levels=50,
+            grid_width_n_points=200,
+        )
+
+        # Plot samples as scatter points
+        if samples is not None:
+            plot_marginal_pair(samples, ax=ax, bounds=(-1.4 * 40, 1.4 * 40))
+        
+        if name:
+            ax.set_title(name)
+
+        # Log the visualization
+        wandb_logger.log_image(f"{name}", [fig_to_image(fig)])
+        plt.close()
 
     ###########################################################################
     # Ground truth transition states

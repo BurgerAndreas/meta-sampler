@@ -1,7 +1,7 @@
 _target_: dem.energies.gmm_pseudoenergy.GMMPseudoEnergy
 
 # Pseudo-energy specific parameters
-energy_weight: 0.1
+energy_weight: -0.1
 force_weight: 1.0
 forces_norm: null # None=2, 1, or inf
 force_exponent: 1

@@ -279,6 +279,7 @@ class GMM(BaseEnergyFunction):
         Returns:
             numpy.ndarray: Plot as image array
         """
+        plt.close()
         fig, ax = plt.subplots(1, 1, figsize=(8, 8))
 
         self.gmm.to("cpu")
@@ -297,7 +298,7 @@ class GMM(BaseEnergyFunction):
         if plot_gaussian_means:
             means = self.gmm.distribution.component_distribution.loc
             ax.scatter(*means.detach().cpu().T, color="red", marker="x")
-            ax.legend()
+            # ax.legend()
 
         self.gmm.to(self.device)
 
@@ -322,6 +323,7 @@ class GMM(BaseEnergyFunction):
         Returns:
             numpy.ndarray: Plot as image array
         """
+        plt.close()
         fig, axs = plt.subplots(1, 2, figsize=(12, 4))
 
         self.gmm.to("cpu")
@@ -353,7 +355,7 @@ class GMM(BaseEnergyFunction):
         if plot_gaussian_means:
             means = self.gmm.distribution.component_distribution.loc
             axs[1].scatter(*means.detach().cpu().T, color="red", marker="x")
-            axs[1].legend()
+            # axs[1].legend()
 
         # delete subplot
         else:

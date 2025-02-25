@@ -49,18 +49,15 @@ model:
 
   diffusion_scale: 1.0
 
-  # num_estimator_mc_samples: 500
+  num_estimator_mc_samples: 500
   num_samples_to_generate_per_epoch: 1000
 
   # this has to be max 1000 since test_set is 1000
-  # eval_batch_size: 1000
+  eval_batch_size: 1000
   scheduler: null
 
-  # Hessian is expensive
-  num_samples_to_sample_from_buffer: 16
-  nll_batch_size: 32
-  eval_batch_size: 256
-  num_estimator_mc_samples: 16
+energy:
+  hessian_weight: 0.0
 
 # # Add precision settings for Tensor Cores
 # trainer:

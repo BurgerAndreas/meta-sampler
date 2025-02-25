@@ -30,8 +30,8 @@ python dem/train.py experiment=gmm_idem
 python dem/train.py experiment=simple_test_idem
 
 # 2d GMM with pseudo-energy
-python dem/train.py experiment=gmm_idem_pseudo model.num_samples_to_sample_from_buffer=16 model.nll_batch_size=32 model.eval_batch_size=256 model.num_estimator_mc_samples=16
-python dem/train.py experiment=gmm_idem_pseudo energy.hessian_weight=0.0
+python dem/train.py experiment=gmm_idem_pseudo 
+python dem/train.py experiment=gmm_idem_pseudo_nohessian
 
 
 # 2d alanine dipeptide
