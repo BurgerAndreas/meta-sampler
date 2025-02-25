@@ -17,6 +17,7 @@ def plot_imshow(
     grid_width_n_points: int = 20,
     n_contour_levels: Optional[int] = None,
     log_prob_min: float = -1000.0,
+    plot_style: str = "imshow",
     plot_kwargs: dict = {},
 ):
     """Plot heatmap of log probability density.
@@ -55,30 +56,40 @@ def plot_imshow(
     # 'GnBu', 'PuBu', 'YlGnBu', 'PuBuGn', 'BuGn', 'YlGn']
     # 'viridis', 'plasma', 'inferno', 'magma', 'cividis'
 
-    # Create heatmap using imshow
-    # im = ax.imshow(
-    #     log_p_x.numpy(),
-    #     extent=[bounds[0], bounds[1], bounds[0], bounds[1]],
-    #     origin='lower',
-    #     cmap='viridis',
-    #     aspect='equal'
-    #     **plot_kwargs,
-    # )
-    # # Add colorbar
-    # plt.colorbar(im, ax=ax, label='Log(P)')
+    if plot_style == "imshow":
+        # Create heatmap using imshow
+        dflt = {
+            "cmap": "viridis",
+            "origin": "lower",
+            "aspect": "equal",
+        }
+        for k, v in dflt.items():
+            if k not in plot_kwargs:
+                plot_kwargs[k] = v
+        im = ax.imshow(
+            log_p_x.numpy(),
+            extent=[bounds[0], bounds[1], bounds[0], bounds[1]],
+            **plot_kwargs,
+        )
+        # Add colorbar
+        plt.colorbar(im, ax=ax, label='Log(P)', fraction=0.046, pad=0.04, shrink=0.8)
 
-    # Use scatter
-    im = ax.scatter(
-        x_points_dim1,
-        x_points_dim2,
-        c=log_p_x.numpy(),
-        cmap="GnBu",
-        s=1,
-        # alpha=0.5,
-        # edgecolors='none',
-        **plot_kwargs,
-    )
-    fig.colorbar(im, ax=ax, label="log(P) = -E")
+    elif plot_style == "scatter":
+        # Use scatter
+        dflt = {
+            "cmap": "GnBu",
+            "s": 1,
+        }
+        for k, v in dflt.items():
+            if k not in plot_kwargs:
+                plot_kwargs[k] = v
+        im = ax.scatter(
+            x_points_dim1,
+            x_points_dim2,
+            c=log_p_x.numpy(),
+            **plot_kwargs,
+        )
+        fig.colorbar(im, ax=ax, label="log(P) = -E", fraction=0.046, pad=0.04, shrink=0.8)
 
     # Set equal aspect ratio
     ax.set_aspect("equal")
@@ -137,10 +148,17 @@ def plot_marginal_pair(
         fig, ax = plt.subplots(1)
     samples = torch.clamp(samples, bounds[0], bounds[1])
     samples = samples.cpu().detach()
+    dflt = {
+        "alpha": alpha,
+        "marker": "o",
+        # "markersize": 1,
+        "linestyle": "none",
+    }
+    for k, v in dflt.items():
+        if k not in plot_kwargs:
+            plot_kwargs[k] = v
     ax.plot(
         samples[:, marginal_dims[0]],
         samples[:, marginal_dims[1]],
-        "o",
-        alpha=alpha,
         **plot_kwargs,
     )

@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import copy
-
+import os
 import matplotlib
 
 matplotlib.use("Agg")  # Force non-interactive backend
@@ -43,6 +43,7 @@ class GMMPseudoEnergy(GMMEnergy):
         force_exponent=1,
         hessian_weight=1.0,
         hessian_eigenvalue_penalty="softplus",
+        term_aggr="sum",
         use_vmap=True,
         **gmm_kwargs,
     ):
@@ -58,12 +59,11 @@ class GMMPseudoEnergy(GMMEnergy):
         self.hessian_weight = hessian_weight
         self.hessian_eigenvalue_penalty = hessian_eigenvalue_penalty
         self.use_vmap = use_vmap
-
+        self.term_aggr = term_aggr
         # transition states of the GMM potential
         self.boundary_points = None
         self.transition_points = None
         self.validation_results = None
-        # self.update_transition_states()
 
         # Accumulated training losses
         self.energy_loss_sum = 0.0
@@ -236,17 +236,25 @@ class GMMPseudoEnergy(GMMEnergy):
         #     print(f"evs={smallest_eigenvalues[i].tolist()} -> {saddle_bias[i]:.2f}")
 
         # ensure we have one value per batch
-        assert (
-            energy.shape == force_magnitude.shape == saddle_bias.shape
-        ) and energy.shape[0] == samples.shape[
-            0
-        ], f"samples={samples.shape}, energy={energy.shape}, forces={force_magnitude.shape}, hessian={saddle_bias.shape}"
+        assert energy.shape == force_magnitude.shape == saddle_bias.shape, \
+            f"samples={samples.shape}, energy={energy.shape}, forces={force_magnitude.shape}, hessian={saddle_bias.shape}"
+        assert energy.shape[0] == samples.shape[0], \
+            f"samples={samples.shape}, energy={energy.shape}, forces={force_magnitude.shape}, hessian={saddle_bias.shape}"
 
         # Combine loss terms
         energy_loss = self.energy_weight * energy
         force_loss = self.force_weight * force_magnitude
         hessian_loss = self.hessian_weight * saddle_bias
-        total_loss = energy_loss + force_loss + hessian_loss
+
+        if self.term_aggr == "sum":
+            total_loss = energy_loss + force_loss + hessian_loss
+        elif self.term_aggr == "mult":
+            total_loss = energy_loss * force_loss * hessian_loss
+        elif self.term_aggr == "multfh":
+            # multiply acts like an and operation
+            total_loss = energy_loss + (force_loss * hessian_loss)
+        else:
+            raise ValueError(f"Invalid term_aggr: {self.term_aggr}")
 
         if return_aux_output:
             aux_output = {
@@ -318,7 +326,7 @@ class GMMPseudoEnergy(GMMEnergy):
         plotting_bounds=(-1.4 * 40, 1.4 * 40),
         plot_gaussian_means=False,
         grid_width_n_points=200,
-        use_imshow=False,
+        plot_style="contours",
         with_legend=False,
         plot_prob_kwargs={},
         plot_sample_kwargs={},
@@ -339,7 +347,7 @@ class GMMPseudoEnergy(GMMEnergy):
 
         self.gmm.to("cpu")
         # self.gmm.to("cpu")
-        plot_fn = plot_imshow if use_imshow else plot_contours
+        plot_fn = plot_contours if plot_style == "contours" else plot_imshow
         plot_fn(
             self.log_prob,
             bounds=plotting_bounds,
@@ -351,7 +359,8 @@ class GMMPseudoEnergy(GMMEnergy):
         if samples is not None:
             samples = samples.to("cpu")
             plot_marginal_pair(
-                samples, ax=ax, bounds=plotting_bounds, plot_kwargs=plot_sample_kwargs
+                samples, ax=ax, bounds=plotting_bounds, 
+                plot_kwargs=plot_sample_kwargs
             )
         if name is not None:
             ax.set_title(f"{name}")
@@ -377,7 +386,9 @@ class GMMPseudoEnergy(GMMEnergy):
         n_contour_levels=50,
         plotting_bounds=(-1.4 * 40, 1.4 * 40),
         plot_gaussian_means=False,
-        use_imshow=False,
+        plot_style="contours",
+        plot_prob_kwargs={},
+        plot_sample_kwargs={},
     ):
         """Creates side-by-side visualization of buffer and generated samples.
         Used in train.py for comparing sample distributions.
@@ -394,13 +405,14 @@ class GMMPseudoEnergy(GMMEnergy):
         fig, axs = plt.subplots(1, 2, figsize=(12, 4))
 
         self.gmm.to("cpu")
-        plot_fn = plot_imshow if use_imshow else plot_contours
+        plot_fn = plot_contours if plot_style == "contours" else plot_imshow
         plot_fn(
             self.gmm.log_prob,
             bounds=plotting_bounds,
             ax=axs[0],
             n_contour_levels=n_contour_levels,
             grid_width_n_points=200,
+            plot_kwargs=plot_prob_kwargs,
         )
 
         # plot dataset samples
@@ -415,9 +427,10 @@ class GMMPseudoEnergy(GMMEnergy):
                 ax=axs[1],
                 n_contour_levels=50,
                 grid_width_n_points=200,
+                plot_kwargs=plot_prob_kwargs,
             )
             # plot generated samples
-            plot_marginal_pair(gen_samples, ax=axs[1], bounds=plotting_bounds)
+            plot_marginal_pair(gen_samples, ax=axs[1], bounds=plotting_bounds, plot_kwargs=plot_sample_kwargs)
             axs[1].set_title("Generated samples")
 
         if plot_gaussian_means:
@@ -482,19 +495,6 @@ class GMMPseudoEnergy(GMMEnergy):
     ###########################################################################
     # Ground truth transition states
     ###########################################################################
-
-    def update_transition_states(self, abs_ev_tol=1e-3, grad_tol=1e-3):
-        # Find transition states
-        self.boundary_points = self.find_transition_boundaries()
-
-        # Now validate these candidate points by checking the Hessian eigenvalues.
-        # Only keep the true index-1 saddles (one negative eigenvalue).
-        self.validation_results = self.validate_transition_states(
-            self.boundary_points, abs_ev_tol=abs_ev_tol, grad_tol=grad_tol
-        )
-        self.transition_points = self.validation_results["valid_points"]
-
-        print(f"Found {len(self.transition_points)} transition states")
 
     def find_transition_boundaries(self, grid_size=200, bounds=(-56, 56)):
         """Find candidate transition points by detecting boundary cells.
@@ -640,7 +640,7 @@ class GMMPseudoEnergy(GMMEnergy):
             "saddle_boundary_ratio": accuracy,
         }
 
-    def find_saddle_points_scipy(self, grid_size=200, bounds=(-56, 56)):
+    def get_true_transition_states(self, grid_size=200, bounds=(-56, 56)):
         """Find saddle points using scipy.optimize.root and Hessian eigenvalue analysis.
 
         Args:
@@ -650,9 +650,14 @@ class GMMPseudoEnergy(GMMEnergy):
         Returns:
             torch.Tensor: Coordinates of identified saddle points
         """
-        # Generate grid of initial points
-        # x = np.linspace(bounds[0], bounds[1], grid_size)
-        # candidate_points = np.array(np.meshgrid(*[x for _ in range(self.dimensionality)])).T.reshape(-1, self.dimensionality)
+        if self.transition_points is not None:
+            return self.transition_points
+        
+        fname = f"dem_outputs/transition_points_gmm.npy"
+        if os.path.exists(fname):
+            self.transition_points = torch.tensor(np.load(fname), device=self.device)
+            print(f"Loaded transition points from {fname}")
+            return self.transition_points
 
         # Generate candidate points
         if self.boundary_points is None:
@@ -688,14 +693,15 @@ class GMMPseudoEnergy(GMMEnergy):
             if n_negative == 1:
                 saddle_points.append(result.x)
 
-        if len(saddle_points) > 0:
-            # Remove duplicates by converting to numpy, using unique, and converting back to torch
-            unique_saddle_points = np.unique(np.array(saddle_points), axis=0)
-            return torch.tensor(
-                unique_saddle_points, device=self.device, dtype=torch.float32
-            )
-        else:
-            return torch.tensor([], device=self.device)
+        # Remove duplicates by converting to numpy, using unique, and converting back to torch
+        unique_saddle_points = np.unique(np.array(saddle_points), axis=0)
+        self.transition_points = torch.tensor(
+            unique_saddle_points, device=self.device, dtype=torch.float32
+        )
+        # save them to file
+        np.save(fname, self.transition_points.detach().cpu().numpy())
+        print(f"Found {len(self.transition_points)} transition states")
+        return self.transition_points
 
 
 def find_stationary_point(initial_guess, gmm, method="hybr"):

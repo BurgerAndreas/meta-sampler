@@ -17,23 +17,36 @@ import re
 
 configs = [
     [
-        "name=Force L2, Hessian Tanh Mult",
+        "Force L2, Hessian Tanh Mult",
         "experiment=gmm_idem_pseudo",
         "energy.hessian_weight=10.0",
         "energy.hessian_eigenvalue_penalty=tanh_mult",
         "energy.energy_weight=0.0",
         "energy.force_weight=1.0",
-        # "energy.forces_norm=2",
-        # "energy.force_exponent=2",
     ],
     [
-        "name=Force L2",
+        "Multiply: Force L2, Hessian Tanh Mult",
+        "experiment=gmm_idem_pseudo",
+        "energy.hessian_weight=10.0",
+        "energy.hessian_eigenvalue_penalty=tanh_mult",
+        "energy.energy_weight=0.0",
+        "energy.force_weight=1.0",
+        "energy.term_aggr=multfh",
+    ],
+    [
+        "Energy, Force L2, Hessian Tanh Mult",
+        "experiment=gmm_idem_pseudo",
+        "energy.hessian_weight=10.0",
+        "energy.hessian_eigenvalue_penalty=tanh_mult",
+        "energy.energy_weight=1.0",
+        "energy.force_weight=1.0",
+    ],
+    [
+        "Force L2",
         "experiment=gmm_idem_pseudo",
         "energy.hessian_weight=0.0",
         "energy.energy_weight=0.0",
         "energy.force_weight=1.0",
-        # "energy.forces_norm=2",
-        # "energy.force_exponent=2",
     ],
 ]
 
@@ -63,20 +76,20 @@ for config in configs:
         name=name,
         plot_gaussian_means=True,
         grid_width_n_points=800,
-        use_imshow=True,
+        plot_style="imshow",
         # with_legend=False,
         # plot_prob_kwargs={"cmap": "turbo"},
-        # plot_sample_kwargs={"color": "red"},
+        plot_sample_kwargs={"color": "m", "marker": "."},
     )
     plt.tight_layout(pad=0)
 
     # save image
-    fig_name = f"plots/gmm_potential_{plt_name}.png"
+    fig_name = f"plots/gmm_{plt_name}.png"
     plt.savefig(fig_name)
     print(f"Saved {fig_name}")
+    plt.close()
 
-    energy_function.update_transition_states(abs_ev_tol=1e-6, grad_tol=1e0)
-    scipy_saddle_points = energy_function.find_saddle_points_scipy()
+    scipy_saddle_points = energy_function.get_true_transition_states()
 
     img = energy_function.get_single_dataset_fig(
         samples=scipy_saddle_points,
@@ -84,13 +97,15 @@ for config in configs:
         plot_gaussian_means=False,
         # plot_prob_kwargs={"cmap": "turbo"},
         # plot_sample_kwargs={"color": "red"},
+        plot_sample_kwargs={"color": "m", "marker": "."},
         grid_width_n_points=800,
-        use_imshow=True,
+        plot_style="imshow",
         with_legend=False,
     )
     plt.tight_layout(pad=0)
 
     # save image
-    fig_name = f"plots/gmm_potential_saddle_points_{plt_name}.png"
+    fig_name = f"plots/gmm_saddles_{plt_name}.png"
     plt.savefig(fig_name)
     print(f"Saved {fig_name}")
+    plt.close()

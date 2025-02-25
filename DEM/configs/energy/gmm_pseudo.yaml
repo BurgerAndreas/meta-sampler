@@ -7,6 +7,7 @@ forces_norm: null # None=2, 1, or inf
 force_exponent: 1
 hessian_weight: 1.0
 hessian_eigenvalue_penalty: 'softplus'
+term_aggr: 'sum'
 
 # Original GMM parameters
 dimensionality: 2

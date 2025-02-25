@@ -176,7 +176,6 @@ class GMMEnergy(BaseEnergyFunction):
         replay_buffer=None,
         prefix: str = "",
         return_fig: bool = False,
-        use_imshow: bool = False,
     ) -> None:
         """Logs metrics and visualizations at the end of each epoch.
         Used in train.py for logging training progress.
@@ -278,7 +277,7 @@ class GMMEnergy(BaseEnergyFunction):
         plotting_bounds=(-1.4 * 40, 1.4 * 40),
         plot_gaussian_means=False,
         grid_width_n_points=200,
-        use_imshow=False,
+        plot_style="contours",
         with_legend=False,
     ):
         """Creates visualization of samples against GMM contours.
@@ -296,7 +295,7 @@ class GMMEnergy(BaseEnergyFunction):
         fig, ax = plt.subplots(1, 1, figsize=(8, 8))
 
         self.gmm.to("cpu")
-        plot_fn = plot_imshow if use_imshow else plot_contours
+        plot_fn = plot_contours if plot_style == "contours" else plot_imshow
         plot_fn(
             self.gmm.log_prob,
             bounds=plotting_bounds,
@@ -329,7 +328,7 @@ class GMMEnergy(BaseEnergyFunction):
         plotting_bounds=(-1.4 * 40, 1.4 * 40),
         plot_gaussian_means=False,
         grid_width_n_points=200,
-        use_imshow=False,
+        plot_style="contours",
         with_legend=False,
     ):
         """Creates visualization of samples against GMM contours.
@@ -347,7 +346,7 @@ class GMMEnergy(BaseEnergyFunction):
         fig, ax = plt.subplots(1, 1, figsize=(8, 8))
 
         self.gmm.to("cpu")
-        plot_fn = plot_imshow if use_imshow else plot_contours
+        plot_fn = plot_contours if plot_style == "contours" else plot_imshow
         plot_fn(
             self.gmm.log_prob,
             bounds=plotting_bounds,
