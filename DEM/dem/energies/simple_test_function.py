@@ -115,7 +115,9 @@ class SimpleTestFunction(BaseEnergyFunction):
         samples = torch.linspace(-2, 2, self.val_set_size, device=self.device)
         return samples.unsqueeze(-1)
 
-    def __call__(self, samples: torch.Tensor, return_aux_output: bool = False) -> torch.Tensor:
+    def __call__(
+        self, samples: torch.Tensor, return_aux_output: bool = False
+    ) -> torch.Tensor:
         """Evaluates the negative energy at the given samples.
 
         Args:

@@ -226,7 +226,9 @@ class BaseEnergyFunction(ABC):
         return self._train_set
 
     @abstractmethod
-    def __call__(self, samples: torch.Tensor, return_aux_output: bool = False) -> torch.Tensor:
+    def __call__(
+        self, samples: torch.Tensor, return_aux_output: bool = False
+    ) -> torch.Tensor:
         """Evaluates the energy function at given samples.
 
         Args:

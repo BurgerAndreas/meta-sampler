@@ -73,7 +73,7 @@ def log_expectation_reward(
 
     # Average log rewards
     reward_val = torch.logsumexp(log_rewards, dim=-1) - np.log(num_mc_samples)
-    
+
     if return_aux_output:
         return reward_val, aux_output
     else:
@@ -110,11 +110,20 @@ def estimate_grad_Rt(
         t = t.unsqueeze(0).repeat(len(x))
 
     def _log_expectation_reward(t, x, energy_function, noise_schedule, num_mc_samples):
-        return log_expectation_reward(t, x, energy_function, noise_schedule, num_mc_samples, return_aux_output=return_aux_output)
-    
+        return log_expectation_reward(
+            t,
+            x,
+            energy_function,
+            noise_schedule,
+            num_mc_samples,
+            return_aux_output=return_aux_output,
+        )
+
     if use_vmap:
         # argnums=1 -> computes grad w.r.t. to t and x
-        grad_fxn = torch.func.grad(_log_expectation_reward, argnums=1, has_aux=return_aux_output)
+        grad_fxn = torch.func.grad(
+            _log_expectation_reward, argnums=1, has_aux=return_aux_output
+        )
         vmapped_fxn = torch.vmap(
             grad_fxn, in_dims=(0, 0, None, None, None), randomness="different"
         )

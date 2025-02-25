@@ -165,7 +165,9 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
         samples = torch.cartesian_prod(samples, samples)
         return samples
 
-    def __call__(self, samples: torch.Tensor, return_aux_output: bool = False) -> torch.Tensor:
+    def __call__(
+        self, samples: torch.Tensor, return_aux_output: bool = False
+    ) -> torch.Tensor:
         """Evaluates the pseudoenergy function at given samples.
 
         Args:
@@ -230,9 +232,9 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
         total_loss = energy_loss + force_loss
         if return_aux_output:
             aux_output = {
-                'energy_loss': energy_loss,
-                'force_loss': force_loss,
-                'total_loss': total_loss
+                "energy_loss": energy_loss,
+                "force_loss": force_loss,
+                "total_loss": total_loss,
             }
             return total_loss, aux_output
         return total_loss

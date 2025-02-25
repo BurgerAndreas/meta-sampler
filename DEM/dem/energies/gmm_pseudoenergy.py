@@ -3,19 +3,22 @@ import numpy as np
 import copy
 
 import matplotlib
-matplotlib.use('Agg')  # Force non-interactive backend
+
+matplotlib.use("Agg")  # Force non-interactive backend
 import matplotlib.pyplot as plt  # Import pyplot after setting backend
+
 plt.ioff()  # Turn off interactive model
 
-import fab.target_distributions.gmm
-from fab.utils.plotting import plot_contours, plot_marginal_pair
-from dem.energies.base_energy_function import BaseEnergyFunction
-from dem.energies.gmm_energy import GMMEnergy
-from dem.utils.logging_utils import fig_to_image
 import scipy.optimize
 from tqdm import tqdm
 import wandb
 from lightning.pytorch.loggers import WandbLogger
+
+import fab.target_distributions.gmm
+from dem.energies.base_energy_function import BaseEnergyFunction
+from dem.energies.gmm_energy import GMMEnergy
+from dem.utils.logging_utils import fig_to_image
+from dem.utils.plotting import plot_imshow, plot_contours, plot_marginal_pair
 
 
 class GMMPseudoEnergy(GMMEnergy):
@@ -39,13 +42,13 @@ class GMMPseudoEnergy(GMMEnergy):
         forces_norm=None,
         force_exponent=1,
         hessian_weight=1.0,
-        hessian_eigenvalue_penalty='softplus',
+        hessian_eigenvalue_penalty="softplus",
         use_vmap=True,
         **gmm_kwargs,
     ):
         # Initialize GMMEnergy base class
         super().__init__(**copy.deepcopy(gmm_kwargs))
-        
+
         self._is_molecule = False
 
         self.energy_weight = energy_weight
@@ -61,14 +64,16 @@ class GMMPseudoEnergy(GMMEnergy):
         self.transition_points = None
         self.validation_results = None
         # self.update_transition_states()
-        
+
         # Accumulated training losses
         self.energy_loss_sum = 0.0
         self.force_loss_sum = 0.0
         self.hessian_loss_sum = 0.0
         self.n_loss_samples = 0
 
-    def log_prob_energy(self, samples: torch.Tensor, return_aux_output: bool = False) -> torch.Tensor:
+    def log_prob_energy(
+        self, samples: torch.Tensor, return_aux_output: bool = False
+    ) -> torch.Tensor:
         """Compute unnormalized log-probability of energy.
         Same as GMMEnergy.__call__.
 
@@ -81,17 +86,21 @@ class GMMPseudoEnergy(GMMEnergy):
         """
         if self.should_unnormalize:
             samples = self.unnormalize(samples)
-            
+
         # Compute log-probability of potential energy
         if return_aux_output:
             return self.gmm.log_prob(samples), {}
         return self.gmm.log_prob(samples)
-    
-    def gmm_potential(self, samples: torch.Tensor, return_aux_output: bool = False) -> torch.Tensor:
+
+    def gmm_potential(
+        self, samples: torch.Tensor, return_aux_output: bool = False
+    ) -> torch.Tensor:
         """Alias for log_prob_energy. Same as GMMEnergy.__call__."""
         return self.log_prob_energy(samples, return_aux_output=return_aux_output)
-    
-    def __call__(self, samples: torch.Tensor, return_aux_output: bool = False) -> torch.Tensor:
+
+    def __call__(
+        self, samples: torch.Tensor, return_aux_output: bool = False
+    ) -> torch.Tensor:
         """Compute pseudo-energy combining energy, force, and Hessian terms.
         Returns unnormalized log-probability = -pseudo-energy.
         Similar to GMMEnergy.__call__.
@@ -105,10 +114,12 @@ class GMMPseudoEnergy(GMMEnergy):
         """
         if self.should_unnormalize:
             samples = self.unnormalize(samples)
-        
-        return self.log_prob(samples, return_aux_output=return_aux_output) 
-     
-    def log_prob(self, samples: torch.Tensor, return_aux_output: bool = False) -> torch.Tensor:
+
+        return self.log_prob(samples, return_aux_output=return_aux_output)
+
+    def log_prob(
+        self, samples: torch.Tensor, return_aux_output: bool = False
+    ) -> torch.Tensor:
         """Compute unnormalized log-probability of pseudo-energy.
         Corresponds to GMMEnergy.log_prob.
 
@@ -120,22 +131,24 @@ class GMMPseudoEnergy(GMMEnergy):
         Returns:
             Negative of pseudo-energy value (scalar)
         """
-        
-        # Compute energy
-        energy = self.gmm.log_prob(samples)
-        
+
+        # Compute energy (all positive after -log_prob)
+        energy = -self.gmm.log_prob(samples)
+
         # For computing forces, we need to sum the energy to get a scalar
         if self.force_weight > 0:
+
             def energy_sum(x):
-                return self.gmm.log_prob(x).sum() # TODO: is sum right here?
+                return self.gmm.log_prob(x).sum()  # TODO: is sum right here?
+
             # Use functorch.grad to compute forces
             forces = -torch.func.grad(energy_sum)(samples)
             # Compute force magnitude
             force_magnitude = torch.linalg.norm(forces, ord=self.forces_norm, dim=-1)
-            force_magnitude = force_magnitude ** self.force_exponent
+            force_magnitude = force_magnitude**self.force_exponent
         else:
             force_magnitude = torch.zeros_like(energy)
-        
+
         # Compute two smallest eigenvalues of Hessian
         if self.hessian_weight > 0:
             if len(samples.shape) == 1:
@@ -145,80 +158,107 @@ class GMMPseudoEnergy(GMMEnergy):
                 smallest_eigenvalues = torch.sort(eigenvalues, dim=-1)[0][:2]
             else:
                 # Handle batched inputs using vmap
-                batched_hessian = torch.vmap(torch.func.hessian(self.gmm.log_prob))(samples)
+                batched_hessian = torch.vmap(torch.func.hessian(self.gmm.log_prob))(
+                    samples
+                )  # [B, D, D]
                 # Get eigenvalues for each sample in batch
-                batched_eigenvalues = torch.linalg.eigvalsh(batched_hessian) # Use eigvalsh since Hessian is symmetric
+                batched_eigenvalues = torch.linalg.eigvalsh(batched_hessian)  # [B, D]
                 # Sort eigenvalues in ascending order for each sample
-                batched_eigenvalues = torch.sort(batched_eigenvalues, dim=-1)[0]
+                batched_eigenvalues = torch.sort(batched_eigenvalues, dim=-1)[
+                    0
+                ]  # [B, D]
                 # Get 2 smallest eigenvalues for each sample
-                smallest_eigenvalues = batched_eigenvalues[..., :2]
+                smallest_eigenvalues = batched_eigenvalues[..., :2]  # [B, 2]
 
             # def loss_fn(x):
             #     return self.gmm.log_prob(x)
-            
+
             # # Get Hessian-vector product using functorch transforms
             # grad_fn = torch.func.grad(loss_fn)
             # def hvp(v):
             #     # Ensure v has the same shape as samples
             #     v = v.reshape(samples.shape)
             #     return torch.func.jvp(grad_fn, (samples,), (v,))[1]
-            
+
             # # Run Lanczos on the HVP function
             # v0 = torch.randn_like(samples)
             # T, Q_mat = lanczos(hvp, v0, m=100)
-            
+
             # # Compute eigenvalues of the tridiagonal matrix
             # eigenvalues = torch.linalg.eigvalsh(T)
             # smallest_eigenvalues = eigenvalues[:2]
-        
+
             # Bias toward index-1 saddle points:
             # - First eigenvalue should be negative (minimize positive values)
-            # - Second eigenvalue should be positive (minimize negative values) 
-            if self.hessian_eigenvalue_penalty == 'softplus':
+            # - Second eigenvalue should be positive (minimize negative values)
+            if self.hessian_eigenvalue_penalty == "softplus":
                 # Using softplus which is differentiable everywhere but still creates one-sided penalties
-                # Penalize if first eigenvalue > 0
-                ev1_bias = torch.nn.functional.softplus(smallest_eigenvalues[0])  
-                # Penalize if second eigenvalue < 0
-                ev2_bias = torch.nn.functional.softplus(-smallest_eigenvalues[1])  
+                # if first eigenvalue > 0, increase energy
+                ev1_bias = torch.nn.functional.softplus(smallest_eigenvalues[:, 0])
+                # if second eigenvalue > 0, increase energy
+                ev2_bias = torch.nn.functional.softplus(-smallest_eigenvalues[:, 1])
                 saddle_bias = ev1_bias + ev2_bias
-            elif self.hessian_eigenvalue_penalty == 'relu':
-                ev1_bias = torch.relu(smallest_eigenvalues[0])
-                ev2_bias = torch.relu(-smallest_eigenvalues[1])
+            elif self.hessian_eigenvalue_penalty == "relu":
+                ev1_bias = torch.relu(smallest_eigenvalues[:, 0])
+                ev2_bias = torch.relu(-smallest_eigenvalues[:, 1])
                 saddle_bias = ev1_bias + ev2_bias
-            # elif self.hessian_eigenvalue_penalty == 'heaviside': 
+            # elif self.hessian_eigenvalue_penalty == 'heaviside':
             #     # 1 if smallest_eigenvalues[0] > 0 else 0
-            #     ev1_bias = torch.heaviside(smallest_eigenvalues[0], torch.tensor(0.)) 
+            #     ev1_bias = torch.heaviside(smallest_eigenvalues[:, 0], torch.tensor(0.))
             #     # 1 if smallest_eigenvalues[1] < 0 else 0
-            #     ev2_bias = torch.heaviside(-smallest_eigenvalues[1], torch.tensor(0.)) 
+            #     ev2_bias = torch.heaviside(-smallest_eigenvalues[:, 1], torch.tensor(0.))
             #     saddle_bias = ev1_bias + ev2_bias
-            elif self.hessian_eigenvalue_penalty == 'sigmoid':
-                ev1_bias = torch.sigmoid(smallest_eigenvalues[0])
-                ev2_bias = torch.sigmoid(-smallest_eigenvalues[1])
+            elif self.hessian_eigenvalue_penalty == "sigmoid":
+                ev1_bias = torch.sigmoid(smallest_eigenvalues[:, 0])
+                ev2_bias = torch.sigmoid(-smallest_eigenvalues[:, 1])
                 saddle_bias = ev1_bias + ev2_bias
+            elif self.hessian_eigenvalue_penalty == "mult":
+                # Penalize if both eigenvalues are positive or negative
+                ev1_bias = smallest_eigenvalues[:, 0]
+                ev2_bias = smallest_eigenvalues[:, 1]
+                saddle_bias = ev1_bias * ev2_bias
+            elif self.hessian_eigenvalue_penalty == "tanh_mult":
+                # Penalize if both eigenvalues are positive or negative
+                ev1_bias = torch.tanh(smallest_eigenvalues[:, 0])
+                ev2_bias = torch.tanh(smallest_eigenvalues[:, 1])
+                saddle_bias = ev1_bias * ev2_bias
             else:
-                raise ValueError(f"Invalid penalty function: {self.hessian_eigenvalue_penalty}")
-            saddle_bias = saddle_bias.mean(dim=-1)
+                raise ValueError(
+                    f"Invalid penalty function: {self.hessian_eigenvalue_penalty}"
+                )
+            # saddle_bias = saddle_bias.mean(dim=-1)
         else:
             # No penalty
             saddle_bias = torch.zeros_like(energy)
+
+        # idx = torch.randperm(samples.shape[0])[:15]
+        # for i in idx:
+        #     print(f"evs={smallest_eigenvalues[i].tolist()} -> {saddle_bias[i]:.2f}")
+
+        # ensure we have one value per batch
+        assert (
+            energy.shape == force_magnitude.shape == saddle_bias.shape
+        ) and energy.shape[0] == samples.shape[
+            0
+        ], f"samples={samples.shape}, energy={energy.shape}, forces={force_magnitude.shape}, hessian={saddle_bias.shape}"
 
         # Combine loss terms
         energy_loss = self.energy_weight * energy
         force_loss = self.force_weight * force_magnitude
         hessian_loss = self.hessian_weight * saddle_bias
         total_loss = energy_loss + force_loss + hessian_loss
-        
+
         if return_aux_output:
             aux_output = {
-                'energy_loss': energy_loss,
-                'force_loss': force_loss,
-                'hessian_loss': hessian_loss
+                "energy_loss": energy_loss,
+                "force_loss": force_loss,
+                "hessian_loss": hessian_loss,
             }
             return -total_loss, aux_output
         return -total_loss
 
     def log_on_epoch_end(self, *args, **kwargs):
-        
+
         # First plot the original GMM energy surface
         super().log_on_epoch_end(*args, **kwargs)
         print(f"Plotted GMM energy surface at epoch {self.curr_epoch}")
@@ -257,7 +297,9 @@ class GMMPseudoEnergy(GMMEnergy):
 
                 # Plot samples if available
                 if latest_samples is not None:
-                    print(f"latest samples in range: {latest_samples.min().item()} to {latest_samples.max().item()}")
+                    print(
+                        f"latest samples in range: {latest_samples.min().item()} to {latest_samples.max().item()}"
+                    )
                     ax.scatter(*latest_samples.detach().cpu().T, alpha=0.5)
 
                 ax.set_title("Pseudo-energy Surface")
@@ -267,10 +309,19 @@ class GMMPseudoEnergy(GMMEnergy):
                 plt.close()
                 # del fig, ax, img
                 print(f"Plotted pseudo-energy surface at epoch {self.curr_epoch}")
-        
+
     def get_single_dataset_fig(
-        self, samples, name, n_contour_levels=50, plotting_bounds=(-1.4 * 40, 1.4 * 40),
+        self,
+        samples,
+        name,
+        n_contour_levels=50,
+        plotting_bounds=(-1.4 * 40, 1.4 * 40),
         plot_gaussian_means=False,
+        grid_width_n_points=200,
+        use_imshow=False,
+        with_legend=False,
+        plot_prob_kwargs={},
+        plot_sample_kwargs={},
     ):
         """Creates visualization of samples against GMM contours.
         Used in train.py for sample visualization.
@@ -288,19 +339,23 @@ class GMMPseudoEnergy(GMMEnergy):
 
         self.gmm.to("cpu")
         # self.gmm.to("cpu")
-        plot_contours(
+        plot_fn = plot_imshow if use_imshow else plot_contours
+        plot_fn(
             self.log_prob,
             bounds=plotting_bounds,
             ax=ax,
             n_contour_levels=n_contour_levels,
-            grid_width_n_points=200,
+            grid_width_n_points=grid_width_n_points,
+            plot_kwargs=plot_prob_kwargs,
         )
         if samples is not None:
-            samples = samples.to("cpu")  
-            plot_marginal_pair(samples, ax=ax, bounds=plotting_bounds)
+            samples = samples.to("cpu")
+            plot_marginal_pair(
+                samples, ax=ax, bounds=plotting_bounds, plot_kwargs=plot_sample_kwargs
+            )
         if name is not None:
             ax.set_title(f"{name}")
-        
+
         if plot_gaussian_means:
             means = self.gmm.distribution.component_distribution.loc
             ax.scatter(*means.detach().cpu().T, color="red", marker="x")
@@ -309,8 +364,11 @@ class GMMPseudoEnergy(GMMEnergy):
         self.gmm.to(self.device)
         # self.gmm.to(self.device)
 
+        if with_legend:
+            ax.legend()
+
         return fig_to_image(fig)
-    
+
     # TODO: plot gmm or pseudo-energy?
     def get_dataset_fig(
         self,
@@ -319,6 +377,7 @@ class GMMPseudoEnergy(GMMEnergy):
         n_contour_levels=50,
         plotting_bounds=(-1.4 * 40, 1.4 * 40),
         plot_gaussian_means=False,
+        use_imshow=False,
     ):
         """Creates side-by-side visualization of buffer and generated samples.
         Used in train.py for comparing sample distributions.
@@ -335,7 +394,8 @@ class GMMPseudoEnergy(GMMEnergy):
         fig, axs = plt.subplots(1, 2, figsize=(12, 4))
 
         self.gmm.to("cpu")
-        plot_contours(
+        plot_fn = plot_imshow if use_imshow else plot_contours
+        plot_fn(
             self.gmm.log_prob,
             bounds=plotting_bounds,
             ax=axs[0],
@@ -349,7 +409,7 @@ class GMMPseudoEnergy(GMMEnergy):
             axs[0].set_title("Buffer")
 
         if gen_samples is not None:
-            plot_contours(
+            plot_fn(
                 self.gmm.log_prob,
                 bounds=plotting_bounds,
                 ax=axs[1],
@@ -373,7 +433,6 @@ class GMMPseudoEnergy(GMMEnergy):
 
         return fig_to_image(fig)
 
-
     def log_samples(
         self,
         samples: torch.Tensor,
@@ -386,7 +445,7 @@ class GMMPseudoEnergy(GMMEnergy):
 
         Args:
             samples (torch.Tensor): Samples to visualize
-            wandb_logger (WandbLogger): Logger for visualizations 
+            wandb_logger (WandbLogger): Logger for visualizations
             name (str, optional): Name for logged images. Defaults to ""
             should_unnormalize (bool, optional): Whether to unnormalize samples. Defaults to False
         """
@@ -412,7 +471,7 @@ class GMMPseudoEnergy(GMMEnergy):
         # Plot samples as scatter points
         if samples is not None:
             plot_marginal_pair(samples, ax=ax, bounds=(-1.4 * 40, 1.4 * 40))
-        
+
         if name:
             ax.set_title(name)
 
@@ -517,7 +576,7 @@ class GMMPseudoEnergy(GMMEnergy):
         True transition states (index-1 saddle points) should have exactly one negative eigenvalue.
 
         Args:
-            transition_points (torch.Tensor): 
+            transition_points (torch.Tensor):
                 Tensor of shape (n_points, dimensionality) containing candidate transition state coordinates
 
         Returns:
@@ -621,9 +680,7 @@ class GMMPseudoEnergy(GMMEnergy):
             )
 
             # Compute Hessian and check eigenvalues
-            hessian = torch.func.hessian(lambda x: -self.gmm.log_prob(x))(
-                x
-            )
+            hessian = torch.func.hessian(lambda x: -self.gmm.log_prob(x))(x)
             eigenvals = torch.linalg.eigvalsh(hessian)
 
             # Check for index-1 saddle point (exactly one negative eigenvalue)
@@ -634,7 +691,9 @@ class GMMPseudoEnergy(GMMEnergy):
         if len(saddle_points) > 0:
             # Remove duplicates by converting to numpy, using unique, and converting back to torch
             unique_saddle_points = np.unique(np.array(saddle_points), axis=0)
-            return torch.tensor(unique_saddle_points, device=self.device, dtype=torch.float32)
+            return torch.tensor(
+                unique_saddle_points, device=self.device, dtype=torch.float32
+            )
         else:
             return torch.tensor([], device=self.device)
 

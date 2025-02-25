@@ -43,13 +43,13 @@ from .components.sdes import VEReverseSDE
 
 def t_stratified_loss(batch_t, batch_loss, num_bins=5, loss_name=None):
     """Stratify loss by binning time values.
-    
+
     Args:
         batch_t: Batch of time values
         batch_loss: Batch of loss values
         num_bins: Number of bins to stratify into
         loss_name: Name prefix for the loss
-        
+
     Returns:
         Dictionary mapping time ranges to average loss in that range
     """
@@ -73,10 +73,10 @@ def t_stratified_loss(batch_t, batch_loss, num_bins=5, loss_name=None):
 
 def get_wandb_logger(loggers):
     """Gets the Weights & Biases logger from a list of loggers.
-    
+
     Args:
         loggers: List of PyTorch Lightning loggers
-        
+
     Returns:
         The WandbLogger instance if present, otherwise None
     """
@@ -397,7 +397,12 @@ class DEMLitModule(LightningModule):
         error_norms = (predicted_score - true_score).pow(2).mean(-1)
         return error_norms
 
-    def get_loss(self, times: torch.Tensor, samples: torch.Tensor, return_aux_output: bool = False) -> torch.Tensor:
+    def get_loss(
+        self,
+        times: torch.Tensor,
+        samples: torch.Tensor,
+        return_aux_output: bool = False,
+    ) -> torch.Tensor:
         _out = estimate_grad_Rt(
             times,
             samples,
@@ -469,7 +474,9 @@ class DEMLitModule(LightningModule):
                     self.energy_function.n_spatial_dim,
                 )
 
-            dem_loss, aux_output = self.get_loss(times, noised_samples, return_aux_output=True)
+            dem_loss, aux_output = self.get_loss(
+                times, noised_samples, return_aux_output=True
+            )
             # Uncomment for SM
             # dem_loss = self.get_score_loss(times, iter_samples, noised_samples)
             self.log_dict(
@@ -735,7 +742,7 @@ class DEMLitModule(LightningModule):
     def _compute_total_var(self, generated_samples, data_set):
         """Compute total variation distance between histograms of interatomic distances.
 
-        Calculates the total variation distance between normalized histograms of interatomic 
+        Calculates the total variation distance between normalized histograms of interatomic
         distances from generated samples and a reference dataset.
 
         Args:

@@ -1,19 +1,22 @@
 from typing import Optional
 
 import matplotlib
-matplotlib.use('Agg')  # Force non-interactive backend
+
+matplotlib.use("Agg")  # Force non-interactive backend
 import matplotlib.pyplot as plt  # Import pyplot after setting backend
+
 plt.ioff()  # Turn off interactive model
 
 import numpy as np
 import torch
-import fab.target_distributions 
+import fab.target_distributions
 from fab.utils.plotting import plot_contours, plot_marginal_pair
 from lightning.pytorch.loggers import WandbLogger
 
 from dem.energies.base_energy_function import BaseEnergyFunction
 from dem.models.components.replay_buffer import ReplayBuffer
 from dem.utils.logging_utils import fig_to_image
+from dem.utils.plotting import plot_imshow
 
 
 class GMMEnergy(BaseEnergyFunction):
@@ -133,7 +136,9 @@ class GMMEnergy(BaseEnergyFunction):
         val_samples = self.gmm.sample((self.val_set_size,))
         return val_samples
 
-    def __call__(self, samples: torch.Tensor, return_aux_output: bool = False) -> torch.Tensor:
+    def __call__(
+        self, samples: torch.Tensor, return_aux_output: bool = False
+    ) -> torch.Tensor:
         """Evaluates GMM log probability at given samples.
         Used in train.py and eval.py for computing model loss.
 
@@ -171,6 +176,7 @@ class GMMEnergy(BaseEnergyFunction):
         replay_buffer=None,
         prefix: str = "",
         return_fig: bool = False,
+        use_imshow: bool = False,
     ) -> None:
         """Logs metrics and visualizations at the end of each epoch.
         Used in train.py for logging training progress.
@@ -265,8 +271,15 @@ class GMMEnergy(BaseEnergyFunction):
         wandb_logger.log_image(f"{name}", [samples_fig])
 
     def get_single_dataset_fig(
-        self, samples, name, n_contour_levels=50, plotting_bounds=(-1.4 * 40, 1.4 * 40),
+        self,
+        samples,
+        name,
+        n_contour_levels=50,
+        plotting_bounds=(-1.4 * 40, 1.4 * 40),
         plot_gaussian_means=False,
+        grid_width_n_points=200,
+        use_imshow=False,
+        with_legend=False,
     ):
         """Creates visualization of samples against GMM contours.
         Used in train.py for sample visualization.
@@ -283,83 +296,77 @@ class GMMEnergy(BaseEnergyFunction):
         fig, ax = plt.subplots(1, 1, figsize=(8, 8))
 
         self.gmm.to("cpu")
-        plot_contours(
+        plot_fn = plot_imshow if use_imshow else plot_contours
+        plot_fn(
             self.gmm.log_prob,
             bounds=plotting_bounds,
             ax=ax,
             n_contour_levels=n_contour_levels,
-            grid_width_n_points=200,
+            grid_width_n_points=grid_width_n_points,
         )
         if samples is not None:
             plot_marginal_pair(samples, ax=ax, bounds=plotting_bounds)
         if name is not None:
             ax.set_title(f"{name}")
-        
+
         if plot_gaussian_means:
             means = self.gmm.distribution.component_distribution.loc
             ax.scatter(*means.detach().cpu().T, color="red", marker="x")
             # ax.legend()
 
+        if with_legend:
+            ax.legend()
+
         self.gmm.to(self.device)
 
         return fig_to_image(fig)
 
-    def get_dataset_fig(
+    def get_single_dataset_fig(
         self,
         samples,
-        gen_samples=None,
+        name,
         n_contour_levels=50,
         plotting_bounds=(-1.4 * 40, 1.4 * 40),
         plot_gaussian_means=False,
+        grid_width_n_points=200,
+        use_imshow=False,
+        with_legend=False,
     ):
-        """Creates side-by-side visualization of buffer and generated samples.
-        Used in train.py for comparing sample distributions.
+        """Creates visualization of samples against GMM contours.
+        Used in train.py for sample visualization.
 
         Args:
-            samples (torch.Tensor): Buffer samples to plot
-            gen_samples (torch.Tensor, optional): Generated samples to plot. Defaults to None
+            samples (torch.Tensor): Samples to plot
+            name (str): Title for plot
             plotting_bounds (tuple, optional): Plot bounds. Defaults to (-1.4*40, 1.4*40)
 
         Returns:
             numpy.ndarray: Plot as image array
         """
         plt.close()
-        fig, axs = plt.subplots(1, 2, figsize=(12, 4))
+        fig, ax = plt.subplots(1, 1, figsize=(8, 8))
 
         self.gmm.to("cpu")
-        plot_contours(
+        plot_fn = plot_imshow if use_imshow else plot_contours
+        plot_fn(
             self.gmm.log_prob,
             bounds=plotting_bounds,
-            ax=axs[0],
+            ax=ax,
             n_contour_levels=n_contour_levels,
-            grid_width_n_points=200,
+            grid_width_n_points=grid_width_n_points,
         )
-
-        # plot dataset samples
         if samples is not None:
-            plot_marginal_pair(samples, ax=axs[0], bounds=plotting_bounds)
-            axs[0].set_title("Buffer")
-
-        if gen_samples is not None:
-            plot_contours(
-                self.gmm.log_prob,
-                bounds=plotting_bounds,
-                ax=axs[1],
-                n_contour_levels=50,
-                grid_width_n_points=200,
-            )
-            # plot generated samples
-            plot_marginal_pair(gen_samples, ax=axs[1], bounds=plotting_bounds)
-            axs[1].set_title("Generated samples")
+            plot_marginal_pair(samples, ax=ax, bounds=plotting_bounds)
+        if name is not None:
+            ax.set_title(f"{name}")
 
         if plot_gaussian_means:
             means = self.gmm.distribution.component_distribution.loc
-            axs[1].scatter(*means.detach().cpu().T, color="red", marker="x")
-            # axs[1].legend()
+            ax.scatter(*means.detach().cpu().T, color="red", marker="x")
+            # ax.legend()
 
-        # delete subplot
-        else:
-            fig.delaxes(axs[1])
+        if with_legend:
+            ax.legend()
 
         self.gmm.to(self.device)
 
