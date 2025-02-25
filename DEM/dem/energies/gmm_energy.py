@@ -7,7 +7,7 @@ plt.ioff()  # Turn off interactive model
 
 import numpy as np
 import torch
-from fab.target_distributions import gmm
+import fab.target_distributions 
 from fab.utils.plotting import plot_contours, plot_marginal_pair
 from lightning.pytorch.loggers import WandbLogger
 
@@ -16,7 +16,7 @@ from dem.models.components.replay_buffer import ReplayBuffer
 from dem.utils.logging_utils import fig_to_image
 
 
-class GMM(BaseEnergyFunction):
+class GMMEnergy(BaseEnergyFunction):
     """Gaussian Mixture Model energy function for DEM.
 
     This class implements a GMM energy function that can be used for training and evaluating DEM models.
@@ -58,7 +58,7 @@ class GMM(BaseEnergyFunction):
     ):
         use_gpu = device != "cpu"
         torch.manual_seed(0)  # seed of 0 for GMM problem
-        self.gmm = gmm.GMM(
+        self.gmm = fab.target_distributions.gmm.GMM(
             dim=dimensionality,
             n_mixes=n_mixes,
             loc_scaling=loc_scaling,

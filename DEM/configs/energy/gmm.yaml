@@ -1,4 +1,4 @@
-_target_: dem.energies.gmm_energy.GMM
+_target_: dem.energies.gmm_energy.GMMEnergy
 
 dimensionality: 2
 n_mixes: 40

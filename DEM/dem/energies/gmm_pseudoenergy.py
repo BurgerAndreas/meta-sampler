@@ -1,15 +1,16 @@
 import torch
 import numpy as np
+import copy
 
 import matplotlib
 matplotlib.use('Agg')  # Force non-interactive backend
 import matplotlib.pyplot as plt  # Import pyplot after setting backend
 plt.ioff()  # Turn off interactive model
 
-from fab.target_distributions import gmm
+import fab.target_distributions.gmm
 from fab.utils.plotting import plot_contours, plot_marginal_pair
 from dem.energies.base_energy_function import BaseEnergyFunction
-from dem.energies.gmm_energy import GMM
+from dem.energies.gmm_energy import GMMEnergy
 from dem.utils.logging_utils import fig_to_image
 import scipy.optimize
 from tqdm import tqdm
@@ -17,7 +18,7 @@ import wandb
 from lightning.pytorch.loggers import WandbLogger
 
 
-class GMMPseudoEnergy(GMM):
+class GMMPseudoEnergy(GMMEnergy):
     """GMM pseudo-energy function to find transition points (index-1 saddle points).
     This function should be minimal at the transition points of some potential energy surface.
 
@@ -42,11 +43,8 @@ class GMMPseudoEnergy(GMM):
         use_vmap=True,
         **gmm_kwargs,
     ):
-        # Create GMM instance, which will be used to compute the potential energy
-        self.gmm_potential = GMM(**gmm_kwargs)
-        
-        # Initialize base class
-        super().__init__(**gmm_kwargs)
+        # Initialize GMMEnergy base class
+        super().__init__(**copy.deepcopy(gmm_kwargs))
         
         self._is_molecule = False
 
@@ -70,9 +68,9 @@ class GMMPseudoEnergy(GMM):
         self.hessian_loss_sum = 0.0
         self.n_loss_samples = 0
 
-    def __call__(self, x: torch.Tensor, return_losses: bool = False) -> torch.Tensor:
-        """Compute pseudo-energy combining energy, force, and Hessian terms.
-        Returns log-probability = -pseudo-energy.
+    def log_prob_energy(self, samples: torch.Tensor, return_aux_output: bool = False) -> torch.Tensor:
+        """Compute unnormalized log-probability of energy.
+        Same as GMMEnergy.__call__.
 
         Args:
             x: Input positions tensor of shape (dimensionality,)
@@ -81,34 +79,97 @@ class GMMPseudoEnergy(GMM):
         Returns:
             Negative of pseudo-energy value (scalar)
         """
-        # Compute energy
-        energy = self.gmm_potential(x)
+        if self.should_unnormalize:
+            samples = self.unnormalize(samples)
+            
+        # Compute log-probability of potential energy
+        if return_aux_output:
+            return self.gmm.log_prob(samples), {}
+        return self.gmm.log_prob(samples)
+    
+    def gmm_potential(self, samples: torch.Tensor, return_aux_output: bool = False) -> torch.Tensor:
+        """Alias for log_prob_energy. Same as GMMEnergy.__call__."""
+        return self.log_prob_energy(samples, return_aux_output=return_aux_output)
+    
+    def __call__(self, samples: torch.Tensor, return_aux_output: bool = False) -> torch.Tensor:
+        """Compute pseudo-energy combining energy, force, and Hessian terms.
+        Returns unnormalized log-probability = -pseudo-energy.
+        Similar to GMMEnergy.__call__.
 
+        Args:
+            x: Input positions tensor of shape (dimensionality,)
+                When used with vmap, this will be automatically vectorized
+
+        Returns:
+            Negative of pseudo-energy value (scalar)
+        """
+        if self.should_unnormalize:
+            samples = self.unnormalize(samples)
+        
+        return self.log_prob(samples, return_aux_output=return_aux_output) 
+     
+    def log_prob(self, samples: torch.Tensor, return_aux_output: bool = False) -> torch.Tensor:
+        """Compute unnormalized log-probability of pseudo-energy.
+        Corresponds to GMMEnergy.log_prob.
+
+        Args:
+            samples: Input positions tensor of shape (dimensionality,)
+                When used with vmap, this will be automatically vectorized
+            return_aux_output: Whether to return auxiliary outputs
+
+        Returns:
+            Negative of pseudo-energy value (scalar)
+        """
+        
+        # Compute energy
+        energy = self.gmm.log_prob(samples)
+        
         # For computing forces, we need to sum the energy to get a scalar
-        def energy_sum(x):
-            return self.gmm_potential(x).sum()
-        # Use functorch.grad to compute forces
-        forces = -torch.func.grad(energy_sum)(x)
-        # Compute force magnitude
-        force_magnitude = torch.linalg.norm(forces, ord=self.forces_norm, dim=-1)
-        force_magnitude = force_magnitude ** self.force_exponent
+        if self.force_weight > 0:
+            def energy_sum(x):
+                return self.gmm.log_prob(x).sum() # TODO: is sum right here?
+            # Use functorch.grad to compute forces
+            forces = -torch.func.grad(energy_sum)(samples)
+            # Compute force magnitude
+            force_magnitude = torch.linalg.norm(forces, ord=self.forces_norm, dim=-1)
+            force_magnitude = force_magnitude ** self.force_exponent
+        else:
+            force_magnitude = torch.zeros_like(energy)
         
         # Compute two smallest eigenvalues of Hessian
         if self.hessian_weight > 0:
-            if len(x.shape) == 1:
+            if len(samples.shape) == 1:
                 # Handle single sample
-                hessian = torch.func.hessian(self.gmm_potential)(x)
+                hessian = torch.func.hessian(self.gmm.log_prob)(samples)
                 eigenvalues = torch.linalg.eigvalsh(hessian)
                 smallest_eigenvalues = torch.sort(eigenvalues, dim=-1)[0][:2]
             else:
                 # Handle batched inputs using vmap
-                batched_hessian = torch.vmap(torch.func.hessian(self.gmm_potential))(x)
+                batched_hessian = torch.vmap(torch.func.hessian(self.gmm.log_prob))(samples)
                 # Get eigenvalues for each sample in batch
                 batched_eigenvalues = torch.linalg.eigvalsh(batched_hessian) # Use eigvalsh since Hessian is symmetric
                 # Sort eigenvalues in ascending order for each sample
                 batched_eigenvalues = torch.sort(batched_eigenvalues, dim=-1)[0]
                 # Get 2 smallest eigenvalues for each sample
                 smallest_eigenvalues = batched_eigenvalues[..., :2]
+
+            # def loss_fn(x):
+            #     return self.gmm.log_prob(x)
+            
+            # # Get Hessian-vector product using functorch transforms
+            # grad_fn = torch.func.grad(loss_fn)
+            # def hvp(v):
+            #     # Ensure v has the same shape as samples
+            #     v = v.reshape(samples.shape)
+            #     return torch.func.jvp(grad_fn, (samples,), (v,))[1]
+            
+            # # Run Lanczos on the HVP function
+            # v0 = torch.randn_like(samples)
+            # T, Q_mat = lanczos(hvp, v0, m=100)
+            
+            # # Compute eigenvalues of the tridiagonal matrix
+            # eigenvalues = torch.linalg.eigvalsh(T)
+            # smallest_eigenvalues = eigenvalues[:2]
         
             # Bias toward index-1 saddle points:
             # - First eigenvalue should be negative (minimize positive values)
@@ -147,7 +208,7 @@ class GMMPseudoEnergy(GMM):
         hessian_loss = self.hessian_weight * saddle_bias
         total_loss = energy_loss + force_loss + hessian_loss
         
-        if return_losses:
+        if return_aux_output:
             aux_output = {
                 'energy_loss': energy_loss,
                 'force_loss': force_loss,
@@ -156,22 +217,10 @@ class GMMPseudoEnergy(GMM):
             return -total_loss, aux_output
         return -total_loss
 
-    # Inherit other methods from GMM
-    def setup_test_set(self):
-        return self.gmm_potential.setup_test_set()
-
-    def setup_train_set(self):
-        return self.gmm_potential.setup_train_set()
-
-    def setup_val_set(self):
-        return self.gmm_potential.setup_val_set()
-
     def log_on_epoch_end(self, *args, **kwargs):
         
-        self.gmm_potential.curr_epoch = self.curr_epoch
-        
         # First plot the original GMM energy surface
-        self.gmm_potential.log_on_epoch_end(*args, **kwargs)
+        super().log_on_epoch_end(*args, **kwargs)
         print(f"Plotted GMM energy surface at epoch {self.curr_epoch}")
 
         # Now plot the pseudo-energy surface
@@ -186,7 +235,7 @@ class GMMPseudoEnergy(GMM):
             if len(prefix) > 0 and prefix[-1] != "/":
                 prefix += "/"
 
-            if self.curr_epoch % self.gmm_potential.plot_samples_epoch_period == 0:
+            if self.curr_epoch % self.plot_samples_epoch_period == 0:
                 fig, ax = plt.subplots(1, 1, figsize=(8, 8))
 
                 # Create grid for contour plot
@@ -238,6 +287,7 @@ class GMMPseudoEnergy(GMM):
         fig, ax = plt.subplots(1, 1, figsize=(8, 8))
 
         self.gmm.to("cpu")
+        # self.gmm.to("cpu")
         plot_contours(
             self.log_prob,
             bounds=plotting_bounds,
@@ -246,6 +296,7 @@ class GMMPseudoEnergy(GMM):
             grid_width_n_points=200,
         )
         if samples is not None:
+            samples = samples.to("cpu")  
             plot_marginal_pair(samples, ax=ax, bounds=plotting_bounds)
         if name is not None:
             ax.set_title(f"{name}")
@@ -256,6 +307,7 @@ class GMMPseudoEnergy(GMM):
             # ax.legend()
 
         self.gmm.to(self.device)
+        # self.gmm.to(self.device)
 
         return fig_to_image(fig)
     
@@ -322,9 +374,6 @@ class GMMPseudoEnergy(GMM):
         return fig_to_image(fig)
 
 
-    def log_prob(self, x):
-        return -self.__call__(x, return_losses=False)
-    
     def log_samples(
         self,
         samples: torch.Tensor,
@@ -415,8 +464,8 @@ class GMMPseudoEnergy(GMM):
         )
 
         # Get GMM parameters directly from distribution object
-        mix = self.gmm_potential.gmm.distribution.mixture_distribution
-        comp = self.gmm_potential.gmm.distribution.component_distribution
+        mix = self.gmm.distribution.mixture_distribution
+        comp = self.gmm.distribution.component_distribution
         means = comp.loc
         covs = comp.covariance_matrix
         weights = mix.probs
@@ -480,7 +529,7 @@ class GMMPseudoEnergy(GMM):
 
         def neg_log_prob(x):
             # GMM negative log probability
-            log_prob = self.gmm_potential.gmm.log_prob(x)
+            log_prob = self.gmm.log_prob(x)
             return -log_prob
 
         def compute_grad_and_hessian(x):
@@ -561,7 +610,7 @@ class GMMPseudoEnergy(GMM):
         saddle_points = []
         for point in tqdm(candidate_points, total=len(candidate_points)):
             # Find stationary point
-            result = find_stationary_point(point, self.gmm_potential.gmm)
+            result = find_stationary_point(point, self.gmm)
 
             if not result.success:
                 continue
@@ -572,7 +621,7 @@ class GMMPseudoEnergy(GMM):
             )
 
             # Compute Hessian and check eigenvalues
-            hessian = torch.func.hessian(lambda x: -self.gmm_potential.gmm.log_prob(x))(
+            hessian = torch.func.hessian(lambda x: -self.gmm.log_prob(x))(
                 x
             )
             eigenvals = torch.linalg.eigvalsh(hessian)

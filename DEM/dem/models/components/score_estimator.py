@@ -63,7 +63,7 @@ def log_expectation_reward(
 
     # Compute log rewards
     if return_aux_output:
-        log_rewards, aux_output = energy_function(samples, return_losses=True)
+        log_rewards, aux_output = energy_function(samples, return_aux_output=True)
     else:
         log_rewards = energy_function(samples)
 
