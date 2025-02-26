@@ -18,7 +18,7 @@ import fab.target_distributions.gmm
 from dem.energies.base_energy_function import BaseEnergyFunction
 from dem.energies.gmm_energy import GMMEnergy
 from dem.utils.logging_utils import fig_to_image
-from dem.utils.plotting import plot_imshow, plot_contours, plot_marginal_pair
+from dem.utils.plotting import plot_fn, plot_marginal_pair
 
 
 class GMMPseudoEnergy(GMMEnergy):
@@ -133,7 +133,10 @@ class GMMPseudoEnergy(GMMEnergy):
         """
 
         # Compute energy (all positive after -log_prob)
-        energy = -self.gmm.log_prob(samples)
+        if self.energy_weight > 0:
+            energy = -self.gmm.log_prob(samples)
+        else:
+            energy = torch.zeros_like(samples[:, 0])
 
         # For computing forces, we need to sum the energy to get a scalar
         if self.force_weight > 0:
@@ -145,7 +148,10 @@ class GMMPseudoEnergy(GMMEnergy):
             forces = -torch.func.grad(energy_sum)(samples)
             # Compute force magnitude
             force_magnitude = torch.linalg.norm(forces, ord=self.forces_norm, dim=-1)
-            force_magnitude = force_magnitude**self.force_exponent
+            if self.force_exponent > 0:
+                force_magnitude = force_magnitude**self.force_exponent
+            else:
+                force_magnitude = (force_magnitude+1e-8)**self.force_exponent
         else:
             force_magnitude = torch.zeros_like(energy)
 
@@ -251,7 +257,7 @@ class GMMPseudoEnergy(GMMEnergy):
         elif self.term_aggr == "mult":
             total_loss = energy_loss * force_loss * hessian_loss
         elif self.term_aggr == "multfh":
-            # multiply acts like an and operation
+            # multiply acts like an `and` operation
             total_loss = energy_loss + (force_loss * hessian_loss)
         else:
             raise ValueError(f"Invalid term_aggr: {self.term_aggr}")
@@ -347,11 +353,11 @@ class GMMPseudoEnergy(GMMEnergy):
 
         self.gmm.to("cpu")
         # self.gmm.to("cpu")
-        plot_fn = plot_contours if plot_style == "contours" else plot_imshow
         plot_fn(
             self.log_prob,
             bounds=plotting_bounds,
             ax=ax,
+            plot_style=plot_style,
             n_contour_levels=n_contour_levels,
             grid_width_n_points=grid_width_n_points,
             plot_kwargs=plot_prob_kwargs,
@@ -405,11 +411,11 @@ class GMMPseudoEnergy(GMMEnergy):
         fig, axs = plt.subplots(1, 2, figsize=(12, 4))
 
         self.gmm.to("cpu")
-        plot_fn = plot_contours if plot_style == "contours" else plot_imshow
         plot_fn(
             self.gmm.log_prob,
             bounds=plotting_bounds,
             ax=axs[0],
+            plot_style=plot_style,
             n_contour_levels=n_contour_levels,
             grid_width_n_points=200,
             plot_kwargs=plot_prob_kwargs,
@@ -425,6 +431,7 @@ class GMMPseudoEnergy(GMMEnergy):
                 self.gmm.log_prob,
                 bounds=plotting_bounds,
                 ax=axs[1],
+                plot_style=plot_style,
                 n_contour_levels=50,
                 grid_width_n_points=200,
                 plot_kwargs=plot_prob_kwargs,
@@ -473,10 +480,11 @@ class GMMPseudoEnergy(GMMEnergy):
         fig, ax = plt.subplots(1, 1, figsize=(8, 8))
 
         # Plot contours of pseudopotential energy surface
-        plot_contours(
+        plot_fn(
             self.log_prob,
             bounds=(-1.4 * 40, 1.4 * 40),
             ax=ax,
+            plot_style="contours",
             n_contour_levels=50,
             grid_width_n_points=200,
         )

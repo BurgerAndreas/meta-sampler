@@ -10,7 +10,7 @@ from fab.types_ import LogProbFunc, Distribution
 
 
 # adjusted from fab.utils.plotting.plot_contours
-def plot_imshow(
+def plot_fn(
     log_prob_func: LogProbFunc,
     ax: Optional[plt.Axes] = None,
     bounds: Tuple[float, float] = (-5.0, 5.0),
@@ -60,19 +60,22 @@ def plot_imshow(
         # Create heatmap using imshow
         dflt = {
             "cmap": "viridis",
-            "origin": "lower",
-            "aspect": "equal",
+            # "origin": "lower",
+            # "aspect": "equal",
         }
         for k, v in dflt.items():
             if k not in plot_kwargs:
                 plot_kwargs[k] = v
+        # imshow transposes the array just to screw with you
         im = ax.imshow(
-            log_p_x.numpy(),
+            log_p_x.numpy().T,
             extent=[bounds[0], bounds[1], bounds[0], bounds[1]],
+            # extent=[x_points_dim1.min(), x_points_dim1.max(), x_points_dim2.min(), x_points_dim2.max()],
+            origin="lower",
             **plot_kwargs,
         )
         # Add colorbar
-        plt.colorbar(im, ax=ax, label='Log(P)', fraction=0.046, pad=0.04, shrink=0.8)
+        # plt.colorbar(im, ax=ax, label='Log(P)', fraction=0.046, pad=0.04, shrink=0.8)
 
     elif plot_style == "scatter":
         # Use scatter
@@ -87,12 +90,24 @@ def plot_imshow(
             x_points_dim1,
             x_points_dim2,
             c=log_p_x.numpy(),
+            # aspect="equal",
             **plot_kwargs,
         )
-        fig.colorbar(im, ax=ax, label="log(P) = -E", fraction=0.046, pad=0.04, shrink=0.8)
+        # fig.colorbar(im, ax=ax, label="log(P) = -E", fraction=0.046, pad=0.04, shrink=0.8)
 
-    # Set equal aspect ratio
-    ax.set_aspect("equal")
+        # Set equal aspect ratio
+        ax.set_aspect("equal")
+        
+    elif plot_style == "contours":
+        # By default, a linear scaling is used, mapping the lowest value to 0 and the highest to 1
+        ax.contour(
+            x_points_dim1,
+            x_points_dim2,
+            log_p_x,
+            levels=n_contour_levels,
+            # extend="both",
+            **plot_kwargs,
+        )
 
 
 def plot_contours(
@@ -122,17 +137,14 @@ def plot_contours(
     x_points_dim2 = (
         x_points[:, 1].reshape((grid_width_n_points, grid_width_n_points)).numpy()
     )
-
-    if n_contour_levels:
-        ax.contour(
-            x_points_dim1,
-            x_points_dim2,
-            log_p_x,
-            levels=n_contour_levels,
-            **plot_kwargs,
-        )
-    else:
-        ax.contour(x_points_dim1, x_points_dim2, log_p_x, **plot_kwargs)
+    # 
+    ax.contour(
+        x_points_dim1,
+        x_points_dim2,
+        log_p_x,
+        levels=n_contour_levels,
+        **plot_kwargs,
+    )
 
 
 def plot_marginal_pair(
