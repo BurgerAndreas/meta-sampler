@@ -151,7 +151,7 @@ class GMMPseudoEnergy(GMMEnergy):
             if self.force_exponent > 0:
                 force_magnitude = force_magnitude**self.force_exponent
             else:
-                force_magnitude = (force_magnitude+1e-8)**self.force_exponent
+                force_magnitude = -(force_magnitude+1e-6)**self.force_exponent
         else:
             force_magnitude = torch.zeros_like(energy)
 

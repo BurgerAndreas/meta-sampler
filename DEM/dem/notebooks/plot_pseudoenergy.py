@@ -16,53 +16,53 @@ import re
 
 
 configs = [
-    [
-        "Energy",
-        "experiment=gmm_idem_pseudo",
-        "energy.hessian_weight=0.0",
-        "energy.energy_weight=1.0",
-        "energy.force_weight=0.0",
-    ],
-    [
-        "Force L2, Hessian Tanh Mult",
-        "experiment=gmm_idem_pseudo",
-        "energy.hessian_weight=10.0",
-        "energy.hessian_eigenvalue_penalty=tanh_mult",
-        "energy.energy_weight=0.0",
-        "energy.force_weight=1.0",
-    ],
-    [
-        "Multiply: Force L2, Hessian Tanh Mult",
-        "experiment=gmm_idem_pseudo",
-        "energy.hessian_weight=10.0",
-        "energy.hessian_eigenvalue_penalty=tanh_mult",
-        "energy.energy_weight=0.0",
-        "energy.force_weight=1.0",
-        "energy.term_aggr=multfh",
-    ],
-    [
-        "Energy, Force L2, Hessian Tanh Mult",
-        "experiment=gmm_idem_pseudo",
-        "energy.hessian_weight=10.0",
-        "energy.hessian_eigenvalue_penalty=tanh_mult",
-        "energy.energy_weight=1.0",
-        "energy.force_weight=1.0",
-    ],
-    [
-        "Force L2",
-        "experiment=gmm_idem_pseudo",
-        "energy.hessian_weight=0.0",
-        "energy.energy_weight=0.0",
-        "energy.force_weight=1.0",
-    ],
-    [
-        "Force L2 squared",
-        "experiment=gmm_idem_pseudo",
-        "energy.hessian_weight=0.0",
-        "energy.energy_weight=0.0",
-        "energy.force_weight=1.0",
-        "energy.force_exponent=2",
-    ],
+    # [
+    #     "Energy",
+    #     "experiment=gmm_idem_pseudo",
+    #     "energy.hessian_weight=0.0",
+    #     "energy.energy_weight=1.0",
+    #     "energy.force_weight=0.0",
+    # ],
+    # [
+    #     "Force L2, Hessian Tanh Mult",
+    #     "experiment=gmm_idem_pseudo",
+    #     "energy.hessian_weight=10.0",
+    #     "energy.hessian_eigenvalue_penalty=tanh_mult",
+    #     "energy.energy_weight=0.0",
+    #     "energy.force_weight=1.0",
+    # ],
+    # [
+    #     "Multiply: Force L2, Hessian Tanh Mult",
+    #     "experiment=gmm_idem_pseudo",
+    #     "energy.hessian_weight=10.0",
+    #     "energy.hessian_eigenvalue_penalty=tanh_mult",
+    #     "energy.energy_weight=0.0",
+    #     "energy.force_weight=1.0",
+    #     "energy.term_aggr=multfh",
+    # ],
+    # [
+    #     "Energy, Force L2, Hessian Tanh Mult",
+    #     "experiment=gmm_idem_pseudo",
+    #     "energy.hessian_weight=10.0",
+    #     "energy.hessian_eigenvalue_penalty=tanh_mult",
+    #     "energy.energy_weight=1.0",
+    #     "energy.force_weight=1.0",
+    # ],
+    # [
+    #     "Force L2",
+    #     "experiment=gmm_idem_pseudo",
+    #     "energy.hessian_weight=0.0",
+    #     "energy.energy_weight=0.0",
+    #     "energy.force_weight=1.0",
+    # ],
+    # [
+    #     "Force L2 squared",
+    #     "experiment=gmm_idem_pseudo",
+    #     "energy.hessian_weight=0.0",
+    #     "energy.energy_weight=0.0",
+    #     "energy.force_weight=1.0",
+    #     "energy.force_exponent=2",
+    # ],
     [
         "Force L2 inv",
         "experiment=gmm_idem_pseudo",
@@ -71,22 +71,22 @@ configs = [
         "energy.force_weight=1.0",
         "energy.force_exponent=-1",
     ],
-    [
-        "Hessian Tanh Mult",
-        "experiment=gmm_idem_pseudo",
-        "energy.hessian_weight=1.0",
-        "energy.hessian_eigenvalue_penalty=tanh_mult",
-        "energy.energy_weight=0.0",
-        "energy.force_weight=0.0",
-    ],
-    [
-        "Hessian Mult",
-        "experiment=gmm_idem_pseudo",
-        "energy.hessian_weight=1.0",
-        "energy.hessian_eigenvalue_penalty=mult",
-        "energy.energy_weight=0.0",
-        "energy.force_weight=0.0",
-    ],
+    # [
+    #     "Hessian Tanh Mult",
+    #     "experiment=gmm_idem_pseudo",
+    #     "energy.hessian_weight=1.0",
+    #     "energy.hessian_eigenvalue_penalty=tanh_mult",
+    #     "energy.energy_weight=0.0",
+    #     "energy.force_weight=0.0",
+    # ],
+    # [
+    #     "Hessian Mult",
+    #     "experiment=gmm_idem_pseudo",
+    #     "energy.hessian_weight=1.0",
+    #     "energy.hessian_eigenvalue_penalty=mult",
+    #     "energy.energy_weight=0.0",
+    #     "energy.force_weight=0.0",
+    # ],
 ]
 
 for config in configs:
@@ -111,10 +111,30 @@ for config in configs:
     
     scipy_saddle_points = energy_function.get_true_transition_states()
 
-    for plot_style in ["contours", "imshow"]:
+    for plot_style in ["imshow"]:
         img = energy_function.get_single_dataset_fig(
             # samples=scipy_saddle_points,
             samples=None,
+            name=name,
+            plot_gaussian_means=False,
+            grid_width_n_points=800,
+            plot_style=plot_style,
+            # with_legend=False,
+            # plot_prob_kwargs={"cmap": "turbo"},
+            plot_sample_kwargs={"color": "m", "marker": "."},
+        )
+        plt.tight_layout(pad=0.05)
+
+        # save image
+        fig_name = f"plots/gmm_{plt_name}_{plot_style}.png"
+        plt.savefig(fig_name)
+        print(f"Saved {fig_name}")
+        plt.close()
+        
+        
+        img = energy_function.get_single_dataset_fig(
+            samples=scipy_saddle_points,
+            # samples=None,
             name=name,
             plot_gaussian_means=True,
             grid_width_n_points=800,

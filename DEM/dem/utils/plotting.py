@@ -75,7 +75,7 @@ def plot_fn(
             **plot_kwargs,
         )
         # Add colorbar
-        # plt.colorbar(im, ax=ax, label='Log(P)', fraction=0.046, pad=0.04, shrink=0.8)
+        plt.colorbar(im, ax=ax, label='Log(P)', fraction=0.046, pad=0.04, shrink=0.8)
 
     elif plot_style == "scatter":
         # Use scatter
@@ -93,14 +93,14 @@ def plot_fn(
             # aspect="equal",
             **plot_kwargs,
         )
-        # fig.colorbar(im, ax=ax, label="log(P) = -E", fraction=0.046, pad=0.04, shrink=0.8)
+        fig.colorbar(im, ax=ax, label="log(P) = -E", fraction=0.046, pad=0.04, shrink=0.8)
 
         # Set equal aspect ratio
         ax.set_aspect("equal")
         
     elif plot_style == "contours":
         # By default, a linear scaling is used, mapping the lowest value to 0 and the highest to 1
-        ax.contour(
+        im = ax.contour(
             x_points_dim1,
             x_points_dim2,
             log_p_x,
@@ -108,6 +108,7 @@ def plot_fn(
             # extend="both",
             **plot_kwargs,
         )
+        fig.colorbar(im, ax=ax, label='Log(P)', fraction=0.046, pad=0.04, shrink=0.8)
 
 
 def plot_contours(
