@@ -23,21 +23,40 @@ WIP by Andreas at https://github.com/BurgerAndreas/meta-sampler/tree/tps-1d/alan
 mamba activate sampler
 cd DEM
 
-# 2d GMM (from the DEM paper)
-python dem/train.py experiment=gmm_idem
-
 # 1d toy example
 python dem/train.py experiment=simple_test_idem
 
+########################################################
+
+# 2d GMM (from the DEM paper)
+python dem/train.py experiment=gmm_idem
+
+# reduces the accuracy
+python dem/train.py experiment=gmm_idem model.num_samples_to_sample_from_buffer=16 model.nll_batch_size=32 model.eval_batch_size=256 model.num_estimator_mc_samples=16
+
+# saves accuracy with Richardson extrapolation
+python dem/train.py experiment=gmm_idem model.num_samples_to_sample_from_buffer=16 model.nll_batch_size=32 model.eval_batch_size=256 model.num_estimator_mc_samples=16 model.use_richardsons=true
+
+# TODO: doesn't work yet. saves accuracy by using a streaming estimator?
+python dem/train.py experiment=gmm_idem model.num_samples_to_sample_from_buffer=16 model.nll_batch_size=32 model.eval_batch_size=256 model.streaming_batch_size=16 
+
+# increasing num_estimator_mc_samples does improve accuracy
+python dem/train.py experiment=gmm_idem model.num_samples_to_sample_from_buffer=16 model.nll_batch_size=32 model.eval_batch_size=256 
+
+# increasing num_samples_to_sample_from_buffer does improve accuracy?
+python dem/train.py experiment=gmm_idem model.nll_batch_size=32 model.eval_batch_size=256 model.num_estimator_mc_samples=16
+
+###########################################################
+
+# should give the same results as the original GMM
+python dem/train.py experiment=gmm_idem_pseudo_test 
+
 # 2d GMM with pseudo-energy
+# My handcrafted AND Hessian
 python dem/train.py experiment=gmm_idem_pseudo 
-python dem/train.py experiment=gmm_idem_pseudo_nohessian
 
-# "Force L2 inv e1"
-python dem/train.py experiment=gmm_idem_pseudo_nohessian energy.energy_weight=0.0 energy.force_exponent=-1 energy.force_exponent_eps=1e-1
 
-python dem/train.py experiment=gmm_idem_pseudo energy.energy_weight=0.0 energy.force_exponent=-1 energy.force_exponent_eps=1e-1
-
+###########################################################
 
 # 2d alanine dipeptide
 python dem/train.py experiment=aldi_2d

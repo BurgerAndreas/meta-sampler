@@ -41,6 +41,27 @@ from .components.sde_integration import integrate_sde
 from .components.sdes import VEReverseSDE
 
 
+class ProjectedVectorField:
+    """Wrapper class to project out components of a vector field."""
+    def __init__(self, base_model, projection_mask=None):
+        """
+        Args:
+            base_model: Base model that computes the vector field
+            projection_mask: Boolean mask of shape matching output dimension.
+                           True indicates components to keep, False to zero out.
+        """
+        self.base_model = base_model
+        self.projection_mask = projection_mask
+
+    def __call__(self, t, x):
+        vector_field = self.base_model(t, x)
+        if self.projection_mask is not None:
+            # Expand mask to match batch dimension
+            expanded_mask = self.projection_mask.expand(vector_field.shape[0], -1)
+            vector_field = vector_field * expanded_mask
+        return vector_field
+
+
 def t_stratified_loss(batch_t, batch_loss, num_bins=5, loss_name=None):
     """Stratify loss by binning time values.
 
@@ -171,6 +192,7 @@ class DEMLitModule(LightningModule):
         seed=None,
         nll_batch_size=256,
         use_vmap=True,
+        streaming_batch_size: int = 128,
     ) -> None:
         """Initialize a `MNISTLitModule`.
 
@@ -353,6 +375,8 @@ class DEMLitModule(LightningModule):
         self.num_negative_time_steps = num_negative_time_steps
         self.use_vmap = use_vmap
 
+        self.streaming_batch_size = streaming_batch_size
+
     def forward(self, t: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
         """Perform a forward pass through the model `self.net`.
 
@@ -411,6 +435,7 @@ class DEMLitModule(LightningModule):
             num_mc_samples=self.num_estimator_mc_samples,
             # use_vmap=self.use_vmap,
             return_aux_output=return_aux_output,
+            streaming_batch_size=self.hparams.streaming_batch_size,
         )
         if return_aux_output:
             estimated_score, aux_output = _out
@@ -553,6 +578,7 @@ class DEMLitModule(LightningModule):
         return_full_trajectory: bool = False,
         diffusion_scale=1.0,
         negative_time=False,
+        projection_mask=None,
     ) -> torch.Tensor:
         num_samples = num_samples or self.num_samples_to_generate_per_epoch
 
@@ -565,6 +591,7 @@ class DEMLitModule(LightningModule):
             return_full_trajectory=return_full_trajectory,
             diffusion_scale=diffusion_scale,
             negative_time=negative_time,
+            projection_mask=projection_mask,
         )
 
     def integrate(
@@ -576,9 +603,18 @@ class DEMLitModule(LightningModule):
         diffusion_scale=1.0,
         no_grad=True,
         negative_time=False,
+        projection_mask=None,
     ) -> torch.Tensor:
+        if reverse_sde is None:
+            if projection_mask is not None:
+                # Wrap the model's vector field with projection
+                projected_model = ProjectedVectorField(self.net, projection_mask)
+                reverse_sde = VEReverseSDE(projected_model, self.noise_schedule)
+            else:
+                reverse_sde = self.reverse_sde
+
         trajectory = integrate_sde(
-            reverse_sde or self.reverse_sde,
+            reverse_sde,
             samples,
             self.num_integration_steps,
             self.energy_function,
@@ -955,6 +991,74 @@ class DEMLitModule(LightningModule):
             # backwards_samples = self.generate_cfm_samples(self.eval_batch_size)
             self.compute_log_z(
                 self.cfm_cnf, self.cfm_prior, backwards_samples, prefix, ""
+            )
+
+        # Add custom validation for convergence to transition states
+        if hasattr(self.energy_function, 'get_true_transition_states'):
+            # Get ground truth transition states
+            true_transition_states = self.energy_function.get_true_transition_states()
+            
+            # Threshold distance for considering a point "near" a transition state
+            distance_threshold = 1.0  # Can be made configurable
+            
+            # Compute all pairwise distances
+            dists = torch.cdist(backwards_samples, true_transition_states)
+            min_dists = dists.min(dim=1)[0]  # Closest transition state to each sample
+            min_sample_dists = dists.min(dim=0)[0]  # Closest sample to each transition state
+            
+            # Coverage Metrics
+            transition_states_covered = (min_sample_dists < distance_threshold).float().mean()
+            coverage_radius = min_sample_dists.max()  # Minimum radius needed to cover all transition states
+            
+            # Precision Metrics
+            samples_near_transition = (min_dists < distance_threshold).float().mean()
+            
+            # Force magnitude at samples (requires grad)
+            with torch.enable_grad():
+                samples_grad = backwards_samples.detach().requires_grad_(True)
+                energy = -self.energy_function.log_prob(samples_grad)
+                forces = torch.autograd.grad(energy.sum(), samples_grad)[0]
+                force_magnitudes = forces.norm(dim=-1)
+                avg_force = force_magnitudes.mean()
+                
+            # Hessian eigenvalue metrics
+            def compute_hessian_metrics(x):
+                hessian = torch.func.hessian(lambda x: -self.energy_function.log_prob(x))(x)
+                eigenvals = torch.linalg.eigvalsh(hessian)
+                # Check for index-1 saddle point pattern (one negative, rest positive)
+                n_negative = (eigenvals < 0).sum()
+                return n_negative == 1
+
+            # Compute Hessian metrics for points near transition states
+            close_samples = backwards_samples[min_dists < distance_threshold]
+            if len(close_samples) > 0:
+                hessian_accuracy = torch.tensor([compute_hessian_metrics(x) for x in close_samples]).float().mean()
+            else:
+                hessian_accuracy = torch.tensor(0.0)
+
+            # Log all metrics
+            metrics = {
+                # Coverage metrics
+                f"{prefix}/transition_states_covered": transition_states_covered,
+                f"{prefix}/coverage_radius": coverage_radius,
+                
+                # Precision metrics
+                f"{prefix}/samples_near_transition": samples_near_transition,
+                f"{prefix}/average_force_magnitude": avg_force,
+                f"{prefix}/hessian_accuracy": hessian_accuracy,
+                
+                # Original distance metrics
+                f"{prefix}/transition_state_mean_dist": min_dists.mean(),
+                f"{prefix}/transition_state_median_dist": min_dists.median(),
+                f"{prefix}/transition_state_min_dist": min_dists.min(),
+            }
+            
+            # Log all metrics
+            self.log_dict(
+                metrics,
+                on_step=False,
+                on_epoch=True,
+                prog_bar=True,
             )
 
         self.eval_step_outputs.append(to_log)

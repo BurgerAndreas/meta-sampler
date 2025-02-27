@@ -1,17 +1,17 @@
 _target_: dem.energies.gmm_pseudoenergy.GMMPseudoEnergy
 
 # Pseudo-energy specific parameters
-energy_weight: -0.1
+energy_weight: 0.0
 force_weight: 1.0
 forces_norm: null # None=2, 1, or inf
 force_exponent: 1
-force_exponent_eps: 1e-1
+force_exponent_eps: 0
 force_activation: 'tanh'
+force_scale: 1.0
 hessian_weight: 1.0
-hessian_eigenvalue_penalty: 'softplus'
-term_aggr: 'sum'
-# force_offset: 1.0
-# hessian_offset: 1.0
+hessian_eigenvalue_penalty: 'tanh'
+hessian_scale: 10.0
+term_aggr: '1mmultfh'
 kbT: 1.0
 
 # Original GMM parameters

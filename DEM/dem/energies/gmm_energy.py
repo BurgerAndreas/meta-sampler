@@ -9,7 +9,8 @@ plt.ioff()  # Turn off interactive model
 
 import numpy as np
 import torch
-import fab.target_distributions
+# import fab.target_distributions
+import fab.target_distributions.gmm
 from lightning.pytorch.loggers import WandbLogger
 
 from dem.energies.base_energy_function import BaseEnergyFunction

@@ -44,8 +44,10 @@ class GMMPseudoEnergy(GMMEnergy):
         force_exponent=1,
         force_exponent_eps=1e-6,
         force_activation=None,
+        force_scale=1.0,
         hessian_weight=1.0,
         hessian_eigenvalue_penalty="softplus",
+        hessian_scale=10.0,
         term_aggr="sum",
         use_vmap=True,
         kbT=1.0,
@@ -63,8 +65,10 @@ class GMMPseudoEnergy(GMMEnergy):
         self.force_exponent = force_exponent
         self.force_exponent_eps = force_exponent_eps
         self.force_activation = force_activation
+        self.force_scale = force_scale
         self.hessian_weight = hessian_weight
         self.hessian_eigenvalue_penalty = hessian_eigenvalue_penalty
+        self.hessian_scale = hessian_scale
         self.use_vmap = use_vmap
         self.term_aggr = term_aggr
         self.kbT = kbT
@@ -162,11 +166,11 @@ class GMMPseudoEnergy(GMMEnergy):
                 force_magnitude = -(force_magnitude+self.force_exponent_eps)**self.force_exponent
             # force_magnitude += 1. # [0, inf] -> [1, inf]
             if self.force_activation == "tanh":
-                force_magnitude = torch.tanh(force_magnitude)
+                force_magnitude = torch.tanh(force_magnitude * self.force_scale)
             elif self.force_activation == "sigmoid":
-                force_magnitude = torch.sigmoid(force_magnitude)
+                force_magnitude = torch.sigmoid(force_magnitude * self.force_scale)
             elif self.force_activation == "softplus":
-                force_magnitude = torch.nn.functional.softplus(force_magnitude)
+                force_magnitude = torch.nn.functional.softplus(force_magnitude * self.force_scale)
             elif self.force_activation in [None, False]:
                 pass
             else:
@@ -246,7 +250,7 @@ class GMMPseudoEnergy(GMMEnergy):
                 saddle_bias += 1. # [1, 2]
             elif self.hessian_eigenvalue_penalty == "and":
                 saddle_bias = torch.nn.functional.softplus(
-                    smallest_eigenvalues[:, 0] * smallest_eigenvalues[:, 1] * 10.
+                    smallest_eigenvalues[:, 0] * smallest_eigenvalues[:, 1] * self.hessian_scale
                 ) # [0, inf], 0 if good
                 saddle_bias = torch.tanh(saddle_bias) # [0, 1]
                 # saddle_bias = 1 - saddle_bias # [0, 1] -> [1, 0] # 1 if good
