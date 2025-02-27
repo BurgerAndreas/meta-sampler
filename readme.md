@@ -33,6 +33,11 @@ python dem/train.py experiment=simple_test_idem
 python dem/train.py experiment=gmm_idem_pseudo 
 python dem/train.py experiment=gmm_idem_pseudo_nohessian
 
+# "Force L2 inv e1"
+python dem/train.py experiment=gmm_idem_pseudo_nohessian energy.energy_weight=0.0 energy.force_exponent=-1 energy.force_exponent_eps=1e-1
+
+python dem/train.py experiment=gmm_idem_pseudo energy.energy_weight=0.0 energy.force_exponent=-1 energy.force_exponent_eps=1e-1
+
 
 # 2d alanine dipeptide
 python dem/train.py experiment=aldi_2d

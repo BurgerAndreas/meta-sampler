@@ -19,6 +19,8 @@ def plot_fn(
     log_prob_min: float = -1000.0,
     plot_style: str = "imshow",
     plot_kwargs: dict = {},
+    colorbar: bool = False,
+    do_exp: bool = False,
 ):
     """Plot heatmap of log probability density.
 
@@ -41,6 +43,8 @@ def plot_fn(
 
     log_p_x = log_prob_func(x_points).detach()
     log_p_x = torch.clamp_min(log_p_x, log_prob_min)
+    if do_exp:
+        log_p_x = torch.exp(log_p_x)
     log_p_x = log_p_x.reshape((grid_width_n_points, grid_width_n_points))
 
     x_points_dim1 = (
@@ -55,7 +59,13 @@ def plot_fn(
     # 'YlOrBr', 'YlOrRd', 'OrRd', 'PuRd', 'RdPu', 'BuPu',
     # 'GnBu', 'PuBu', 'YlGnBu', 'PuBuGn', 'BuGn', 'YlGn']
     # 'viridis', 'plasma', 'inferno', 'magma', 'cividis'
-
+    colorbar_kwargs = {
+        "label": 'Log(P) = -E' if not do_exp else 'P = exp(-E)', 
+        "fraction": 0.046, 
+        "pad": 0.04, 
+        "shrink": 0.8
+    }
+    
     if plot_style == "imshow":
         # Create heatmap using imshow
         dflt = {
@@ -74,8 +84,9 @@ def plot_fn(
             origin="lower",
             **plot_kwargs,
         )
-        # Add colorbar
-        plt.colorbar(im, ax=ax, label='Log(P)', fraction=0.046, pad=0.04, shrink=0.8)
+        if colorbar:
+            # Add colorbar
+            plt.colorbar(im, ax=ax, **colorbar_kwargs)
 
     elif plot_style == "scatter":
         # Use scatter
@@ -93,7 +104,8 @@ def plot_fn(
             # aspect="equal",
             **plot_kwargs,
         )
-        fig.colorbar(im, ax=ax, label="log(P) = -E", fraction=0.046, pad=0.04, shrink=0.8)
+        if colorbar:
+            fig.colorbar(im, ax=ax, **colorbar_kwargs)
 
         # Set equal aspect ratio
         ax.set_aspect("equal")
@@ -108,7 +120,8 @@ def plot_fn(
             # extend="both",
             **plot_kwargs,
         )
-        fig.colorbar(im, ax=ax, label='Log(P)', fraction=0.046, pad=0.04, shrink=0.8)
+        if colorbar:
+            fig.colorbar(im, ax=ax, **colorbar_kwargs)
 
 
 def plot_contours(
@@ -119,6 +132,7 @@ def plot_contours(
     n_contour_levels: Optional[int] = None,
     log_prob_min: float = -1000.0,
     plot_kwargs: dict = {},
+    colorbar: bool = False,
 ):
     """Plot contours of a log_prob_func that is defined on 2D"""
     if ax is None:
@@ -146,6 +160,8 @@ def plot_contours(
         levels=n_contour_levels,
         **plot_kwargs,
     )
+    if colorbar:
+        fig.colorbar(im, ax=ax, label='Log(P)', fraction=0.046, pad=0.04, shrink=0.8)
 
 
 def plot_marginal_pair(

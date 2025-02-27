@@ -15,78 +15,41 @@ from hydra.core.global_hydra import GlobalHydra
 import re
 
 
+
 configs = [
-    # [
-    #     "Energy",
-    #     "experiment=gmm_idem_pseudo",
-    #     "energy.hessian_weight=0.0",
-    #     "energy.energy_weight=1.0",
-    #     "energy.force_weight=0.0",
-    # ],
-    # [
-    #     "Force L2, Hessian Tanh Mult",
-    #     "experiment=gmm_idem_pseudo",
-    #     "energy.hessian_weight=10.0",
-    #     "energy.hessian_eigenvalue_penalty=tanh_mult",
-    #     "energy.energy_weight=0.0",
-    #     "energy.force_weight=1.0",
-    # ],
-    # [
-    #     "Multiply: Force L2, Hessian Tanh Mult",
-    #     "experiment=gmm_idem_pseudo",
-    #     "energy.hessian_weight=10.0",
-    #     "energy.hessian_eigenvalue_penalty=tanh_mult",
-    #     "energy.energy_weight=0.0",
-    #     "energy.force_weight=1.0",
-    #     "energy.term_aggr=multfh",
-    # ],
-    # [
-    #     "Energy, Force L2, Hessian Tanh Mult",
-    #     "experiment=gmm_idem_pseudo",
-    #     "energy.hessian_weight=10.0",
-    #     "energy.hessian_eigenvalue_penalty=tanh_mult",
-    #     "energy.energy_weight=1.0",
-    #     "energy.force_weight=1.0",
-    # ],
-    # [
-    #     "Force L2",
-    #     "experiment=gmm_idem_pseudo",
-    #     "energy.hessian_weight=0.0",
-    #     "energy.energy_weight=0.0",
-    #     "energy.force_weight=1.0",
-    # ],
-    # [
-    #     "Force L2 squared",
-    #     "experiment=gmm_idem_pseudo",
-    #     "energy.hessian_weight=0.0",
-    #     "energy.energy_weight=0.0",
-    #     "energy.force_weight=1.0",
-    #     "energy.force_exponent=2",
-    # ],
     [
-        "Force L2 inv",
+        "Energy",
+        "experiment=gmm_idem_pseudo",
+        "energy.hessian_weight=0.0",
+        "energy.energy_weight=1.0",
+        "energy.force_weight=0.0",
+    ],
+    [
+        "Hessian and",
+        "experiment=gmm_idem_pseudo",
+        "energy.hessian_weight=1.0",
+        "energy.hessian_eigenvalue_penalty=and",
+        "energy.energy_weight=0.0",
+        "energy.force_weight=0.0",
+    ],
+    [
+        "Force L2 Tanh",
         "experiment=gmm_idem_pseudo",
         "energy.hessian_weight=0.0",
         "energy.energy_weight=0.0",
         "energy.force_weight=1.0",
-        "energy.force_exponent=-1",
+        "energy.force_activation=tanh",
     ],
-    # [
-    #     "Hessian Tanh Mult",
-    #     "experiment=gmm_idem_pseudo",
-    #     "energy.hessian_weight=1.0",
-    #     "energy.hessian_eigenvalue_penalty=tanh_mult",
-    #     "energy.energy_weight=0.0",
-    #     "energy.force_weight=0.0",
-    # ],
-    # [
-    #     "Hessian Mult",
-    #     "experiment=gmm_idem_pseudo",
-    #     "energy.hessian_weight=1.0",
-    #     "energy.hessian_eigenvalue_penalty=mult",
-    #     "energy.energy_weight=0.0",
-    #     "energy.force_weight=0.0",
-    # ],
+    [
+        "Force L2 Tanh AND Hessian",
+        "experiment=gmm_idem_pseudo",
+        "energy.hessian_weight=1.0",
+        "energy.hessian_eigenvalue_penalty=and",
+        "energy.energy_weight=0.0",
+        "energy.force_weight=1.0",
+        "energy.force_activation=tanh",
+        "energy.term_aggr=1mmultfh",
+    ],
 ]
 
 for config in configs:
@@ -112,44 +75,74 @@ for config in configs:
     scipy_saddle_points = energy_function.get_true_transition_states()
 
     for plot_style in ["imshow"]:
-        img = energy_function.get_single_dataset_fig(
-            # samples=scipy_saddle_points,
+        # Get both images
+        img1 = energy_function.get_single_dataset_fig(
             samples=None,
             name=name,
-            plot_gaussian_means=False,
+            plot_gaussian_means=False, 
             grid_width_n_points=800,
             plot_style=plot_style,
-            # with_legend=False,
-            # plot_prob_kwargs={"cmap": "turbo"},
             plot_sample_kwargs={"color": "m", "marker": "."},
+            colorbar=True,
         )
-        plt.tight_layout(pad=0.05)
+        
+        # save individual images
+        img1.save(f"plots/gmm_{plt_name}_{plot_style}.png")
+        print(f"Saved {f'plots/gmm_{plt_name}_{plot_style}.png'}")
 
-        # save image
-        fig_name = f"plots/gmm_{plt_name}_{plot_style}.png"
-        plt.savefig(fig_name)
-        print(f"Saved {fig_name}")
-        plt.close()
-        
-        
-        img = energy_function.get_single_dataset_fig(
+        img2 = energy_function.get_single_dataset_fig(
             samples=scipy_saddle_points,
-            # samples=None,
             name=name,
             plot_gaussian_means=True,
             grid_width_n_points=800,
             plot_style=plot_style,
-            # with_legend=False,
-            # plot_prob_kwargs={"cmap": "turbo"},
             plot_sample_kwargs={"color": "m", "marker": "."},
+            colorbar=True,
         )
+        
+        # # save individual images
+        # img2.save(f"plots/gmm_saddles_{plt_name}_{plot_style}.png")
+
+        # Create figure with two subplots side by side
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
+        
+        # Display the PIL images
+        ax1.imshow(img1)
+        ax1.axis('off')
+        # ax1.set_title(name)
+        
+        ax2.imshow(img2) 
+        ax2.axis('off')
+        # ax2.set_title("With Saddle Points")
+
         plt.tight_layout(pad=0.05)
 
-        # save image
-        fig_name = f"plots/gmm_saddles_{plt_name}_{plot_style}.png"
+        # Save combined figure
+        fig_name = f"plots/gmm2_{plt_name}_{plot_style}.png"
         plt.savefig(fig_name)
         print(f"Saved {fig_name}")
         plt.close()
+        
+        for temp in [1.0, 300.0, 3000.0]:
+            _name = f"{name} Boltzmann T={temp}"
+            energy_function.kbT = temp
+            plt.cla(), plt.clf(), plt.close()
+            # plot Boltzmann distribution
+            img1 = energy_function.get_single_dataset_fig(
+                samples=None,
+                name=_name,
+                plot_gaussian_means=False, 
+                grid_width_n_points=800,
+                plot_style=plot_style,
+                do_exp=True,
+                plot_sample_kwargs={"color": "m", "marker": "."},
+                colorbar=True,
+            )
+            
+            # save individual images
+            fname = f"plots/gmmB{temp}_{plt_name}_{plot_style}.png"
+            img1.save(fname)
+            print(f"Saved {fname}")
 
     # deinitialize hydra
     GlobalHydra().clear()
