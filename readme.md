@@ -11,17 +11,16 @@ The sampler is trained on a loss of the ML force field, e.g. minimal forces to t
 ## Repo Overview
 
 ### 1d example
-- main https://github.com/BurgerAndreas/meta-sampler/blob/main/DEM/dem/energies/simple_test_function.py
-- config1 https://github.com/BurgerAndreas/meta-sampler/blob/main/DEM/configs/energy/simple_test.yaml
-- config2 without data https://github.com/BurgerAndreas/meta-sampler/blob/main/DEM/configs/experiment/simple_test_idem.yaml
-- config2 with prior replay buffer = with data https://github.com/BurgerAndreas/meta-sampler/blob/main/DEM/configs/experiment/simple_test_pdem.yaml
+- main https://github.com/BurgerAndreas/meta-sampler/blob/main/dem/energies/simple_test_function.py
+- config1 https://github.com/BurgerAndreas/meta-sampler/blob/main/configs/energy/simple_test.yaml
+- config2 without data https://github.com/BurgerAndreas/meta-sampler/blob/main/configs/experiment/simple_test_idem.yaml
+- config2 with prior replay buffer = with data https://github.com/BurgerAndreas/meta-sampler/blob/main/configs/experiment/simple_test_pdem.yaml
 
 ### 2d Alanine Dipeptide (dihedral angles)
 WIP by Andreas at https://github.com/BurgerAndreas/meta-sampler/tree/tps-1d/alanine_dipeptide and
 
-```python
+```bash
 mamba activate sampler
-cd DEM
 
 # 1d toy example
 python dem/train.py experiment=simple_test_idem
@@ -75,11 +74,4 @@ wget "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforg
 bash Miniforge3-$(uname)-$(uname -m).sh
 ```
 
-```bash
-mamba create -n ms python=3.10 -y
-mamba activate ms
-pip install pyscf numpy==1.24.4 plotly kaleido scipy scikit-learn matplotlib==3.8.4 seaborn black tqdm joblib einops pandas ipykernel botorch
-pip install torch
-# pip install jax flax
-```
 

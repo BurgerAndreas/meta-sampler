@@ -5,6 +5,7 @@ src.egg-info
 dem_results
 **/dem_outputs
 
+**/*.egg-info
 **/*.png
 outputs
 **/plots
