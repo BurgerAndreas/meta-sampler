@@ -7,6 +7,7 @@ import torch
 from bgflow import MultiDoubleWellPotential
 from hydra.utils import get_original_cwd
 from lightning.pytorch.loggers import WandbLogger
+import os
 
 from dem.energies.base_energy_function import BaseEnergyFunction
 from dem.models.components.replay_buffer import ReplayBuffer

@@ -25,6 +25,11 @@ mamba activate sampler
 # 1d toy example
 python dem/train.py experiment=simple_test_idem
 
+# double well
+python dem/train.py experiment=dw4_idem
+python dem/train.py experiment=dw4_pdem
+
+
 ########################################################
 
 # 2d GMM (from the DEM paper)
@@ -52,7 +57,7 @@ python dem/train.py experiment=gmm_idem_pseudo_test
 
 # 2d GMM with pseudo-energy
 # My handcrafted AND Hessian
-python dem/train.py experiment=gmm_idem_pseudo 
+python dem/train.py experiment=gmm_idem_pseudo model.use_richardsons=true model.nll_batch_size=256
 
 
 ###########################################################
