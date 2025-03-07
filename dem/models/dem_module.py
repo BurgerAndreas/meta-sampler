@@ -37,7 +37,7 @@ from .components.prioritised_replay_buffer import PrioritisedReplayBuffer
 from .components.scaling_wrapper import ScalingWrapper
 from .components.score_estimator import estimate_grad_Rt, wrap_for_richardsons
 from .components.score_scaler import BaseScoreScaler
-from .components.sde_integration import integrate_sde
+from .components.sde_integration import integrate_sde, integrate_constrained_sde
 from .components.sdes import VEReverseSDE
 
 
@@ -193,6 +193,8 @@ class DEMLitModule(LightningModule):
         nll_batch_size=256,
         use_vmap=True,
         streaming_batch_size: int = 128,
+        generate_constrained_samples: bool = False,
+        constrained_score_norm_target: float = 0.0,
     ) -> None:
         """Initialize a `MNISTLitModule`.
 
@@ -377,6 +379,9 @@ class DEMLitModule(LightningModule):
 
         self.streaming_batch_size = streaming_batch_size
 
+        self.generate_constrained_samples = generate_constrained_samples
+        self.constrained_score_norm_target = constrained_score_norm_target
+    
     def forward(self, t: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
         """Perform a forward pass through the model `self.net`.
 
@@ -604,7 +609,10 @@ class DEMLitModule(LightningModule):
         no_grad=True,
         negative_time=False,
         projection_mask=None,
+        constrain_score_norm=False,
+        constrained_score_norm_target=0.0,
     ) -> torch.Tensor:
+        print(f"integrate got projection_mask: {projection_mask}") # REMOVE
         if reverse_sde is None:
             if projection_mask is not None:
                 # Wrap the model's vector field with projection
@@ -613,18 +621,33 @@ class DEMLitModule(LightningModule):
             else:
                 reverse_sde = self.reverse_sde
 
-        trajectory = integrate_sde(
-            reverse_sde,
-            samples,
-            self.num_integration_steps,
-            self.energy_function,
-            diffusion_scale=diffusion_scale,
-            reverse_time=reverse_time,
-            no_grad=no_grad,
-            negative_time=negative_time,
-            num_negative_time_steps=self.num_negative_time_steps,
-            clipper=self.clipper,
-        )
+        if constrain_score_norm:
+            trajectory = integrate_constrained_sde(
+                sde=reverse_sde,
+                x0=samples,
+                num_integration_steps=self.num_integration_steps,
+                energy_function=self.energy_function,
+                constant_of_motion_fn=None, # TODO: add constant of motion
+                diffusion_scale=diffusion_scale,
+                reverse_time=reverse_time,
+                no_grad=no_grad,
+                negative_time=negative_time,
+                num_negative_time_steps=self.num_negative_time_steps,
+                clipper=self.clipper,
+            )
+        else:
+            trajectory = integrate_sde(
+                reverse_sde,
+                samples,
+                self.num_integration_steps,
+                self.energy_function,
+                diffusion_scale=diffusion_scale,
+                reverse_time=reverse_time,
+                no_grad=no_grad,
+                negative_time=negative_time,
+                num_negative_time_steps=self.num_negative_time_steps,
+                clipper=self.clipper,
+            )
         if return_full_trajectory:
             return trajectory
 

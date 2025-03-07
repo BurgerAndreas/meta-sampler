@@ -59,6 +59,10 @@ python dem/train.py experiment=gmm_idem_pseudo_test
 # My handcrafted AND Hessian
 python dem/train.py experiment=gmm_idem_pseudo model.use_richardsons=true model.nll_batch_size=256
 
+# double well
+python dem/train.py experiment=dw4_idem model.use_richardsons=true 
+python dem/train.py experiment=dw4_idem model.use_richardsons=true model.generate_constrained_samples=True
+
 
 ###########################################################
 
