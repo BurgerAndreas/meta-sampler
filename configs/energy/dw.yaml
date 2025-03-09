@@ -1,0 +1,11 @@
+_target_: dem.energies.double_well_energy.DoubleWellEnergy
+
+device: ${trainer.accelerator}
+
+dimensionality: 2
+
+plot_samples_epoch_period: 1
+
+data_normalization_factor: 1.0
+
+is_molecule: False

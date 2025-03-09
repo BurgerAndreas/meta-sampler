@@ -15,7 +15,6 @@ from hydra.core.global_hydra import GlobalHydra
 import re
 
 
-
 configs = [
     [
         "Energy",
@@ -89,7 +88,7 @@ for config in configs:
 
     # only non-special characters
     plt_name = re.sub(r"[^a-zA-Z0-9]", "", name)
-    
+
     scipy_saddle_points = energy_function.get_true_transition_states()
 
     for plot_style in ["imshow"]:
@@ -97,13 +96,13 @@ for config in configs:
         img1 = energy_function.get_single_dataset_fig(
             samples=None,
             name=name,
-            plot_gaussian_means=False, 
+            plot_minima=False,
             grid_width_n_points=800,
             plot_style=plot_style,
             plot_sample_kwargs={"color": "m", "marker": "."},
             colorbar=True,
         )
-        
+
         # save individual images
         img1.save(f"plots/gmm_{plt_name}_{plot_style}.png")
         print(f"Saved {f'plots/gmm_{plt_name}_{plot_style}.png'}")
@@ -111,26 +110,26 @@ for config in configs:
         img2 = energy_function.get_single_dataset_fig(
             samples=scipy_saddle_points,
             name=name,
-            plot_gaussian_means=True,
+            plot_minima=True,
             grid_width_n_points=800,
             plot_style=plot_style,
             plot_sample_kwargs={"color": "m", "marker": "."},
             colorbar=True,
         )
-        
+
         # # save individual images
         # img2.save(f"plots/gmm_saddles_{plt_name}_{plot_style}.png")
 
         # Create figure with two subplots side by side
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
-        
+
         # Display the PIL images
         ax1.imshow(img1)
-        ax1.axis('off')
+        ax1.axis("off")
         # ax1.set_title(name)
-        
-        ax2.imshow(img2) 
-        ax2.axis('off')
+
+        ax2.imshow(img2)
+        ax2.axis("off")
         # ax2.set_title("With Saddle Points")
 
         plt.tight_layout(pad=0.05)
@@ -140,7 +139,7 @@ for config in configs:
         plt.savefig(fig_name)
         print(f"Saved {fig_name}")
         plt.close()
-        
+
         for temp in [1.0, 300.0, 3000.0]:
             _name = f"{name} Boltzmann T={temp}"
             energy_function.kbT = temp
@@ -149,14 +148,14 @@ for config in configs:
             img1 = energy_function.get_single_dataset_fig(
                 samples=None,
                 name=_name,
-                plot_gaussian_means=False, 
+                plot_minima=False,
                 grid_width_n_points=800,
                 plot_style=plot_style,
-                do_exp=True,
+                quantity=True,
                 plot_sample_kwargs={"color": "m", "marker": "."},
                 colorbar=True,
             )
-            
+
             # save individual images
             fname = f"plots/gmmB{temp}_{plt_name}_{plot_style}.png"
             img1.save(fname)

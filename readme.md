@@ -26,9 +26,15 @@ mamba activate sampler
 python dem/train.py experiment=simple_test_idem
 
 # double well
-python dem/train.py experiment=dw4_idem
-python dem/train.py experiment=dw4_pdem
+python dem/train.py experiment=dw_idem
+python dem/train.py experiment=dw_idem_gad
 
+# multiwell
+python dem/train.py experiment=dw4_idem
+
+# GAD
+python dem/train.py experiment=dw4_idem_gad
+python dem/train.py experiment=gmm_idem_gad
 
 ########################################################
 

@@ -43,7 +43,7 @@ def streaming_log_expectation_reward(
     return_aux_output: bool = False,
 ):
     """Computes the log expectation of rewards using streaming Monte Carlo sampling.
-    
+
     This version uses less memory by processing MC samples in batches.
 
     Args:
@@ -90,8 +90,14 @@ def log_expectation_reward(
     """
     if streaming_batch_size is not None:
         return streaming_log_expectation_reward(
-            t, x, energy_function, noise_schedule, num_mc_samples, 
-            streaming_batch_size, clipper, return_aux_output
+            t,
+            x,
+            energy_function,
+            noise_schedule,
+            num_mc_samples,
+            streaming_batch_size,
+            clipper,
+            return_aux_output,
         )
 
     repeated_t = t.unsqueeze(0).repeat_interleave(num_mc_samples, dim=0)

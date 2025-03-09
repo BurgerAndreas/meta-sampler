@@ -20,7 +20,7 @@ def plot_fn(
     plot_style: str = "imshow",
     plot_kwargs: dict = {},
     colorbar: bool = False,
-    do_exp: bool = False,
+    quantity: str = "log_prob",
 ):
     """Plot heatmap of log probability density.
 
@@ -43,8 +43,14 @@ def plot_fn(
 
     log_p_x = log_prob_func(x_points).detach()
     log_p_x = torch.clamp_min(log_p_x, log_prob_min)
-    if do_exp:
+    if quantity in ["prob", "p"]:
         log_p_x = torch.exp(log_p_x)
+        label = "P = exp(-E)"
+    elif quantity in ["energy", "e"]:
+        log_p_x = -log_p_x
+        label = "E"
+    else:
+        label = "Log(P) = -E"
     log_p_x = log_p_x.reshape((grid_width_n_points, grid_width_n_points))
 
     x_points_dim1 = (
@@ -60,12 +66,12 @@ def plot_fn(
     # 'GnBu', 'PuBu', 'YlGnBu', 'PuBuGn', 'BuGn', 'YlGn']
     # 'viridis', 'plasma', 'inferno', 'magma', 'cividis'
     colorbar_kwargs = {
-        "label": 'Log(P) = -E' if not do_exp else 'P = exp(-E)', 
-        "fraction": 0.046, 
-        "pad": 0.04, 
-        "shrink": 0.8
+        "label": label,
+        "fraction": 0.046,
+        "pad": 0.04,
+        "shrink": 0.8,
     }
-    
+
     if plot_style == "imshow":
         # Create heatmap using imshow
         dflt = {
@@ -109,7 +115,7 @@ def plot_fn(
 
         # Set equal aspect ratio
         ax.set_aspect("equal")
-        
+
     elif plot_style == "contours":
         # By default, a linear scaling is used, mapping the lowest value to 0 and the highest to 1
         im = ax.contour(
@@ -152,7 +158,7 @@ def plot_contours(
     x_points_dim2 = (
         x_points[:, 1].reshape((grid_width_n_points, grid_width_n_points)).numpy()
     )
-    # 
+    #
     ax.contour(
         x_points_dim1,
         x_points_dim2,
@@ -161,7 +167,7 @@ def plot_contours(
         **plot_kwargs,
     )
     if colorbar:
-        fig.colorbar(im, ax=ax, label='Log(P)', fraction=0.046, pad=0.04, shrink=0.8)
+        fig.colorbar(im, ax=ax, label="Log(P)", fraction=0.046, pad=0.04, shrink=0.8)
 
 
 def plot_marginal_pair(

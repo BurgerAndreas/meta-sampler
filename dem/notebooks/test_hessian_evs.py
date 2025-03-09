@@ -1,9 +1,9 @@
 import torch
 
 evs = [
-    [torch.tensor([[-1., 0.5]]), "low"],
-    [torch.tensor([[-1., -0.5]]), "high"],
-    [torch.tensor([[0.5, 1.]]), "high"],
+    [torch.tensor([[-1.0, 0.5]]), "low"],
+    [torch.tensor([[-1.0, -0.5]]), "high"],
+    [torch.tensor([[0.5, 1.0]]), "high"],
 ]
 
 hessian_eigenvalue_penalty = "softmax_mult"
@@ -44,6 +44,6 @@ for ev in evs:
         # both neg -> 1, both pos -> 1, one neg one pos -> 0
         ev1_bias = torch.tanh(smallest_eigenvalues[:, 0])
         ev2_bias = torch.tanh(smallest_eigenvalues[:, 1])
-        saddle_bias = (ev1_bias * ev2_bias)
-        saddle_bias += 1. # [0, 2]
+        saddle_bias = ev1_bias * ev2_bias
+        saddle_bias += 1.0  # [0, 2]
     print(f"Ground truth: {ground_truth}, Saddle bias: {saddle_bias}")

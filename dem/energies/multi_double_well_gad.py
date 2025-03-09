@@ -14,7 +14,14 @@ from dem.models.components.replay_buffer import ReplayBuffer
 from dem.utils.data_utils import remove_mean
 
 
-class MultiDoubleWellEnergy(BaseEnergyFunction):
+class MultiDoubleWellGADEnergy(BaseEnergyFunction):
+    """Energy function for a multi-particle double well potential.
+
+    This class implements a multi-particle double well potential energy function
+    using the bgflow library. It handles data loading, normalization, and visualization
+    of samples from the energy landscape.
+    """
+
     def __init__(
         self,
         dimensionality,
@@ -29,6 +36,21 @@ class MultiDoubleWellEnergy(BaseEnergyFunction):
         data_normalization_factor=1.0,
         is_molecule=True,
     ):
+        """Initialize the multi-particle double well energy function.
+
+        Args:
+            dimensionality: Total dimensionality of the system
+            n_particles: Number of particles in the system
+            data_path: Path to the test data
+            data_path_train: Path to the training data
+            data_path_val: Path to the validation data
+            data_from_efm: Whether data comes from EFM (True) or EACF (False)
+            device: Device to use for computations
+            plot_samples_epoch_period: How often to plot samples during training
+            plotting_buffer_sample_size: Number of samples to use for plotting
+            data_normalization_factor: Factor to normalize data
+            is_molecule: Whether to treat the system as a molecule
+        """
         self.n_particles = n_particles
         self.n_spatial_dim = dimensionality // n_particles
 
@@ -77,20 +99,38 @@ class MultiDoubleWellEnergy(BaseEnergyFunction):
 
         super().__init__(dimensionality=dimensionality, is_molecule=is_molecule)
 
-    def __call__(
-        self, samples: torch.Tensor, return_aux_output: bool = False
-    ) -> torch.Tensor:
-        return self.log_prob(samples, return_aux_output)
+    #####################################################################
+    # GAD
+    #####################################################################
+    # TODO: implement GAD
 
-    def log_prob(
-        self, samples: torch.Tensor, return_aux_output: bool = False
-    ) -> torch.Tensor:
-        if return_aux_output:
-            aux_output = {}
-            return -self.multi_double_well.energy(samples).squeeze(-1), aux_output
-        return -self.multi_double_well.energy(samples).squeeze(-1)
+    # def __call__(
+    #     self, samples: torch.Tensor, return_aux_output: bool = False
+    # ) -> torch.Tensor:
+    #     """Compute the energy of the given samples.
+
+    #     Args:
+    #         samples: Tensor of shape (batch_size, dimensionality)
+    #         return_aux_output: Whether to return auxiliary output
+
+    #     Returns:
+    #         Tensor of shape (batch_size,) containing the energy values,
+    #         or a tuple of (energy, aux_output) if return_aux_output is True
+    #     """
+    #     if return_aux_output:
+    #         aux_output = {}
+    #         return -self.multi_double_well.energy(samples).squeeze(-1), aux_output
+    #     return -self.multi_double_well.energy(samples).squeeze(-1)
+
+    def __call__(self, samples, temperature=None, return_aux_output=False):
+        raise NotImplementedError("GAD is not implemented for this energy function")
 
     def setup_test_set(self):
+        """Load and prepare the test dataset.
+
+        Returns:
+            Tensor containing the test data
+        """
         if self.data_from_efm:
             data = np.load(self.data_path, allow_pickle=True)
 
@@ -106,6 +146,11 @@ class MultiDoubleWellEnergy(BaseEnergyFunction):
         return data
 
     def setup_train_set(self):
+        """Load and prepare the training dataset.
+
+        Returns:
+            Tensor containing the training data
+        """
         if self.data_from_efm:
             data = np.load(self.data_path_train, allow_pickle=True)
 
@@ -121,6 +166,11 @@ class MultiDoubleWellEnergy(BaseEnergyFunction):
         return data
 
     def setup_val_set(self):
+        """Load and prepare the validation dataset.
+
+        Returns:
+            Tensor containing the validation data
+        """
         if self.data_from_efm:
             data = np.load(self.data_path_val, allow_pickle=True)
 
@@ -137,6 +187,14 @@ class MultiDoubleWellEnergy(BaseEnergyFunction):
         return data
 
     def interatomic_dist(self, x):
+        """Compute pairwise interatomic distances.
+
+        Args:
+            x: Tensor of shape (batch_size, dimensionality)
+
+        Returns:
+            Tensor containing pairwise distances between particles
+        """
         batch_shape = x.shape[: -len(self.multi_double_well.event_shape)]
         x = x.view(*batch_shape, self.n_particles, self.n_spatial_dim)
 
@@ -157,6 +215,13 @@ class MultiDoubleWellEnergy(BaseEnergyFunction):
         wandb_logger: WandbLogger,
         name: str = "",
     ) -> None:
+        """Log sample visualizations to wandb.
+
+        Args:
+            samples: Tensor of samples to visualize
+            wandb_logger: WandB logger instance
+            name: Name prefix for the logged images
+        """
         if wandb_logger is None:
             return
 
@@ -174,6 +239,17 @@ class MultiDoubleWellEnergy(BaseEnergyFunction):
         replay_buffer=None,
         prefix: str = "",
     ) -> None:
+        """Log visualizations at the end of each epoch.
+
+        Args:
+            latest_samples: Most recent generated samples
+            latest_energies: Energies of the latest samples
+            wandb_logger: WandB logger instance
+            unprioritized_buffer_samples: Samples from buffer without prioritization
+            cfm_samples: Samples from conditional flow matching
+            replay_buffer: Replay buffer instance
+            prefix: Prefix for logged metrics and images
+        """
         if latest_samples is None:
             return
 
@@ -197,18 +273,34 @@ class MultiDoubleWellEnergy(BaseEnergyFunction):
 
         self.curr_epoch += 1
 
-    def get_dataset_fig(self, samples, random_samples=False):
-        test_data_smaller = self.sample_test_set(1000)
+    def get_dataset_fig(self, samples):
+        """Create visualization figure for samples.
 
-        if random_samples:
-            # normal distribution
-            samples = torch.randn(test_data_smaller.shape).to(test_data_smaller.device)
-            # samples = test_data_smaller
+        Creates a figure with two subplots:
+        1. Histogram of interatomic distances
+        2. Histogram of energy values
+
+        Args:
+            samples: Tensor of samples to visualize
+
+        Returns:
+            PIL Image containing the visualization
+        """
+        test_data_smaller = self.sample_test_set(1000)
 
         fig, axs = plt.subplots(1, 2, figsize=(12, 4))
 
+        dist_samples = self.interatomic_dist(samples).detach().cpu()
         dist_test = self.interatomic_dist(test_data_smaller).detach().cpu()
 
+        axs[0].hist(
+            dist_samples.view(-1),
+            bins=100,
+            alpha=0.5,
+            density=True,
+            histtype="step",
+            linewidth=4,
+        )
         axs[0].hist(
             dist_test.view(-1),
             bins=100,
@@ -217,19 +309,10 @@ class MultiDoubleWellEnergy(BaseEnergyFunction):
             histtype="step",
             linewidth=4,
         )
-        if samples is not None:
-            dist_samples = self.interatomic_dist(samples).detach().cpu()
-            axs[0].hist(
-                dist_samples.view(-1),
-                bins=100,
-                alpha=0.5,
-                density=True,
-                histtype="step",
-                linewidth=4,
-            )
         axs[0].set_xlabel("Interatomic distance")
-        axs[0].legend(["test data", "generated data"])
+        axs[0].legend(["generated data", "test data"])
 
+        energy_samples = -self(samples).detach().detach().cpu()
         energy_test = -self(test_data_smaller).detach().detach().cpu()
 
         min_energy = -26
@@ -246,19 +329,17 @@ class MultiDoubleWellEnergy(BaseEnergyFunction):
             linewidth=4,
             label="test data",
         )
-        if samples is not None:
-            energy_samples = -self(samples).detach().detach().cpu()
-            axs[1].hist(
-                energy_samples.cpu(),
-                bins=100,
-                density=True,
-                alpha=0.4,
-                range=(min_energy, max_energy),
-                color="r",
-                histtype="step",
-                linewidth=4,
-                label="generated data",
-            )
+        axs[1].hist(
+            energy_samples.cpu(),
+            bins=100,
+            density=True,
+            alpha=0.4,
+            range=(min_energy, max_energy),
+            color="r",
+            histtype="step",
+            linewidth=4,
+            label="generated data",
+        )
         axs[1].set_xlabel("Energy")
         axs[1].legend()
 
@@ -266,20 +347,3 @@ class MultiDoubleWellEnergy(BaseEnergyFunction):
         return PIL.Image.frombytes(
             "RGB", fig.canvas.get_width_height(), fig.canvas.tostring_rgb()
         )
-
-        # try:
-        #     buffer = BytesIO()
-        #     fig.savefig(buffer, format="png", bbox_inches="tight", pad_inches=0)
-        #     buffer.seek(0)
-
-        #     return PIL.Image.open(buffer)
-
-        # except Exception as e:
-        #     fig.canvas.draw()
-        #     return PIL.Image.frombytes(
-        #         "RGB", fig.canvas.get_width_height(), fig.canvas.renderer.buffer_rgba()
-        #     )
-        #     fig.canvas.draw()
-        #     return PIL.Image.frombytes(
-        #         "RGB", fig.canvas.get_width_height(), fig.canvas.tostring_rgb()
-        #     )

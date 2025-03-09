@@ -18,6 +18,7 @@ from torchcfm.conditional_flow_matching import (
 )
 from torchmetrics import MeanMetric
 from tqdm import tqdm
+import os 
 
 from dem.energies.base_energy_function import BaseEnergyFunction
 from dem.utils.data_utils import remove_mean
@@ -43,6 +44,7 @@ from .components.sdes import VEReverseSDE
 
 class ProjectedVectorField:
     """Wrapper class to project out components of a vector field."""
+
     def __init__(self, base_model, projection_mask=None):
         """
         Args:
@@ -381,7 +383,7 @@ class DEMLitModule(LightningModule):
 
         self.generate_constrained_samples = generate_constrained_samples
         self.constrained_score_norm_target = constrained_score_norm_target
-    
+
     def forward(self, t: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
         """Perform a forward pass through the model `self.net`.
 
@@ -504,9 +506,30 @@ class DEMLitModule(LightningModule):
                     self.energy_function.n_spatial_dim,
                 )
 
-            dem_loss, aux_output = self.get_loss(
-                times, noised_samples, return_aux_output=True
-            )
+            # REMOVE try/except for GAD debugging
+            try:
+                dem_loss, aux_output = self.get_loss(
+                    times, noised_samples, return_aux_output=True
+                )
+                assert torch.isfinite(dem_loss).all()
+                for k,v in aux_output.items():
+                    assert torch.isfinite(v).all(), f"NaN/inf in {k}\n{v}"
+            except Exception as e:
+                dem_loss, aux_output = self.get_loss(
+                    times, noised_samples, return_aux_output=True
+                )
+                print(f"Samples: {aux_output['samples']}")
+                print(f"Energy: {aux_output['energy']}")
+                with open("gad_nan_log.txt", "a") as f:
+                    f.write(traceback.format_exc())
+                    f.write(f"Epoch: {self.energy_function.curr_epoch}\n")
+                    f.write(f"Samples: {aux_output['samples']}\n")
+                    f.write(f"Energy: {aux_output['energy']}\n")
+                    f.write(f"Forces: {aux_output['forces']}\n")
+                    f.write(f"Pseudo energy: {aux_output['pseudo_energy']}\n")
+                    f.write("-" * 80 + "\n")
+                raise ValueError("NaNs/infs detected")
+            
             # Uncomment for SM
             # dem_loss = self.get_score_loss(times, iter_samples, noised_samples)
             self.log_dict(
@@ -588,6 +611,7 @@ class DEMLitModule(LightningModule):
         num_samples = num_samples or self.num_samples_to_generate_per_epoch
 
         samples = self.prior.sample(num_samples)
+        assert torch.isfinite(samples).all(), f"prior samples: Max={samples.max()}, Min={samples.min()}"
 
         return self.integrate(
             reverse_sde=reverse_sde,
@@ -612,7 +636,6 @@ class DEMLitModule(LightningModule):
         constrain_score_norm=False,
         constrained_score_norm_target=0.0,
     ) -> torch.Tensor:
-        print(f"integrate got projection_mask: {projection_mask}") # REMOVE
         if reverse_sde is None:
             if projection_mask is not None:
                 # Wrap the model's vector field with projection
@@ -627,7 +650,7 @@ class DEMLitModule(LightningModule):
                 x0=samples,
                 num_integration_steps=self.num_integration_steps,
                 energy_function=self.energy_function,
-                constant_of_motion_fn=None, # TODO: add constant of motion
+                constant_of_motion_fn=None,  # TODO: add constant of motion
                 diffusion_scale=diffusion_scale,
                 reverse_time=reverse_time,
                 no_grad=no_grad,
@@ -731,6 +754,10 @@ class DEMLitModule(LightningModule):
             _, generated_energies = self.buffer.get_last_n_inserted(
                 self.eval_batch_size
             )
+
+        if data_set is None:
+            print("Warning: data_set is None skipping energy w2")
+            return
 
         energies = self.energy_function(self.energy_function.normalize(data_set))
         energy_w2 = pot.emd2_1d(
@@ -1017,25 +1044,31 @@ class DEMLitModule(LightningModule):
             )
 
         # Add custom validation for convergence to transition states
-        if hasattr(self.energy_function, 'get_true_transition_states'):
+        if hasattr(self.energy_function, "get_true_transition_states"):
             # Get ground truth transition states
             true_transition_states = self.energy_function.get_true_transition_states()
-            
+
             # Threshold distance for considering a point "near" a transition state
             distance_threshold = 1.0  # Can be made configurable
-            
+
             # Compute all pairwise distances
             dists = torch.cdist(backwards_samples, true_transition_states)
             min_dists = dists.min(dim=1)[0]  # Closest transition state to each sample
-            min_sample_dists = dists.min(dim=0)[0]  # Closest sample to each transition state
-            
+            min_sample_dists = dists.min(dim=0)[
+                0
+            ]  # Closest sample to each transition state
+
             # Coverage Metrics
-            transition_states_covered = (min_sample_dists < distance_threshold).float().mean()
-            coverage_radius = min_sample_dists.max()  # Minimum radius needed to cover all transition states
-            
+            transition_states_covered = (
+                (min_sample_dists < distance_threshold).float().mean()
+            )
+            coverage_radius = (
+                min_sample_dists.max()
+            )  # Minimum radius needed to cover all transition states
+
             # Precision Metrics
             samples_near_transition = (min_dists < distance_threshold).float().mean()
-            
+
             # Force magnitude at samples (requires grad)
             with torch.enable_grad():
                 samples_grad = backwards_samples.detach().requires_grad_(True)
@@ -1043,10 +1076,12 @@ class DEMLitModule(LightningModule):
                 forces = torch.autograd.grad(energy.sum(), samples_grad)[0]
                 force_magnitudes = forces.norm(dim=-1)
                 avg_force = force_magnitudes.mean()
-                
+
             # Hessian eigenvalue metrics
             def compute_hessian_metrics(x):
-                hessian = torch.func.hessian(lambda x: -self.energy_function.log_prob(x))(x)
+                hessian = torch.func.hessian(
+                    lambda x: -self.energy_function.log_prob(x)
+                )(x)
                 eigenvals = torch.linalg.eigvalsh(hessian)
                 # Check for index-1 saddle point pattern (one negative, rest positive)
                 n_negative = (eigenvals < 0).sum()
@@ -1055,7 +1090,11 @@ class DEMLitModule(LightningModule):
             # Compute Hessian metrics for points near transition states
             close_samples = backwards_samples[min_dists < distance_threshold]
             if len(close_samples) > 0:
-                hessian_accuracy = torch.tensor([compute_hessian_metrics(x) for x in close_samples]).float().mean()
+                hessian_accuracy = (
+                    torch.tensor([compute_hessian_metrics(x) for x in close_samples])
+                    .float()
+                    .mean()
+                )
             else:
                 hessian_accuracy = torch.tensor(0.0)
 
@@ -1064,18 +1103,16 @@ class DEMLitModule(LightningModule):
                 # Coverage metrics
                 f"{prefix}/transition_states_covered": transition_states_covered,
                 f"{prefix}/coverage_radius": coverage_radius,
-                
                 # Precision metrics
                 f"{prefix}/samples_near_transition": samples_near_transition,
                 f"{prefix}/average_force_magnitude": avg_force,
                 f"{prefix}/hessian_accuracy": hessian_accuracy,
-                
                 # Original distance metrics
                 f"{prefix}/transition_state_mean_dist": min_dists.mean(),
                 f"{prefix}/transition_state_median_dist": min_dists.median(),
                 f"{prefix}/transition_state_min_dist": min_dists.min(),
             }
-            
+
             # Log all metrics
             self.log_dict(
                 metrics,
@@ -1120,10 +1157,11 @@ class DEMLitModule(LightningModule):
                 self.cfm_prior.sample(batch_size),
             )[-1]
 
+            assert torch.isfinite(cfm_samples).all(), f"CFM last_samples: Max={cfm_samples.max()}, Min={cfm_samples.min()}"
             self.energy_function.log_on_epoch_end(
-                self.last_samples,
-                self.last_energies,
-                wandb_logger,
+                latest_samples=self.last_samples,
+                latest_energies=self.last_energies,
+                wandb_logger=wandb_logger,
                 unprioritized_buffer_samples=unprioritized_buffer_samples,
                 cfm_samples=cfm_samples,
                 replay_buffer=self.buffer,
@@ -1141,12 +1179,13 @@ class DEMLitModule(LightningModule):
                 diffusion_scale=self.diffusion_scale,
                 negative_time=self.negative_time,
             )
+            assert torch.isfinite(dem_samples).all(), f"dem_samples: Max={dem_samples.max()}, Min={dem_samples.min()}"
 
             # Only plot dem samples
             self.energy_function.log_on_epoch_end(
-                dem_samples,
-                self.energy_function(dem_samples),
-                wandb_logger,
+                latest_samples=dem_samples,
+                latest_energies=self.energy_function(dem_samples),
+                wandb_logger=wandb_logger,
             )
 
         if "data_0" in outputs:
@@ -1188,11 +1227,12 @@ class DEMLitModule(LightningModule):
 
         print("Computing log Z and ESS on generated samples")
         final_samples = torch.cat(final_samples, dim=0)
+        assert torch.isfinite(final_samples).all(), f"final_samples: Max={final_samples.max()}, Min={final_samples.min()}"
 
         self.energy_function.log_on_epoch_end(
-            final_samples,
-            self.energy_function(final_samples),
-            get_wandb_logger(self.loggers),
+            latest_samples=final_samples,
+            latest_energies=self.energy_function(final_samples),
+            wandb_logger=get_wandb_logger(self.loggers),
         )
 
         self.compute_log_z(self.cfm_cnf, self.cfm_prior, final_samples, "test", "")
@@ -1201,8 +1241,6 @@ class DEMLitModule(LightningModule):
         path = f"{output_dir}/samples_{self.num_samples_to_save}.pt"
         torch.save(final_samples, path)
         print(f"Saving samples to {path}")
-
-        import os
 
         os.makedirs(self.energy_function.name, exist_ok=True)
         path2 = f"{self.energy_function.name}/samples_{self.hparams.version}_{self.num_samples_to_save}.pt"
@@ -1237,15 +1275,16 @@ class DEMLitModule(LightningModule):
                 diffusion_scale=self.diffusion_scale,
                 negative_time=self.negative_time,
             )
+            assert torch.isfinite(samples).all(), f"samples: Max={samples.max()}, Min={samples.min()}"
             final_samples.append(samples)
             end = time.time()
             print(f"batch {i} took{end - start: 0.2f}s")
 
             if i == 0:
                 self.energy_function.log_on_epoch_end(
-                    samples,
-                    self.energy_function(samples),
-                    wandb_logger,
+                    latest_samples=samples,
+                    latest_energies=self.energy_function(samples),
+                    wandb_logger=wandb_logger,
                 )
 
         final_samples = torch.cat(final_samples, dim=0)

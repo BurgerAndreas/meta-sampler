@@ -1,0 +1,20 @@
+_target_: dem.energies.double_well_energy_gad.DoubleWellEnergyGAD
+
+device: ${trainer.accelerator}
+
+plot_samples_epoch_period: 1
+
+dimensionality: 2
+
+data_normalization_factor: 1.0
+
+is_molecule: False
+
+# GAD parameters
+gad_offset: 50.0
+clip_energy: True
+stitching: True
+stop_grad_ev: True
+div_epsilon: 1e-6
+clamp_min: 0
+clamp_max: null
