@@ -18,3 +18,4 @@ stop_grad_ev: True
 div_epsilon: 1e-6
 clamp_min: 0
 clamp_max: null
+temperature: 1.0

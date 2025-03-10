@@ -83,10 +83,10 @@ class GMMPseudoEnergy(GMMEnergy):
         self.hessian_loss_sum = 0.0
         self.n_loss_samples = 0
 
-    def log_prob_energy(
+    def physical_potential_log_prob(
         self, samples: torch.Tensor, return_aux_output: bool = False
     ) -> torch.Tensor:
-        """Compute unnormalized log-probability of energy.
+        """Compute unnormalized log-probability of the physical potential (not the GAD potential).
         Same as GMMEnergy.__call__.
 
         Args:
@@ -94,7 +94,7 @@ class GMMPseudoEnergy(GMMEnergy):
                 When used with vmap, this will be automatically vectorized
 
         Returns:
-            Negative of pseudo-energy value (scalar)
+            Negative of the GMM potential value (scalar)
         """
         if self.should_unnormalize:
             samples = self.unnormalize(samples)
@@ -103,31 +103,6 @@ class GMMPseudoEnergy(GMMEnergy):
         if return_aux_output:
             return self.gmm.log_prob(samples), {}
         return self.gmm.log_prob(samples)
-
-    def gmm_potential(
-        self, samples: torch.Tensor, return_aux_output: bool = False
-    ) -> torch.Tensor:
-        """Alias for log_prob_energy. Same as GMMEnergy.__call__."""
-        return self.log_prob_energy(samples, return_aux_output=return_aux_output)
-
-    def __call__(
-        self, samples: torch.Tensor, return_aux_output: bool = False
-    ) -> torch.Tensor:
-        """Compute pseudo-energy combining energy, force, and Hessian terms.
-        Returns unnormalized log-probability = -pseudo-energy.
-        Similar to GMMEnergy.__call__.
-
-        Args:
-            x: Input positions tensor of shape (dimensionality,)
-                When used with vmap, this will be automatically vectorized
-
-        Returns:
-            Negative of pseudo-energy value (scalar)
-        """
-        if self.should_unnormalize:
-            samples = self.unnormalize(samples)
-
-        return self.log_prob(samples, return_aux_output=return_aux_output)
 
     def log_prob(
         self, samples: torch.Tensor, return_aux_output: bool = False
@@ -467,12 +442,6 @@ class GMMPseudoEnergy(GMMEnergy):
             ax.legend()
 
         return fig_to_image(fig)
-
-    def move_to_device(self, device):
-        self.gmm.to(device)
-
-    def get_minima(self):
-        return self.gmm.distribution.component_distribution.loc
 
     def log_samples(
         self,

@@ -59,6 +59,9 @@ class GMMEnergy(BaseEnergyFunction):
         test_set_size=2000,
         val_set_size=2000,
         data_path_train=None,
+        temperature=1.0,
+        *args,
+        **kwargs,
     ):
         use_gpu = device != "cpu"
         torch.manual_seed(0)  # seed of 0 for GMM problem
@@ -90,7 +93,50 @@ class GMMEnergy(BaseEnergyFunction):
             normalization_max=data_normalization_factor,
             plotting_buffer_sample_size=plotting_buffer_sample_size,
             plot_samples_epoch_period=plot_samples_epoch_period,
+            temperature=temperature,
         )
+        
+    ############################################################################
+    # forward / call
+    ############################################################################
+        
+    def log_prob(
+        self, samples: torch.Tensor, temperature: Optional[float] = None, return_aux_output: bool = False
+    ) -> torch.Tensor:
+        """Evaluates GMM log probability at given samples.
+        Used in train.py and eval.py for computing model loss.
+
+        Args:
+            samples (torch.Tensor): Input points to evaluate
+            return_aux_output (bool, optional): Whether to return auxiliary output. Defaults to False
+
+        Returns:
+            torch.Tensor: Log probability values at input points
+        """
+        assert (
+            samples.shape[-1] == self._dimensionality
+        ), f"`x` does not match `dimensionality` ({samples.shape[-1]} != {self._dimensionality})"
+        
+        if len(samples.shape) == 1:
+            samples = samples.unsqueeze(0)
+
+        log_prob = self.gmm.log_prob(samples)
+        
+        if temperature is None:
+            temperature = self.temperature
+        log_prob = log_prob / temperature
+        
+        if return_aux_output:
+            return log_prob, {}
+        return log_prob
+    
+    def _energy(self, samples: torch.Tensor) -> torch.Tensor:
+        """Energy of the GMM."""
+        return -self.gmm.log_prob(samples)
+    
+    ############################################################################
+    # setup
+    ############################################################################
 
     def setup_test_set(self):
         """Sets up test dataset by sampling from GMM.
@@ -136,40 +182,6 @@ class GMMEnergy(BaseEnergyFunction):
         val_samples = self.gmm.sample((self.val_set_size,))
         return val_samples
 
-    def log_prob(
-        self, samples: torch.Tensor, return_aux_output: bool = False
-    ) -> torch.Tensor:
-        """Evaluates GMM log probability at given samples.
-        Used in train.py and eval.py for computing model loss.
-
-        Args:
-            samples (torch.Tensor): Input points to evaluate
-            return_aux_output (bool, optional): Whether to return auxiliary output. Defaults to False
-
-        Returns:
-            torch.Tensor: Log probability values at input points
-        """
-        if return_aux_output:
-            aux_output = {}
-            return self.gmm.log_prob(samples), aux_output
-        return self.gmm.log_prob(samples)
-
-    def __call__(
-        self, samples: torch.Tensor, return_aux_output: bool = False
-    ) -> torch.Tensor:
-        """Evaluates GMM log probability at given samples.
-        Used in train.py and eval.py for computing model loss.
-
-        Args:
-            samples (torch.Tensor): Input points to evaluate
-
-        Returns:
-            torch.Tensor: Log probability values at input points
-        """
-        if self.should_unnormalize:
-            samples = self.unnormalize(samples)
-        return self.log_prob(samples, return_aux_output)
-
     def move_to_device(self, device):
         self.gmm.to(device)
 
@@ -182,6 +194,9 @@ class GMMEnergy(BaseEnergyFunction):
             int: Input dimensionality
         """
         return 2
+    
+    def get_minima(self):
+        return self.gmm.distribution.component_distribution.loc
 
     def log_on_epoch_end(
         self,
@@ -285,122 +300,3 @@ class GMMEnergy(BaseEnergyFunction):
             samples = self.unnormalize(samples)
         samples_fig = self.get_single_dataset_fig(samples, name)
         wandb_logger.log_image(f"{name}", [samples_fig])
-
-    # def get_single_dataset_fig(
-    #     self,
-    #     samples,
-    #     name,
-    #     n_contour_levels=50,
-    #     plotting_bounds=(-1.4 * 40, 1.4 * 40),
-    #     plot_minima=False,
-    #     grid_width_n_points=200,
-    #     plot_style="contours",
-    #     with_legend=False,
-    # ):
-    #     """Creates visualization of samples against GMM contours.
-    #     Used in train.py for sample visualization.
-
-    #     Args:
-    #         samples (torch.Tensor): Samples to plot
-    #         name (str): Title for plot
-    #         plotting_bounds (tuple, optional): Plot bounds. Defaults to (-1.4*40, 1.4*40)
-
-    #     Returns:
-    #         numpy.ndarray: Plot as image array
-    #     """
-    #     plt.close()
-    #     fig, ax = plt.subplots(1, 1, figsize=(8, 8))
-
-    #     self.gmm.to("cpu")
-    #     plot_fn(
-    #         self.gmm.log_prob,
-    #         bounds=plotting_bounds,
-    #         ax=ax,
-    #         plot_style=plot_style,
-    #         n_contour_levels=n_contour_levels,
-    #         grid_width_n_points=grid_width_n_points,
-    #     )
-    #     if samples is not None:
-    #         plot_marginal_pair(samples, ax=ax, bounds=plotting_bounds)
-    #     if name is not None:
-    #         ax.set_title(f"{name}")
-
-    #     if plot_minima:
-    #         means = self.gmm.distribution.component_distribution.loc
-    #         ax.scatter(*means.detach().cpu().T, color="red", marker="x")
-    #         # ax.legend()
-
-    #     if with_legend:
-    #         ax.legend()
-
-    #     self.gmm.to(self.device)
-
-    #     return fig_to_image(fig)
-
-    # def get_dataset_fig(
-    #     self,
-    #     samples,
-    #     gen_samples=None,
-    #     n_contour_levels=50,
-    #     plotting_bounds=(-1.4 * 40, 1.4 * 40),
-    #     plot_minima=False,
-    #     plot_style="contours",
-    #     plot_prob_kwargs={},
-    #     plot_sample_kwargs={},
-    # ):
-    #     """Creates side-by-side visualization of buffer and generated samples.
-    #     Used in train.py for comparing sample distributions.
-
-    #     Args:
-    #         samples (torch.Tensor): Buffer samples to plot
-    #         gen_samples (torch.Tensor, optional): Generated samples to plot. Defaults to None
-    #         plotting_bounds (tuple, optional): Plot bounds. Defaults to (-1.4*40, 1.4*40)
-
-    #     Returns:
-    #         numpy.ndarray: Plot as image array
-    #     """
-    #     plt.close()
-    #     fig, axs = plt.subplots(1, 2, figsize=(12, 4))
-
-    #     self.gmm.to("cpu")
-    #     plot_fn(
-    #         self.gmm.log_prob,
-    #         bounds=plotting_bounds,
-    #         ax=axs[0],
-    #         plot_style=plot_style,
-    #         n_contour_levels=n_contour_levels,
-    #         grid_width_n_points=200,
-    #         plot_kwargs=plot_prob_kwargs,
-    #     )
-
-    #     # plot dataset samples
-    #     if samples is not None:
-    #         plot_marginal_pair(samples, ax=axs[0], bounds=plotting_bounds)
-    #         axs[0].set_title("Buffer")
-
-    #     if gen_samples is not None:
-    #         plot_fn(
-    #             self.gmm.log_prob,
-    #             bounds=plotting_bounds,
-    #             ax=axs[1],
-    #             plot_style=plot_style,
-    #             n_contour_levels=50,
-    #             grid_width_n_points=200,
-    #             plot_kwargs=plot_prob_kwargs,
-    #         )
-    #         # plot generated samples
-    #         plot_marginal_pair(gen_samples, ax=axs[1], bounds=plotting_bounds, plot_kwargs=plot_sample_kwargs)
-    #         axs[1].set_title("Generated samples")
-
-    #     if plot_minima:
-    #         means = self.gmm.distribution.component_distribution.loc
-    #         axs[1].scatter(*means.detach().cpu().T, color="red", marker="x")
-    #         # axs[1].legend()
-
-    #     # delete subplot
-    #     else:
-    #         fig.delaxes(axs[1])
-
-    #     self.gmm.to(self.device)
-
-    #     return fig_to_image(fig)

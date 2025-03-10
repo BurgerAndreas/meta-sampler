@@ -15,7 +15,10 @@ plt.ioff()  # Turn off interactive model
 from dem.models.components.replay_buffer import ReplayBuffer
 from dem.utils.logging_utils import fig_to_image
 from dem.utils.plotting import plot_fn, plot_marginal_pair
-
+import traceback
+import copy
+from tqdm import tqdm
+import itertools
 
 class BaseEnergyFunction(ABC):
     """Base class for energy functions used in DEM.
@@ -28,6 +31,12 @@ class BaseEnergyFunction(ABC):
         is_molecule (bool, optional): Whether this energy function is for a molecule. Defaults to False.
         normalization_min (float, optional): Minimum value for normalization. Defaults to None.
         normalization_max (float, optional): Maximum value for normalization. Defaults to None.
+        
+    When implementing a new energy function, you need to implement the following methods:
+    - log_prob
+    - _energy
+    And consider implementing the following methods:
+    - move_to_device
     """
 
     def __init__(
@@ -44,6 +53,7 @@ class BaseEnergyFunction(ABC):
         test_set_size: int = 2000,
         val_set_size: int = 2000,
         data_path_train: Optional[str] = None,
+        temperature: float = 1.0,
     ):
         self._dimensionality = dimensionality
         self._plotting_bounds = plotting_bounds
@@ -61,6 +71,8 @@ class BaseEnergyFunction(ABC):
         self.test_set_size = test_set_size
         self.val_set_size = val_set_size
         self.data_path_train = data_path_train
+
+        self.temperature = temperature
 
         self._test_set = self.setup_test_set()
         self._val_set = self.setup_val_set()
@@ -236,6 +248,8 @@ class BaseEnergyFunction(ABC):
         plot_sample_kwargs={},
         colorbar=False,
         quantity="log_prob",
+        ax=None,
+        return_fig=False,
     ):
         """Creates visualization of samples against GMM contours.
         Used in train.py for sample visualization.
@@ -250,8 +264,11 @@ class BaseEnergyFunction(ABC):
         """
         if plotting_bounds is None:
             plotting_bounds = self._plotting_bounds
-        plt.close()
-        fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+        if ax is None:
+            plt.close()
+            fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+        else:
+            fig = ax.get_figure()
 
         self.move_to_device("cpu")
         plot_fn(
@@ -282,21 +299,10 @@ class BaseEnergyFunction(ABC):
 
         self.move_to_device(self.device)
 
-        return fig_to_image(fig)
-
-    def log_prob(
-        self, samples: torch.Tensor, return_aux_output: bool = False
-    ) -> torch.Tensor:
-        """Evaluates the log probability of the energy function at given samples.
-
-        Args:
-            samples (torch.Tensor): Input points
-            return_aux_output (bool, optional): Whether to return auxiliary output. Defaults to False
-
-        Returns:
-            torch.Tensor: Log probability values at input points
-        """
-        raise NotImplementedError
+        if return_fig:
+            return fig
+        else:
+            return fig_to_image(fig)
 
     def sample_test_set(
         self, num_points: int, normalize: bool = False, full: bool = False
@@ -413,11 +419,11 @@ class BaseEnergyFunction(ABC):
         """
         return self._train_set
 
-    @abstractmethod
+    # @abstractmethod
     def __call__(
-        self, samples: torch.Tensor, return_aux_output: bool = False
+        self, samples: torch.Tensor, temperature: Optional[float] = None, return_aux_output: bool = False
     ) -> torch.Tensor:
-        """Evaluates the energy function at given samples.
+        """Evaluates the normalized (pseudo-)energy function at given samples.
 
         Args:
             samples (torch.Tensor): Input points
@@ -425,7 +431,46 @@ class BaseEnergyFunction(ABC):
         Returns:
             torch.Tensor: Energy values at input points
         """
-        raise NotImplementedError
+        if self.should_unnormalize:
+            samples = self.unnormalize(samples)
+        return self.log_prob(samples, temperature=temperature, return_aux_output=return_aux_output)
+    
+    def log_prob(
+        self, samples: torch.Tensor, temperature: Optional[float] = None, return_aux_output: bool = False
+    ) -> torch.Tensor:
+        """Evaluates the unnormalized log probability of the (pseudo-)energy function at given samples.
+
+        Args:
+            samples (torch.Tensor): Input points
+            return_aux_output (bool, optional): Whether to return auxiliary output. Defaults to False
+
+        Returns:
+            torch.Tensor: Log probability values at input points
+        """
+        raise NotImplementedError(f"Energy function {self.__class__.__name__} must implement `log_prob()`")
+    
+    def _energy(
+        self, samples: torch.Tensor, temperature: Optional[float] = None, return_aux_output: bool = False
+    ) -> torch.Tensor:
+        """Energy of the unnormalized (physical) potential. Used in GAD to compute forces/Hessian.
+
+        Args:
+            samples (torch.Tensor): Input points
+            return_aux_output (bool, optional): Whether to return auxiliary output. Defaults to False
+
+        Returns:
+            torch.Tensor: Energy values at input points
+        """
+        raise NotImplementedError(f"GAD energy function {self.__class__.__name__} must implement `_energy()`")
+
+    def energy(self, samples: torch.Tensor, temperature: Optional[float] = None, return_aux_output: bool = False) -> torch.Tensor:
+        """Energy=-logprob of unnormalized (pseudo-)potential. 
+        Convinience fuction. Superflous with `log_prob()`. Used for plotting.
+        """
+        if return_aux_output:
+            log_prob, aux_output = self.log_prob(samples, temperature=temperature, return_aux_output=True)
+            return -log_prob, aux_output
+        return -self.log_prob(samples, temperature=temperature)
 
     def score(self, samples: torch.Tensor) -> torch.Tensor:
         """Computes the score (gradient of energy) at given samples.
@@ -529,3 +574,313 @@ class BaseEnergyFunction(ABC):
             dataset_name (str): Name for the saved dataset
         """
         np.save(f"{dataset_name}_samples.npy", samples.cpu().numpy())
+    
+    def get_hessian_eigenvalues_on_grid(
+        self, grid_width_n_points=200, plotting_bounds=None
+    ):
+        """Compute eigenvalues of the Hessian on a grid.
+
+        Args:
+            grid_width_n_points (int): Number of points in each dimension for grid
+            plotting_bounds (tuple, optional): Plot bounds as (min, max) tuple
+
+        Returns:
+            tuple: Grid points and eigenvalues tensors
+        """
+        if plotting_bounds is None:
+            plotting_bounds = self._plotting_bounds
+
+        x_points_dim1 = torch.linspace(
+            plotting_bounds[0], plotting_bounds[1], grid_width_n_points
+        )
+        x_points_dim2 = torch.linspace(
+            plotting_bounds[0], plotting_bounds[1], grid_width_n_points
+        )
+        x_points = torch.tensor(list(itertools.product(x_points_dim1, x_points_dim2)))
+
+        # Move to device
+        x_points = x_points.to(self.device)
+
+        # Use functorch to compute Hessian directly
+        if len(x_points.shape) == 1:
+            # Handle single sample
+            hessian = torch.func.hessian(self._energy)(x_points)
+        else:
+            # Handle batched inputs using vmap
+            hessian = torch.vmap(torch.func.hessian(self._energy))(x_points)
+
+        # Compute eigenvalues
+        batched_eigenvalues, _ = torch.linalg.eigh(hessian)
+
+        # Sort eigenvalues
+        sorted_indices = torch.argsort(batched_eigenvalues, dim=-1)
+        batched_eigenvalues = torch.gather(batched_eigenvalues, -1, sorted_indices)
+
+        # Reshape for plotting
+        eigenvalues_grid = batched_eigenvalues.reshape(
+            grid_width_n_points, grid_width_n_points, self._dimensionality
+        )
+        x_grid = x_points_dim1.reshape(-1, 1).repeat(1, grid_width_n_points)
+        y_grid = x_points_dim2.reshape(1, -1).repeat(grid_width_n_points, 1)
+
+        return x_grid, y_grid, eigenvalues_grid
+    
+    def plot_hessian_eigenvalues(self, grid_width_n_points=200, plotting_bounds=None, name=None):
+        """Plot the first two eigenvalues of the Hessian on a grid.
+
+        Args:
+            grid_width_n_points (int): Number of points in each dimension for grid
+            plotting_bounds (tuple, optional): Plot bounds as (min, max) tuple
+
+        Returns:
+            matplotlib.figure.Figure: Figure with eigenvalue plots
+        """
+        if self.dimensionality != 2:
+            print(f"Hessian eigenvalues are only defined for 2D systems, but this system has {self.dimensionality} dimensions")
+            return
+
+        x_grid, y_grid, eigenvalues_grid = self.get_hessian_eigenvalues_on_grid(
+            grid_width_n_points=grid_width_n_points, plotting_bounds=plotting_bounds
+        )
+        eigenvalues_grid = eigenvalues_grid.cpu().numpy()
+
+        # Create figure with two subplots
+        fig, axs = plt.subplots(1, 2, figsize=(16, 6))
+        title = "Hessian eigenvalues"
+        if name is not None:
+            title = f"{title}: {name}"
+        fig.suptitle(title)
+
+        # Plot first eigenvalue
+        im1 = axs[0].pcolormesh(
+            x_grid, y_grid, eigenvalues_grid[:, :, 0], cmap="viridis", shading="auto"
+        )
+        axs[0].set_title("First (smallest) eigenvalue")
+        axs[0].set_xlabel("x")
+        axs[0].set_ylabel("y")
+        fig.colorbar(im1, ax=axs[0])
+
+        # Plot second eigenvalue
+        im2 = axs[1].pcolormesh(
+            x_grid, y_grid, eigenvalues_grid[:, :, 1], cmap="viridis", shading="auto"
+        )
+        axs[1].set_title("Second eigenvalue")
+        axs[1].set_xlabel("x")
+        axs[1].set_ylabel("y")
+        fig.colorbar(im2, ax=axs[1])
+
+        plt.tight_layout()
+
+        return fig
+    
+    def plot_energy_crossection(self, n_points=200, plotting_bounds=None, y_value=0.0, name=None):
+        """Plot a horizontal cross-section of the energy landscape at a specified y-value.
+        
+        Args:
+            n_points (int): Number of points to sample along the x-axis
+            y_value (float): The y-value at which to take the cross-section
+            
+        Returns:
+            matplotlib.figure.Figure: Figure with the energy cross-section plot
+        """
+        if self.dimensionality != 2:
+            print(f"Energy cross-section is only defined for 2D systems, but this system has {self.dimensionality} dimensions")
+            return
+        
+        self.move_to_device("cpu")
+        
+        # Create x points for the cross-section
+        if plotting_bounds is None:
+            plotting_bounds = self._plotting_bounds
+        x_points = torch.linspace(plotting_bounds[0], plotting_bounds[1], n_points)
+        
+        # Create samples with fixed y value
+        samples = torch.zeros((n_points, 2))
+        samples[:, 0] = x_points
+        samples[:, 1] = y_value
+        
+        # Compute energy values
+        energy_values = self.energy(samples).detach().cpu().numpy()
+        
+        # Create figure
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        # Plot energy cross-section
+        ax.plot(x_points, energy_values)
+        title = f"Energy cross-section at y={y_value:.1f}"
+        if name is not None:
+            title = f"{title}: {name}"
+        ax.set_title(title)
+        ax.set_xlabel("x")
+        ax.set_ylabel("Energy")
+        ax.grid(True)
+        
+        # Mark minima and saddle points if they're within the cross-section
+        minima = self.get_minima()
+        
+        # Filter points that are on or very close to our cross-section
+        epsilon = 1e-6
+        for point in minima:
+            if abs(point[1].item() - y_value) < epsilon:
+                ax.plot(point[0].item(), self.energy(point).item(), 'ro', markersize=8, label='Minimum')
+        
+        if hasattr(self, "get_true_transition_states"):
+            saddle_points = self.get_true_transition_states()
+            for point in saddle_points:
+                if abs(point[1].item() - y_value) < epsilon:
+                    ax.plot(point[0].item(), self.energy(point).item(), 'go', markersize=8, label='Saddle point')
+        
+        # Add legend if we plotted any special points
+        handles, labels = ax.get_legend_handles_labels()
+        if handles:
+            ax.legend()
+            
+        plt.tight_layout()
+
+        # Restore device
+        self.move_to_device(self.device)
+
+        return fig
+
+
+class BaseGADEnergyFunction():
+    def __init__(
+        self, 
+        gad_offset=100.0, clip_energy=True, stitching=True, stop_grad_ev=False, 
+        div_epsilon=1e-12, clamp_min=None, clamp_max=None,
+        *args,
+        **kwargs
+        ):
+        self.gad_offset = gad_offset
+        self.clip_energy = clip_energy
+        self.stitching = stitching
+        self.stop_grad_ev = stop_grad_ev
+        self.div_epsilon = div_epsilon
+        self.clamp_min = float(clamp_min) if clamp_min is not None else None
+        self.clamp_max = float(clamp_max) if clamp_max is not None else None
+        
+    def compute_gad_potential(self, get_energy, samples):
+        #####################################################################
+        # Compute energy
+        energy = get_energy(samples)
+
+        #####################################################################
+        # Compute forces
+
+        # Use functorch.grad to compute forces
+        try:
+            # if len(samples.shape) == 1:
+            #     forces = torch.func.grad(get_energy)(samples)
+            # else:
+            forces = torch.vmap(torch.func.grad(get_energy))(samples)
+        except Exception as e:
+            print(f"Samples: {samples}")
+            print(f"Energy: {energy}")
+            with open("gad_nan_log.txt", "a") as f:
+                f.write(traceback.format_exc())
+                f.write(f"Epoch: {self.curr_epoch}\n")
+                f.write(f"Samples: {samples}\n")
+                f.write(f"Energy: {energy}\n")
+                f.write("-" * 80 + "\n")
+            raise e
+
+        #####################################################################
+        # Compute two smallest eigenvalues of Hessian
+        # if len(samples.shape) == 1:
+        #     # Handle single sample
+        #     hessian = torch.func.hessian(get_energy)(samples)
+        #     eigenvalues, eigenvectors = torch.linalg.eigh(hessian)
+        #     # Sort eigenvalues and corresponding eigenvectors
+        #     sorted_indices = torch.argsort(eigenvalues)
+        #     eigenvalues = eigenvalues[sorted_indices]
+        #     eigenvectors = eigenvectors[:, sorted_indices]
+        #     # Get 2 smallest eigenvalues and their eigenvectors
+        #     smallest_eigenvalues = eigenvalues[:2]
+        #     smallest_eigenvectors = eigenvectors[:, :2]
+        # else:
+        # Handle batched inputs using vmap # [B, D, D]
+        batched_hessian = torch.vmap(torch.func.hessian(get_energy))(samples)
+        # Get eigenvalues and eigenvectors for each sample in batch
+        batched_eigenvalues, batched_eigenvectors = torch.linalg.eigh(
+            batched_hessian
+        )
+        # Sort eigenvalues in ascending order and get corresponding indices
+        sorted_indices = torch.argsort(batched_eigenvalues, dim=-1)
+        # Get sorted eigenvalues
+        batched_eigenvalues = torch.gather(batched_eigenvalues, -1, sorted_indices)
+        # Get 2 smallest eigenvalues for each sample
+        smallest_eigenvalues = batched_eigenvalues[..., :2]  # [B, 2]
+        # Get eigenvectors corresponding to eigenvalues
+        smallest_eigenvectors = torch.gather(
+            batched_eigenvectors,
+            -1,
+            sorted_indices[..., 0:1]
+            .unsqueeze(-1)
+            .expand(batched_eigenvectors.shape),
+        )
+
+        if self.stop_grad_ev:
+            smallest_eigenvalues = smallest_eigenvalues.detach()
+            smallest_eigenvectors = smallest_eigenvectors.detach()
+
+        # Get smallest eigenvalue and the corresponding eigenvector for each sample
+        smallest_eigenvector = smallest_eigenvectors[..., 0]
+        smallest_eigenvalue = smallest_eigenvalues[..., 0]
+        
+        #####################################################################
+        # Compute GAD energy
+
+        # stitching
+        if self.stitching:
+            if self.clip_energy:
+                # in Luca's example the double well is [0, 20], gad_offset=50
+                # here the dw is [-10, 170]
+                pseudo_energy = torch.where(
+                    smallest_eigenvalue < 0, 
+                    input=torch.clip(
+                        -energy
+                        + (1 / (smallest_eigenvalue + self.div_epsilon))
+                        * torch.einsum("bd,bd->b", forces, smallest_eigenvector) ** 2
+                        + self.gad_offset,
+                        min=self.clamp_min,
+                        max=self.clamp_max,
+                    ), 
+                    other=-smallest_eigenvalues[..., 0] * smallest_eigenvalues[..., 1]
+                )
+            else:
+                pseudo_energy = torch.where(
+                    smallest_eigenvalue < 0, 
+                    input=(
+                        -energy
+                        + (1 / (smallest_eigenvalue + self.div_epsilon))
+                        * torch.einsum("bd,bd->b", forces, smallest_eigenvector) ** 2
+                    ), 
+                    other=-smallest_eigenvalues[..., 0] * smallest_eigenvalues[..., 1]
+                )
+        else:
+            if self.clip_energy:
+                pseudo_energy =(-energy
+                    + (1 / (smallest_eigenvalue + self.div_epsilon))
+                    * torch.einsum("bd,bd->b", forces, smallest_eigenvector) ** 2
+                    + self.gad_offset)
+                print(f"pseudo_energy: min={pseudo_energy.min():.1f}, max={pseudo_energy.max():.1f}")
+                pseudo_energy = torch.clip(
+                    pseudo_energy,
+                    min=self.clamp_min,
+                    max=self.clamp_max,
+                )
+                print(f"pseudo_energy clipped: min={pseudo_energy.min():.1f}, max={pseudo_energy.max():.1f}")
+            else:
+                pseudo_energy = (
+                    -energy
+                    + (1 / (smallest_eigenvalue + self.div_epsilon))
+                    * torch.einsum("bd,bd->b", forces, smallest_eigenvector) ** 2
+                )
+                
+        aux_output = {
+            # "forces": forces,
+            # "smallest_eigenvalues": smallest_eigenvalues,
+            # "smallest_eigenvectors": smallest_eigenvectors,
+            # "pseudo_energy": pseudo_energy,
+        }
+        return pseudo_energy, aux_output

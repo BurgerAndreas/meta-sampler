@@ -41,6 +41,35 @@ configs = [
         "energy.clamp_max=null",
     ],
     [
+        "GAD stitched and offset",
+        "experiment=dw_idem_gad",
+        "energy.stitching=True",
+        "energy.clip_energy=True",
+        "energy.gad_offset=50",
+        "energy.clamp_min=-1000",
+        "energy.clamp_max=null",
+    ],
+    [
+        "GAD stitched and clipped, T=0.1",
+        "experiment=dw_idem_gad",
+        "energy.stitching=True",
+        "energy.clip_energy=True",
+        "energy.gad_offset=50",
+        "energy.clamp_min=0",
+        "energy.clamp_max=null",
+        "energy.temperature=0.1",
+    ],
+    [
+        "GAD stitched and clipped, div=1e-12",
+        "experiment=dw_idem_gad",
+        "energy.stitching=True",
+        "energy.clip_energy=True",
+        "energy.gad_offset=50",
+        "energy.clamp_min=0",
+        "energy.clamp_max=null",
+        "energy.div_epsilon=1e-12",
+    ],
+    [
         "GAD for DEM",
         "experiment=dw_idem_gad",
     ],
@@ -97,10 +126,31 @@ for config in configs:
     U = lambda x: energy_function.energy(
         torch.tensor([x], device=energy_function.device, dtype=torch.float32)
     )
-
-    print(f"Energy at [0, 0] = {U([0, 0]).item()}")
-    print(f"Energy at [-1.7, 0] = {U([-1.7, 0]).item()}")
-    print(f"Energy at [1.7, 0] = {U([1.7, 0]).item()}")
+    
+    # Plot contour with samples, minima, and transition state
+    # Get samples from the energy function
+    samples = energy_function.sample((1000,))
+    print(f"samples: min={samples.min():.1e}, max={samples.max():.1e}")
+    print(f"samples: abs min={samples.abs().min():.1e}, abs max={samples.abs().max():.1e}")
+    # Get minima and transition states
+    minima = energy_function.get_minima()
+    transition_states = energy_function.get_true_transition_states()
+    # Create the contour plot with samples
+    img = energy_function.get_single_dataset_fig(
+        samples=samples,
+        name=f"{name} with samples and critical points",
+        plot_minima=True,
+        grid_width_n_points=800,
+        plot_style="contours",
+        # plot_sample_kwargs={"color": "m", "marker": ".", "alpha": 0.5, "s": 10},
+        colorbar=True,
+        quantity="e",
+        return_fig=False
+    )
+    # Save the figure
+    fig_name = f"plots/dw_{plt_name}_contour_with_samples.png"
+    plt.savefig(fig_name)
+    print(f"Saved {fig_name}")
 
     energy_function.plot_hessian_eigenvalues(name=name)
     fig_name = f"plots/dw_{plt_name}_hessian_eigenvalues.png"
@@ -111,6 +161,8 @@ for config in configs:
     fig_name = f"plots/dw_{plt_name}_crossection.png"
     plt.savefig(fig_name)
     print(f"Saved {fig_name}")
+    
+    exit()
 
     # deinitialize hydra
     GlobalHydra().clear()

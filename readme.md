@@ -47,9 +47,6 @@ python dem/train.py experiment=gmm_idem model.num_samples_to_sample_from_buffer=
 # saves accuracy with Richardson extrapolation
 python dem/train.py experiment=gmm_idem model.num_samples_to_sample_from_buffer=16 model.nll_batch_size=32 model.eval_batch_size=256 model.num_estimator_mc_samples=16 model.use_richardsons=true
 
-# TODO: doesn't work yet. saves accuracy by using a streaming estimator?
-python dem/train.py experiment=gmm_idem model.num_samples_to_sample_from_buffer=16 model.nll_batch_size=32 model.eval_batch_size=256 model.streaming_batch_size=16 
-
 # increasing num_estimator_mc_samples does improve accuracy
 python dem/train.py experiment=gmm_idem model.num_samples_to_sample_from_buffer=16 model.nll_batch_size=32 model.eval_batch_size=256 
 

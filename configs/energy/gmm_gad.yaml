@@ -1,4 +1,4 @@
-_target_: dem.energies.gmm_gad.GMMGADEnergy
+_target_: dem.energies.gmm_energy_gad.GMMGADEnergy
 
 dimensionality: 2
 n_mixes: 40
@@ -12,3 +12,13 @@ plot_samples_epoch_period: 1
 should_unnormalize: true
 data_normalization_factor: 50
 data_path_train: null
+
+# GAD parameters
+gad_offset: 50.0
+clip_energy: True
+stitching: True
+stop_grad_ev: True
+div_epsilon: 1e-6
+clamp_min: 0
+clamp_max: null
+temperature: 1.0
