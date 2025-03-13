@@ -97,3 +97,5 @@ use_vmap: ${use_vmap}
 
 generate_constrained_samples: false
 constrained_score_norm_target: 0.0
+
+force_grad: false

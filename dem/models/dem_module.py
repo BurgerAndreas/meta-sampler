@@ -19,6 +19,7 @@ from torchcfm.conditional_flow_matching import (
 from torchmetrics import MeanMetric
 from tqdm import tqdm
 import os 
+import traceback
 
 from dem.energies.base_energy_function import BaseEnergyFunction
 from dem.utils.data_utils import remove_mean
@@ -193,10 +194,12 @@ class DEMLitModule(LightningModule):
         num_negative_time_steps=100,
         seed=None,
         nll_batch_size=256,
+        # added
         use_vmap=True,
         streaming_batch_size: int = 128,
         generate_constrained_samples: bool = False,
         constrained_score_norm_target: float = 0.0,
+        force_grad: bool = False,
     ) -> None:
         """Initialize a `MNISTLitModule`.
 
@@ -383,6 +386,7 @@ class DEMLitModule(LightningModule):
 
         self.generate_constrained_samples = generate_constrained_samples
         self.constrained_score_norm_target = constrained_score_norm_target
+        self.force_grad = force_grad
 
     def forward(self, t: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
         """Perform a forward pass through the model `self.net`.
@@ -511,25 +515,35 @@ class DEMLitModule(LightningModule):
                 dem_loss, aux_output = self.get_loss(
                     times, noised_samples, return_aux_output=True
                 )
-                assert torch.isfinite(dem_loss).all()
+                assert torch.isfinite(dem_loss).all(), f"{(~torch.isfinite(dem_loss)).sum().item()} entries are NaN/inf. Epoch={self.current_epoch}, step={self.global_step}"
                 for k,v in aux_output.items():
-                    assert torch.isfinite(v).all(), f"NaN/inf in {k}\n{v}"
+                    assert torch.isfinite(v).all(), f"NaN/inf in {k}\n{v}. Epoch={self.current_epoch}, step={self.global_step}"
             except Exception as e:
-                dem_loss, aux_output = self.get_loss(
-                    times, noised_samples, return_aux_output=True
-                )
-                print(f"Samples: {aux_output['samples']}")
-                print(f"Energy: {aux_output['energy']}")
-                with open("gad_nan_log.txt", "a") as f:
-                    f.write(traceback.format_exc())
-                    f.write(f"Epoch: {self.energy_function.curr_epoch}\n")
-                    f.write(f"Samples: {aux_output['samples']}\n")
-                    f.write(f"Energy: {aux_output['energy']}\n")
-                    f.write(f"Forces: {aux_output['forces']}\n")
-                    f.write(f"Pseudo energy: {aux_output['pseudo_energy']}\n")
+                # dem_loss, aux_output = self.get_loss(
+                #     times, noised_samples, return_aux_output=True
+                # )
+                dem_loss, aux_output = self.energy_function(noised_samples, return_aux_output=True)
+                nan_indices = (~torch.isfinite(dem_loss)).nonzero()
+                print("-" * 80)
+                # print(f"aux_output: {aux_output.keys()}")
+                print(f"Samples: \n{noised_samples[nan_indices]}")
+                print(f"Energy: \n{aux_output['energy'][nan_indices]}")
+                print(traceback.format_exc())
+                with open("gad_nan_log.txt", "w") as f:
+                    # f.write(traceback.format_exc())
+                    f.write(f"Epoch={self.energy_function.curr_epoch}, step={self.global_step}\n")
+                    f.write(f"noised_samples: \n{noised_samples[nan_indices]}\n")
+                    f.write(f"iter_samples: \n{iter_samples[nan_indices]}\n")
+                    f.write(f"Energy: \n{aux_output['energy'][nan_indices]}\n")
+                    f.write(f"Forces: \n{aux_output['forces'][nan_indices]}\n")
+                    f.write(f"Smallest eigenvalues: \n{aux_output['smallest_eigenvalues'][nan_indices]}\n")
+                    f.write(f"Smallest eigenvectors: \n{aux_output['smallest_eigenvectors'][nan_indices]}\n")
+                    f.write(f"Pseudo energy: \n{aux_output['pseudo_energy'][nan_indices]}\n")
                     f.write("-" * 80 + "\n")
-                raise ValueError("NaNs/infs detected")
-            
+                print("=" * 80)
+                print(f"Logged to gad_nan_log.txt")
+                exit()
+                
             # Uncomment for SM
             # dem_loss = self.get_score_loss(times, iter_samples, noised_samples)
             self.log_dict(
@@ -573,6 +587,7 @@ class DEMLitModule(LightningModule):
                 )
 
             cfm_loss = self.get_cfm_loss(cfm_samples)
+            assert torch.isfinite(cfm_loss).all(), f"{(~torch.isfinite(cfm_loss)).sum().item()} entries are NaN/inf. Epoch={self.current_epoch}, step={self.global_step}"
             self.log_dict(
                 t_stratified_loss(
                     times, cfm_loss, loss_name="train/stratified/cfm_loss"
@@ -644,33 +659,40 @@ class DEMLitModule(LightningModule):
             else:
                 reverse_sde = self.reverse_sde
 
-        if constrain_score_norm:
-            trajectory = integrate_constrained_sde(
-                sde=reverse_sde,
-                x0=samples,
-                num_integration_steps=self.num_integration_steps,
-                energy_function=self.energy_function,
-                constant_of_motion_fn=None,  # TODO: add constant of motion
-                diffusion_scale=diffusion_scale,
-                reverse_time=reverse_time,
-                no_grad=no_grad,
-                negative_time=negative_time,
-                num_negative_time_steps=self.num_negative_time_steps,
-                clipper=self.clipper,
-            )
-        else:
-            trajectory = integrate_sde(
-                reverse_sde,
-                samples,
-                self.num_integration_steps,
-                self.energy_function,
-                diffusion_scale=diffusion_scale,
-                reverse_time=reverse_time,
-                no_grad=no_grad,
-                negative_time=negative_time,
-                num_negative_time_steps=self.num_negative_time_steps,
-                clipper=self.clipper,
-            )
+        # Kirill WIP
+        # if constrain_score_norm:
+        #     trajectory = integrate_constrained_sde(
+        #         sde=reverse_sde,
+        #         x0=samples,
+        #         num_integration_steps=self.num_integration_steps,
+        #         energy_function=self.energy_function,
+        #         constant_of_motion_fn=None,  # TODO: add constant of motion
+        #         diffusion_scale=diffusion_scale,
+        #         reverse_time=reverse_time,
+        #         no_grad=no_grad,
+        #         negative_time=negative_time,
+        #         num_negative_time_steps=self.num_negative_time_steps,
+        #         clipper=self.clipper,
+        #     )
+        # else:
+        
+        # added for pseudopotentials that relies on gradients
+        if self.force_grad:
+            no_grad = False
+        trajectory = integrate_sde(
+            reverse_sde,
+            samples,
+            self.num_integration_steps,
+            self.energy_function,
+            diffusion_scale=diffusion_scale,
+            reverse_time=reverse_time,
+            no_grad=no_grad,
+            negative_time=negative_time,
+            num_negative_time_steps=self.num_negative_time_steps,
+            clipper=self.clipper,
+        )
+            
+        assert torch.isfinite(trajectory).all(), f"trajectory: Max={trajectory.max():.1e}, Min={trajectory.min():.1e}. Epoch={self.current_epoch}, step={self.global_step}"
         if return_full_trajectory:
             return trajectory
 
@@ -728,6 +750,9 @@ class DEMLitModule(LightningModule):
                 diffusion_scale=self.diffusion_scale
             )
             self.last_energies = self.energy_function(self.last_samples)
+            
+        assert torch.isfinite(self.last_samples).all(), f"{(~torch.isfinite(self.last_samples)).sum().item()} entries are NaN/inf. Epoch={self.current_epoch}, step={self.global_step}"
+        assert torch.isfinite(self.last_energies).all(), f"{(~torch.isfinite(self.last_energies)).sum().item()} entries are NaN/inf. Epoch={self.current_epoch}, step={self.global_step}"
 
         self.buffer.add(self.last_samples, self.last_energies)
 
@@ -1336,7 +1361,7 @@ class DEMLitModule(LightningModule):
                 self.num_estimator_mc_samples,
                 # use_vmap=self.use_vmap,
             )
-
+        # TODO
         reverse_sde = VEReverseSDE(_grad_fxn, self.noise_schedule)
 
         self.prior = self.partial_prior(
@@ -1350,6 +1375,8 @@ class DEMLitModule(LightningModule):
             )
         init_energies = self.energy_function(init_states)
 
+        assert torch.isfinite(init_states).all(), f"init_states: init_from_prior={self.init_from_prior}. Epoch={self.current_epoch}, step={self.global_step}"
+        assert torch.isfinite(init_energies).all(), f"init_energies: init_from_prior={self.init_from_prior}. Epoch={self.current_epoch}, step={self.global_step}"
         self.buffer.add(init_states, init_energies)
 
         if self.hparams.compile and stage == "fit":

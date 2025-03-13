@@ -19,6 +19,8 @@ Ala2Im*
 # C extensions
 *.so
 
+**/*.txt
+
 # Distribution / packaging
 .Python
 */**/build/

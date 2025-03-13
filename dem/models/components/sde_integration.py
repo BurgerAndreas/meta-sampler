@@ -184,6 +184,24 @@ def integrate_sde(
 
     # Combine all states into a single tensor representing the full trajectory
     samples = torch.stack(samples)
+    
+    try:
+        assert torch.isfinite(samples).all()
+    except Exception as e:
+        nan_idx = torch.isnan(samples[-1]).nonzero()
+        print(f"Error in integrate_sde: {e}")
+        print(f"nan_idx numel: {nan_idx.numel()}")
+        print(f"x0: {x0[nan_idx].shape}")
+        for i, s in enumerate(samples):
+            print(f"t: {times[i]}. x: \n{s[nan_idx]}")
+        # write to file
+        with open("nan_samples.txt", "w") as f:
+            f.write(f"nan_idx numel: {nan_idx.numel()}")
+            f.write(f"x0: {x0[nan_idx].shape}")
+            for i, s in enumerate(samples):
+                f.write(f"\nt: {times[i]}. x: \n{s[nan_idx]}")
+        print("nan samples written to nan_samples.txt")
+        raise e
 
     # TODO: is this really what this is?
     # Optional: Continue integration into negative time (past t=0)

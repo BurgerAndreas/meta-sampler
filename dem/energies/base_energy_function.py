@@ -77,6 +77,8 @@ class BaseEnergyFunction(ABC):
         self._test_set = self.setup_test_set()
         self._val_set = self.setup_val_set()
         self._train_set = None
+        
+        self.name = self.__class__.__name__
 
     def setup_test_set(self) -> Optional[torch.Tensor]:
         """Sets up the test dataset.
@@ -673,6 +675,109 @@ class BaseEnergyFunction(ABC):
 
         return fig
     
+    def plot_gradient(self, grid_width_n_points=200, grid_width_n_points_vector_field=10, plotting_bounds=None, name=None):
+        """Plot the gradient of the potential on a grid.
+
+        Args:
+            grid_width_n_points (int): Number of points in each dimension for grid
+            plotting_bounds (tuple, optional): Plot bounds as (min, max) tuple
+            name (str, optional): Name to include in the plot title
+            subsample_factor (int, optional): Factor to subsample the vector field for clarity
+
+        Returns:
+            matplotlib.figure.Figure: Figure with gradient vector field plot
+        """
+        if self.dimensionality != 2:
+            print(f"Gradient plotting is only defined for 2D systems, but this system has {self.dimensionality} dimensions")
+            return
+
+        if plotting_bounds is None:
+            plotting_bounds = self._plotting_bounds
+
+        # Create grid for energy contour plot (higher resolution)
+        contour_n_points = grid_width_n_points
+        x_contour = torch.linspace(plotting_bounds[0], plotting_bounds[1], contour_n_points)
+        y_contour = torch.linspace(plotting_bounds[0], plotting_bounds[1], contour_n_points)
+        X_contour, Y_contour = np.meshgrid(x_contour.cpu().numpy(), y_contour.cpu().numpy())
+        
+        # Create points for energy evaluation
+        contour_points = torch.tensor(list(itertools.product(x_contour, y_contour)))
+        contour_points = contour_points.to(self.device)
+        
+        # Compute energy values for contour plot
+        energy_values = self.energy(contour_points).reshape(contour_n_points, contour_n_points).detach().cpu().numpy()
+        
+        ############################################################################################################
+        # Create smaller grid for vector field
+        x_points_dim1 = torch.linspace(plotting_bounds[0], plotting_bounds[1], grid_width_n_points_vector_field)
+        x_points_dim2 = torch.linspace(plotting_bounds[0], plotting_bounds[1], grid_width_n_points_vector_field)
+        x_points = torch.tensor(list(itertools.product(x_points_dim1, x_points_dim2)))
+        x_points = x_points.to(self.device)
+        
+        def scalar_log_prob(x):
+            # torch.func.grad requires a function that returns a single scalar value for each individual input point
+            # For each single grid point x (which is a tensor of shape [2]):
+            # We add a batch dimension with x.unsqueeze(0) to make it [1, 2]
+            # When we call self.log_prob(x.unsqueeze(0)), it returns a tensor of shape [1] (a batch with one value)
+            # We extract that single value with [0] to get a scalar (shape [])
+            return -self.log_prob(x.unsqueeze(0)).squeeze(0)
+        
+        grad_values_grid = torch.vmap(torch.func.grad(scalar_log_prob))(x_points)
+        
+        # Reshape for plotting
+        grad_values_grid = grad_values_grid.reshape(
+            grid_width_n_points_vector_field, grid_width_n_points_vector_field, self._dimensionality
+        )
+        x_grid = x_points_dim1.reshape(-1, 1).repeat(1, grid_width_n_points_vector_field)
+        y_grid = x_points_dim2.reshape(1, -1).repeat(grid_width_n_points_vector_field, 1)
+        grad_values_grid = grad_values_grid.cpu().numpy()
+
+        ############################################################################################################
+        # Create figure 
+        plt.close()
+        fig, ax = plt.subplots(figsize=(10, 8))
+        
+        # Plot energy contours as background
+        contour = ax.contourf(X_contour, Y_contour, energy_values, levels=50, cmap='viridis', alpha=0.6)
+        cbar_contour = fig.colorbar(contour, ax=ax)
+        cbar_contour.set_label('Energy')
+        
+        # Subsample the grid for clearer vector field visualization
+        U = grad_values_grid[:, :, 0]  # x component
+        V = grad_values_grid[:, :, 1]  # y component
+        
+        # Plot the vector field with light gray color and magnitude as vector length
+        quiver = ax.quiver(
+            x_grid, y_grid, 
+            U, V, 
+            scale=0.01,  # Use scale=1.0 to show actual magnitudes
+            pivot='mid',
+            alpha=0.7,
+            width=0.004,
+            color='lightgray'  # Use light gray for all vectors
+        )
+        
+        # Set labels and title
+        ax.set_xlabel('x')
+        ax.set_ylabel('y')
+        title = "Gradient Vector Field"
+        if name is not None:
+            title = f"{title}: {name}"
+        ax.set_title(title)
+        
+        # Add minima points if available
+        try:
+            minima = self.get_minima()
+            if minima is not None:
+                ax.scatter(*minima.detach().cpu().T, color="red", marker="x", s=100, label="Minima")
+                ax.legend()
+        except:
+            pass
+
+        plt.tight_layout()
+
+        return fig
+    
     def plot_energy_crossection(self, n_points=200, plotting_bounds=None, y_value=0.0, name=None):
         """Plot a horizontal cross-section of the energy landscape at a specified y-value.
         
@@ -878,9 +983,227 @@ class BaseGADEnergyFunction():
                 )
                 
         aux_output = {
-            # "forces": forces,
-            # "smallest_eigenvalues": smallest_eigenvalues,
-            # "smallest_eigenvectors": smallest_eigenvectors,
-            # "pseudo_energy": pseudo_energy,
+            "energy": energy,
+            "forces": forces,
+            "smallest_eigenvalues": smallest_eigenvalues,
+            "smallest_eigenvectors": smallest_eigenvectors,
+            "pseudo_energy": pseudo_energy,
+        }
+        return pseudo_energy, aux_output
+
+class BasePseudoEnergyFunction():
+    def __init__(
+        self, 
+        energy_weight=1.0,
+        force_weight=1.0,
+        forces_norm=None,
+        force_exponent=1,
+        force_exponent_eps=1e-6,
+        force_activation=None,
+        force_scale=1.0,
+        hessian_weight=1.0,
+        hessian_eigenvalue_penalty="softplus",
+        hessian_scale=10.0,
+        term_aggr="sum",
+        use_vmap=True,
+        *args,
+        **kwargs
+        ):
+        self.energy_weight = energy_weight
+        self.force_weight = force_weight
+        self.forces_norm = forces_norm
+        self.force_exponent = force_exponent
+        self.force_exponent_eps = force_exponent_eps
+        self.force_activation = force_activation
+        self.force_scale = force_scale
+        self.hessian_weight = hessian_weight
+        self.hessian_eigenvalue_penalty = hessian_eigenvalue_penalty
+        self.hessian_scale = hessian_scale
+        self.use_vmap = use_vmap
+        self.term_aggr = term_aggr
+    
+    # def log_prob(
+    #     self, samples: torch.Tensor, return_aux_output: bool = False
+    # ) -> torch.Tensor:
+    def compute_pseudo_potential(self, get_energy, samples):
+        """Compute unnormalized pseudo-energy.
+
+        Args:
+            samples: Input positions tensor of shape (dimensionality,)
+
+        Returns:
+            Pseudo-energy value (scalar), aux_output: auxiliary outputs (dict)
+        """
+
+        # Compute energy (all positive after -log_prob)
+        if self.energy_weight > 0:
+            energy = self._energy(samples)
+        else:
+            energy = torch.zeros_like(samples[:, 0])
+
+        # Compute force penalty
+        if self.force_weight > 0:
+
+            # Use functorch.grad to compute forces
+            if len(samples.shape) == 1:
+                forces = torch.func.grad(self._energy)(samples)
+            else:
+                forces = torch.vmap(torch.func.grad(self._energy))(samples)
+
+            # Compute force magnitude
+            force_magnitude = torch.linalg.norm(forces, ord=self.forces_norm, dim=-1)
+            if self.force_exponent > 0:
+                force_magnitude = force_magnitude**self.force_exponent
+            else:
+                force_magnitude = -(
+                    (force_magnitude + self.force_exponent_eps) ** self.force_exponent
+                )
+            # force_magnitude += 1. # [0, inf] -> [1, inf]
+            if self.force_activation == "tanh":
+                force_magnitude = torch.tanh(force_magnitude * self.force_scale)
+            elif self.force_activation == "sigmoid":
+                force_magnitude = torch.sigmoid(force_magnitude * self.force_scale)
+            elif self.force_activation == "softplus":
+                force_magnitude = torch.nn.functional.softplus(
+                    force_magnitude * self.force_scale
+                )
+            elif self.force_activation in [None, False]:
+                pass
+            else:
+                raise ValueError(f"Invalid force_activation: {self.force_activation}")
+        else:
+            force_magnitude = torch.zeros_like(energy)
+
+        # Compute two smallest eigenvalues of Hessian
+        if self.hessian_weight > 0:
+            if len(samples.shape) == 1:
+                # Handle single sample
+                hessian = torch.func.hessian(self._energy)(samples)
+                eigenvalues = torch.linalg.eigvalsh(hessian)
+                smallest_eigenvalues = torch.sort(eigenvalues, dim=-1)[0][:2]
+            else:
+                # Handle batched inputs using vmap # [B, D, D]
+                batched_hessian = torch.vmap(torch.func.hessian(self._energy))(
+                    samples
+                )
+                # Get eigenvalues for each sample in batch # [B, D]
+                batched_eigenvalues = torch.linalg.eigvalsh(batched_hessian)
+                # Sort eigenvalues in ascending order for each sample # [B, D]
+                batched_eigenvalues = torch.sort(batched_eigenvalues, dim=-1)[0]
+                # Get 2 smallest eigenvalues for each sample
+                smallest_eigenvalues = batched_eigenvalues[..., :2]  # [B, 2]
+
+            # Bias toward index-1 saddle points:
+            # - First eigenvalue should be negative (minimize positive values)
+            # - Second eigenvalue should be positive (minimize negative values)
+            if self.hessian_eigenvalue_penalty == "softplus":
+                # Using softplus which is differentiable everywhere but still creates one-sided penalties
+                # if first eigenvalue > 0, increase energy
+                ev1_bias = torch.nn.functional.softplus(smallest_eigenvalues[:, 0])
+                # if second eigenvalue > 0, increase energy
+                ev2_bias = torch.nn.functional.softplus(-smallest_eigenvalues[:, 1])
+                saddle_bias = ev1_bias + ev2_bias
+            elif self.hessian_eigenvalue_penalty == "relu":
+                ev1_bias = torch.relu(smallest_eigenvalues[:, 0])
+                ev2_bias = torch.relu(-smallest_eigenvalues[:, 1])
+                saddle_bias = ev1_bias + ev2_bias
+            # elif self.hessian_eigenvalue_penalty == 'heaviside':
+            #     # 1 if smallest_eigenvalues[0] > 0 else 0
+            #     ev1_bias = torch.heaviside(smallest_eigenvalues[:, 0], torch.tensor(0.))
+            #     # 1 if smallest_eigenvalues[1] < 0 else 0
+            #     ev2_bias = torch.heaviside(-smallest_eigenvalues[:, 1], torch.tensor(0.))
+            #     saddle_bias = ev1_bias + ev2_bias
+            elif self.hessian_eigenvalue_penalty == "sigmoid_individual":
+                ev1_bias = torch.sigmoid(smallest_eigenvalues[:, 0])
+                ev2_bias = torch.sigmoid(-smallest_eigenvalues[:, 1])
+                saddle_bias = ev1_bias + ev2_bias
+            elif self.hessian_eigenvalue_penalty == "mult":
+                # Penalize if both eigenvalues are positive or negative
+                ev1_bias = smallest_eigenvalues[:, 0]
+                ev2_bias = smallest_eigenvalues[:, 1]
+                saddle_bias = ev1_bias * ev2_bias
+            elif self.hessian_eigenvalue_penalty == "sigmoid":
+                saddle_bias = torch.sigmoid(
+                    smallest_eigenvalues[:, 0] * smallest_eigenvalues[:, 1] * self.hessian_scale
+                )
+            elif self.hessian_eigenvalue_penalty == "tanh":
+                saddle_bias = torch.tanh(
+                    smallest_eigenvalues[:, 0] * smallest_eigenvalues[:, 1] * self.hessian_scale
+                )
+                # saddle_bias = -torch.nn.functional.softplus(
+                #     -saddle_bias - 2.0
+                # )  # [0, 1]
+                saddle_bias += 1.0  # [1, 2]
+            elif self.hessian_eigenvalue_penalty == "and":
+                saddle_bias = torch.nn.functional.softplus(
+                    smallest_eigenvalues[:, 0]
+                    * smallest_eigenvalues[:, 1]
+                    * self.hessian_scale
+                )  # [0, inf], 0 if good
+                saddle_bias = torch.tanh(saddle_bias)  # [0, 1]
+                # saddle_bias = 1 - saddle_bias # [0, 1] -> [1, 0] # 1 if good
+            elif self.hessian_eigenvalue_penalty == "tanh_mult":
+                # Penalize if both eigenvalues are positive or negative
+                # tanh: ~ -1 for negative, 1 for positive
+                # both neg -> 1, both pos -> 1, one neg one pos -> 0
+                ev1_bias = torch.tanh(smallest_eigenvalues[:, 0])
+                ev2_bias = torch.tanh(smallest_eigenvalues[:, 1])
+                saddle_bias = ev1_bias * ev2_bias  # [-1, 1]
+                # saddle_bias += 1. # [0, 2]
+                # saddle_bias = -torch.nn.functional.softplus(-saddle_bias-2.) # [0, 1]
+                # saddle_bias += 1. # [1, 2]
+            else:
+                raise ValueError(
+                    f"Invalid penalty function: {self.hessian_eigenvalue_penalty}"
+                )
+        else:
+            # No penalty
+            saddle_bias = torch.zeros_like(energy)
+
+        # idx = torch.randperm(samples.shape[0])[:15]
+        # for i in idx:
+        #     print(f"evs={smallest_eigenvalues[i].tolist()} -> {saddle_bias[i]:.2f}")
+
+        # ensure we have one value per batch
+        assert (
+            energy.shape == force_magnitude.shape == saddle_bias.shape
+        ), f"samples={samples.shape}, energy={energy.shape}, forces={force_magnitude.shape}, hessian={saddle_bias.shape}"
+        assert (
+            energy.shape[0] == samples.shape[0]
+        ), f"samples={samples.shape}, energy={energy.shape}, forces={force_magnitude.shape}, hessian={saddle_bias.shape}"
+
+        # Combine loss terms
+        energy_loss = self.energy_weight * energy
+        force_loss = self.force_weight * force_magnitude
+        hessian_loss = self.hessian_weight * saddle_bias
+
+        if self.term_aggr == "sum":
+            pseudo_energy = energy_loss + force_loss + hessian_loss
+        elif "norm" in self.term_aggr:  # "2_norm"
+            # p‑Norms provide a way to interpolate between simple addition (p=1) and the maximum function (as p→∞)
+            p = float(self.term_aggr.split("_")[0])
+            pseudo_energy = (energy_loss**p + force_loss**p + hessian_loss**p) ** (1 / p)
+        elif self.term_aggr == "logsumexp":
+            # Smooth Maximum via Log‑Sum‑Exp
+            pseudo_energy = torch.logsumexp(
+                torch.stack([energy_loss, force_loss, hessian_loss], dim=-1), dim=-1
+            )
+        elif self.term_aggr == "mult":
+            pseudo_energy = energy_loss * force_loss * hessian_loss
+        elif self.term_aggr == "multfh":
+            # multiply acts like an `and` operation
+            pseudo_energy = energy_loss + (force_loss * hessian_loss)
+        elif self.term_aggr == "1mmultfh":
+            # multiply acts like an `and` operation
+            # pseudo_energy = 1 - energy_loss + (force_loss * hessian_loss)
+            pseudo_energy = energy_loss + 1 - ((1 - force_loss) * (1 - hessian_loss))
+            # pseudo_energy += 2. # [0, inf] -> [1, inf]
+        else:
+            raise ValueError(f"Invalid term_aggr: {self.term_aggr}")
+
+        aux_output = {
+            "energy_loss": energy_loss,
+            "force_loss": force_loss,
+            "hessian_loss": hessian_loss,
         }
         return pseudo_energy, aux_output

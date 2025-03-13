@@ -89,16 +89,17 @@ def log_expectation_reward(
         Log expectation of rewards averaged over Monte Carlo samples
     """
     if streaming_batch_size is not None:
-        return streaming_log_expectation_reward(
-            t,
-            x,
-            energy_function,
-            noise_schedule,
-            num_mc_samples,
-            streaming_batch_size,
-            clipper,
-            return_aux_output,
-        )
+        raise NotImplementedError("Streaming batch size not implemented")
+        # return streaming_log_expectation_reward(
+        #     t,
+        #     x,
+        #     energy_function,
+        #     noise_schedule,
+        #     num_mc_samples,
+        #     streaming_batch_size,
+        #     clipper,
+        #     return_aux_output,
+        # )
 
     repeated_t = t.unsqueeze(0).repeat_interleave(num_mc_samples, dim=0)
     repeated_x = x.unsqueeze(0).repeat_interleave(num_mc_samples, dim=0)

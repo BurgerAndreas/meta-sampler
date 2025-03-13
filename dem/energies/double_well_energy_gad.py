@@ -56,6 +56,6 @@ class DoubleWellEnergyGAD(DoubleWellEnergy, BaseGADEnergyFunction):
         pseudo_logprob = pseudo_energy
         
         if return_aux_output:
-            return pseudo_logprob, {}
+            return pseudo_logprob, aux_output
         return pseudo_logprob
 

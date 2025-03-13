@@ -23,42 +23,88 @@ configs = [
         "energy.energy_weight=1.0",
         "energy.force_weight=0.0",
     ],
+    # [
+    #     "Hessian and",
+    #     "experiment=gmm_idem_pseudo",
+    #     "energy.hessian_weight=1.0",
+    #     "energy.hessian_eigenvalue_penalty=and",
+    #     "energy.energy_weight=0.0",
+    #     "energy.force_weight=0.0",
+    # ],
     [
-        "Hessian and",
+        "Hessian sigmoid",
         "experiment=gmm_idem_pseudo",
         "energy.hessian_weight=1.0",
-        "energy.hessian_eigenvalue_penalty=and",
+        "energy.hessian_eigenvalue_penalty=sigmoid",
         "energy.energy_weight=0.0",
         "energy.force_weight=0.0",
+        "energy.hessian_scale=1.0",
     ],
     [
-        "Hessian and 1",
+        "Hessian sigmoid_individual",
         "experiment=gmm_idem_pseudo",
         "energy.hessian_weight=1.0",
-        "energy.hessian_eigenvalue_penalty=and",
+        "energy.hessian_eigenvalue_penalty=sigmoid_individual",
         "energy.energy_weight=0.0",
         "energy.force_weight=0.0",
-        "energy.hessian_scale=1.",
+        "energy.hessian_scale=1.0",
     ],
     [
-        "Force L2 Tanh",
+        "Hessian tanh",
         "experiment=gmm_idem_pseudo",
-        "energy.hessian_weight=0.0",
+        "energy.hessian_weight=1.0",
+        "energy.hessian_eigenvalue_penalty=tanh",
         "energy.energy_weight=0.0",
-        "energy.force_weight=1.0",
-        "energy.force_activation=tanh",
+        "energy.force_weight=0.0",
+        "energy.hessian_scale=1.0",
     ],
+    # [
+    #     "Hessian and, Scale 1",
+    #     "experiment=gmm_idem_pseudo",
+    #     "energy.hessian_weight=1.0",
+    #     "energy.hessian_eigenvalue_penalty=and",
+    #     "energy.energy_weight=0.0",
+    #     "energy.force_weight=0.0",
+    #     "energy.hessian_scale=1.0",
+    # ],
+    # [
+    #     "Hessian and, Scale 0.1",
+    #     "experiment=gmm_idem_pseudo",
+    #     "energy.hessian_weight=1.0",
+    #     "energy.hessian_eigenvalue_penalty=and",
+    #     "energy.energy_weight=0.0",
+    #     "energy.force_weight=0.0",
+    #     "energy.hessian_scale=0.1",
+    # ],
+    # [
+    #     "Force L2 Tanh",
+    #     "experiment=gmm_idem_pseudo",
+    #     "energy.hessian_weight=0.0",
+    #     "energy.energy_weight=0.0",
+    #     "energy.force_weight=1.0",
+    #     "energy.force_activation=tanh",
+    # ],
+    # [
+    #     "Force L2 Tanh, Scale 0.1",
+    #     "experiment=gmm_idem_pseudo",
+    #     "energy.hessian_weight=0.0",
+    #     "energy.energy_weight=0.0",
+    #     "energy.force_weight=1.0",
+    #     "energy.force_activation=tanh",
+    #     "energy.force_scale=0.1",
+    # ],
+    # [
+    #     "Force L2 Tanh AND Hessian",
+    #     "experiment=gmm_idem_pseudo",
+    #     "energy.hessian_weight=1.0",
+    #     "energy.hessian_eigenvalue_penalty=and",
+    #     "energy.energy_weight=0.0",
+    #     "energy.force_weight=1.0",
+    #     "energy.force_activation=tanh",
+    #     "energy.term_aggr=1mmultfh",
+    # ],
     [
-        "Force L2 Tanh 0.1",
-        "experiment=gmm_idem_pseudo",
-        "energy.hessian_weight=0.0",
-        "energy.energy_weight=0.0",
-        "energy.force_weight=1.0",
-        "energy.force_activation=tanh",
-        "energy.force_scale=0.1",
-    ],
-    [
-        "Force L2 Tanh AND Hessian",
+        "Force L2 Tanh AND Hessian, 0.1x1x scale",
         "experiment=gmm_idem_pseudo",
         "energy.hessian_weight=1.0",
         "energy.hessian_eigenvalue_penalty=and",
@@ -66,7 +112,33 @@ configs = [
         "energy.force_weight=1.0",
         "energy.force_activation=tanh",
         "energy.term_aggr=1mmultfh",
+        "energy.force_scale=0.1",
+        "energy.hessian_scale=1.0",
     ],
+    [
+        "Force L2 Tanh AND Hessian, 0.1x10x scale",
+        "experiment=gmm_idem_pseudo",
+        "energy.hessian_weight=1.0",
+        "energy.hessian_eigenvalue_penalty=and",
+        "energy.energy_weight=0.0",
+        "energy.force_weight=1.0",
+        "energy.force_activation=tanh",
+        "energy.term_aggr=1mmultfh",
+        "energy.force_scale=0.1",
+        "energy.hessian_scale=10.0",
+    ],
+    # [
+    #     "Force L2 Tanh AND Hessian, 0.1x scale",
+    #     "experiment=gmm_idem_pseudo",
+    #     "energy.hessian_weight=1.0",
+    #     "energy.hessian_eigenvalue_penalty=and",
+    #     "energy.energy_weight=0.0",
+    #     "energy.force_weight=1.0",
+    #     "energy.force_activation=tanh",
+    #     "energy.term_aggr=1mmultfh",
+    #     "energy.force_scale=0.1",
+    #     "energy.hessian_scale=0.1",
+    # ],
 ]
 
 for config in configs:
@@ -140,26 +212,26 @@ for config in configs:
         print(f"Saved {fig_name}")
         plt.close()
 
-        for temp in [1.0, 300.0, 3000.0]:
-            _name = f"{name} Boltzmann T={temp}"
-            energy_function.kbT = temp
-            plt.cla(), plt.clf(), plt.close()
-            # plot Boltzmann distribution
-            img1 = energy_function.get_single_dataset_fig(
-                samples=None,
-                name=_name,
-                plot_minima=False,
-                grid_width_n_points=800,
-                plot_style=plot_style,
-                quantity=True,
-                plot_sample_kwargs={"color": "m", "marker": "."},
-                colorbar=True,
-            )
+        # for temp in [1.0, 300.0, 3000.0]:
+        #     _name = f"{name} Boltzmann T={temp}"
+        #     energy_function.kbT = temp
+        #     plt.cla(), plt.clf(), plt.close()
+        #     # plot Boltzmann distribution
+        #     img1 = energy_function.get_single_dataset_fig(
+        #         samples=None,
+        #         name=_name,
+        #         plot_minima=False,
+        #         grid_width_n_points=800,
+        #         plot_style=plot_style,
+        #         quantity=True,
+        #         plot_sample_kwargs={"color": "m", "marker": "."},
+        #         colorbar=True,
+        #     )
 
-            # save individual images
-            fname = f"plots/gmmB{temp}_{plt_name}_{plot_style}.png"
-            img1.save(fname)
-            print(f"Saved {fname}")
+        #     # save individual images
+        #     fname = f"plots/gmmB{temp}_{plt_name}_{plot_style}.png"
+        #     img1.save(fname)
+        #     print(f"Saved {fname}")
 
     # deinitialize hydra
     GlobalHydra().clear()

@@ -14,14 +14,16 @@ from tqdm import tqdm
 import wandb
 from lightning.pytorch.loggers import WandbLogger
 
+from typing import Optional, Tuple, List, Dict, Any
+
 import fab.target_distributions.gmm
-from dem.energies.base_energy_function import BaseEnergyFunction
+from dem.energies.base_energy_function import BaseEnergyFunction, BasePseudoEnergyFunction
 from dem.energies.gmm_energy import GMMEnergy
 from dem.utils.logging_utils import fig_to_image
 from dem.utils.plotting import plot_fn, plot_marginal_pair
 
 
-class GMMPseudoEnergy(GMMEnergy):
+class GMMPseudoEnergy(GMMEnergy, BasePseudoEnergyFunction):
     """GMM pseudo-energy function to find transition points (index-1 saddle points).
     This function should be minimal at the transition points of some potential energy surface.
 
@@ -33,55 +35,62 @@ class GMMPseudoEnergy(GMMEnergy):
         energy_weight (float): Weight for energy term
         force_weight (float): Weight for force term
         force_exponent_eps (float): If force exponent is negative, add this value to the force magnitude to avoid division by zero. Higher value tends to smear out singularity around |force|=0.
-        **gmm_kwargs: Additional arguments passed to GMM class
     """
 
     def __init__(
         self,
-        energy_weight=1.0,
-        force_weight=1.0,
-        forces_norm=None,
-        force_exponent=1,
-        force_exponent_eps=1e-6,
-        force_activation=None,
-        force_scale=1.0,
-        hessian_weight=1.0,
-        hessian_eigenvalue_penalty="softplus",
-        hessian_scale=10.0,
-        term_aggr="sum",
-        use_vmap=True,
-        kbT=1.0,
-        **gmm_kwargs,
+        *args,
+        **kwargs
     ):
         # Initialize GMMEnergy base class
-        print(f"Initializing GMMPseudoEnergy with kwargs: {gmm_kwargs}")
-        super().__init__(**copy.deepcopy(gmm_kwargs))
+        print(f"Initializing GMMPseudoEnergy with kwargs: {kwargs}")
+        GMMEnergy.__init__(self, *copy.deepcopy(args), **copy.deepcopy(kwargs))
+        BasePseudoEnergyFunction.__init__(self, *args, **kwargs)
 
         self._is_molecule = False
 
-        self.energy_weight = energy_weight
-        self.force_weight = force_weight
-        self.forces_norm = forces_norm
-        self.force_exponent = force_exponent
-        self.force_exponent_eps = force_exponent_eps
-        self.force_activation = force_activation
-        self.force_scale = force_scale
-        self.hessian_weight = hessian_weight
-        self.hessian_eigenvalue_penalty = hessian_eigenvalue_penalty
-        self.hessian_scale = hessian_scale
-        self.use_vmap = use_vmap
-        self.term_aggr = term_aggr
-        self.kbT = kbT
         # transition states of the GMM potential
         self.boundary_points = None
         self.transition_points = None
         self.validation_results = None
+    
+    def log_prob(
+        self, samples: torch.Tensor, temperature: Optional[float] = None, return_aux_output: bool = False
+    ) -> torch.Tensor:
+        """Compute unnormalized log-probability of GAD pseudo-energy.
+        Corresponds to GMMEnergy.log_prob.
 
-        # Accumulated training losses
-        self.energy_loss_sum = 0.0
-        self.force_loss_sum = 0.0
-        self.hessian_loss_sum = 0.0
-        self.n_loss_samples = 0
+        E_GAD = -V(x) + 1/lambda_1 * (grad V(x) dot v_1)^2
+        where lambda_1 and v_1 are the smallest eigenvalue and it's corresponding eigenvector of the Hessian of V(x)
+
+        Args:
+            samples: Input positions tensor of shape (dimensionality,)
+                When used with vmap, this will be automatically vectorized
+            return_aux_output: Whether to return auxiliary outputs
+
+        Returns:
+            Negative of pseudo-energy value (scalar)
+        """
+        assert (
+            samples.shape[-1] == self._dimensionality
+        ), "`x` does not match `dimensionality`"
+        
+        if len(samples.shape) == 1:
+            samples = samples.unsqueeze(0)
+            
+        pseudo_energy, aux_output = self.compute_pseudo_potential(self._energy, samples)
+        
+        if temperature is None:
+            temperature = self.temperature
+        pseudo_energy = pseudo_energy / temperature
+        
+        # convention
+        # pseudo_log_prob = pseudo_energy
+        pseudo_log_prob = -pseudo_energy
+        
+        if return_aux_output:
+            return pseudo_log_prob, aux_output
+        return pseudo_log_prob
 
     def physical_potential_log_prob(
         self, samples: torch.Tensor, return_aux_output: bool = False
@@ -104,222 +113,7 @@ class GMMPseudoEnergy(GMMEnergy):
             return self.gmm.log_prob(samples), {}
         return self.gmm.log_prob(samples)
 
-    def log_prob(
-        self, samples: torch.Tensor, return_aux_output: bool = False
-    ) -> torch.Tensor:
-        """Compute unnormalized log-probability of pseudo-energy.
-        Corresponds to GMMEnergy.log_prob.
-
-        Args:
-            samples: Input positions tensor of shape (dimensionality,)
-                When used with vmap, this will be automatically vectorized
-            return_aux_output: Whether to return auxiliary outputs
-
-        Returns:
-            Negative of pseudo-energy value (scalar)
-        """
-
-        # Compute energy (all positive after -log_prob)
-        if self.energy_weight > 0:
-            energy = -self.gmm.log_prob(samples)
-        else:
-            energy = torch.zeros_like(samples[:, 0])
-
-        # Compute force penalty
-        if self.force_weight > 0:
-            # def energy_sum(x):
-            #     return self.gmm.log_prob(x).sum()  # TODO: is sum right here?
-            # # Use functorch.grad to compute forces
-            # forces = -torch.func.grad(energy_sum)(samples)
-
-            def get_energy(x):
-                return self.gmm.log_prob(x)
-
-            # Use functorch.grad to compute forces
-            if len(samples.shape) == 1:
-                forces = torch.func.grad(get_energy)(samples)
-            else:
-                forces = torch.vmap(torch.func.grad(get_energy))(samples)
-
-            # Compute force magnitude
-            force_magnitude = torch.linalg.norm(forces, ord=self.forces_norm, dim=-1)
-            if self.force_exponent > 0:
-                force_magnitude = force_magnitude**self.force_exponent
-            else:
-                force_magnitude = -(
-                    (force_magnitude + self.force_exponent_eps) ** self.force_exponent
-                )
-            # force_magnitude += 1. # [0, inf] -> [1, inf]
-            if self.force_activation == "tanh":
-                force_magnitude = torch.tanh(force_magnitude * self.force_scale)
-            elif self.force_activation == "sigmoid":
-                force_magnitude = torch.sigmoid(force_magnitude * self.force_scale)
-            elif self.force_activation == "softplus":
-                force_magnitude = torch.nn.functional.softplus(
-                    force_magnitude * self.force_scale
-                )
-            elif self.force_activation in [None, False]:
-                pass
-            else:
-                raise ValueError(f"Invalid force_activation: {self.force_activation}")
-        else:
-            force_magnitude = torch.zeros_like(energy)
-
-        # Compute two smallest eigenvalues of Hessian
-        if self.hessian_weight > 0:
-            if len(samples.shape) == 1:
-                # Handle single sample
-                hessian = torch.func.hessian(self.gmm.log_prob)(samples)
-                eigenvalues = torch.linalg.eigvalsh(hessian)
-                smallest_eigenvalues = torch.sort(eigenvalues, dim=-1)[0][:2]
-            else:
-                # Handle batched inputs using vmap # [B, D, D]
-                batched_hessian = torch.vmap(torch.func.hessian(self.gmm.log_prob))(
-                    samples
-                )
-                # Get eigenvalues for each sample in batch # [B, D]
-                batched_eigenvalues = torch.linalg.eigvalsh(batched_hessian)
-                # Sort eigenvalues in ascending order for each sample # [B, D]
-                batched_eigenvalues = torch.sort(batched_eigenvalues, dim=-1)[0]
-                # Get 2 smallest eigenvalues for each sample
-                smallest_eigenvalues = batched_eigenvalues[..., :2]  # [B, 2]
-
-            # def loss_fn(x):
-            #     return self.gmm.log_prob(x)
-
-            # # Get Hessian-vector product using functorch transforms
-            # grad_fn = torch.func.grad(loss_fn)
-            # def hvp(v):
-            #     # Ensure v has the same shape as samples
-            #     v = v.reshape(samples.shape)
-            #     return torch.func.jvp(grad_fn, (samples,), (v,))[1]
-
-            # # Run Lanczos on the HVP function
-            # v0 = torch.randn_like(samples)
-            # T, Q_mat = lanczos(hvp, v0, m=100)
-
-            # # Compute eigenvalues of the tridiagonal matrix
-            # eigenvalues = torch.linalg.eigvalsh(T)
-            # smallest_eigenvalues = eigenvalues[:2]
-
-            # Bias toward index-1 saddle points:
-            # - First eigenvalue should be negative (minimize positive values)
-            # - Second eigenvalue should be positive (minimize negative values)
-            if self.hessian_eigenvalue_penalty == "softplus":
-                # Using softplus which is differentiable everywhere but still creates one-sided penalties
-                # if first eigenvalue > 0, increase energy
-                ev1_bias = torch.nn.functional.softplus(smallest_eigenvalues[:, 0])
-                # if second eigenvalue > 0, increase energy
-                ev2_bias = torch.nn.functional.softplus(-smallest_eigenvalues[:, 1])
-                saddle_bias = ev1_bias + ev2_bias
-            elif self.hessian_eigenvalue_penalty == "relu":
-                ev1_bias = torch.relu(smallest_eigenvalues[:, 0])
-                ev2_bias = torch.relu(-smallest_eigenvalues[:, 1])
-                saddle_bias = ev1_bias + ev2_bias
-            # elif self.hessian_eigenvalue_penalty == 'heaviside':
-            #     # 1 if smallest_eigenvalues[0] > 0 else 0
-            #     ev1_bias = torch.heaviside(smallest_eigenvalues[:, 0], torch.tensor(0.))
-            #     # 1 if smallest_eigenvalues[1] < 0 else 0
-            #     ev2_bias = torch.heaviside(-smallest_eigenvalues[:, 1], torch.tensor(0.))
-            #     saddle_bias = ev1_bias + ev2_bias
-            elif self.hessian_eigenvalue_penalty == "sigmoid":
-                ev1_bias = torch.sigmoid(smallest_eigenvalues[:, 0])
-                ev2_bias = torch.sigmoid(-smallest_eigenvalues[:, 1])
-                saddle_bias = ev1_bias + ev2_bias
-            elif self.hessian_eigenvalue_penalty == "mult":
-                # Penalize if both eigenvalues are positive or negative
-                ev1_bias = smallest_eigenvalues[:, 0]
-                ev2_bias = smallest_eigenvalues[:, 1]
-                saddle_bias = ev1_bias * ev2_bias
-            elif self.hessian_eigenvalue_penalty == "tanh":
-                saddle_bias = torch.tanh(
-                    smallest_eigenvalues[:, 0] * smallest_eigenvalues[:, 1]
-                )
-                saddle_bias = -torch.nn.functional.softplus(
-                    -saddle_bias - 2.0
-                )  # [0, 1]
-                saddle_bias += 1.0  # [1, 2]
-            elif self.hessian_eigenvalue_penalty == "and":
-                saddle_bias = torch.nn.functional.softplus(
-                    smallest_eigenvalues[:, 0]
-                    * smallest_eigenvalues[:, 1]
-                    * self.hessian_scale
-                )  # [0, inf], 0 if good
-                saddle_bias = torch.tanh(saddle_bias)  # [0, 1]
-                # saddle_bias = 1 - saddle_bias # [0, 1] -> [1, 0] # 1 if good
-            elif self.hessian_eigenvalue_penalty == "tanh_mult":
-                # Penalize if both eigenvalues are positive or negative
-                # tanh: ~ -1 for negative, 1 for positive
-                # both neg -> 1, both pos -> 1, one neg one pos -> 0
-                ev1_bias = torch.tanh(smallest_eigenvalues[:, 0])
-                ev2_bias = torch.tanh(smallest_eigenvalues[:, 1])
-                saddle_bias = ev1_bias * ev2_bias  # [-1, 1]
-                # saddle_bias += 1. # [0, 2]
-                # saddle_bias = -torch.nn.functional.softplus(-saddle_bias-2.) # [0, 1]
-                # saddle_bias += 1. # [1, 2]
-            else:
-                raise ValueError(
-                    f"Invalid penalty function: {self.hessian_eigenvalue_penalty}"
-                )
-        else:
-            # No penalty
-            saddle_bias = torch.zeros_like(energy)
-
-        # idx = torch.randperm(samples.shape[0])[:15]
-        # for i in idx:
-        #     print(f"evs={smallest_eigenvalues[i].tolist()} -> {saddle_bias[i]:.2f}")
-
-        # ensure we have one value per batch
-        assert (
-            energy.shape == force_magnitude.shape == saddle_bias.shape
-        ), f"samples={samples.shape}, energy={energy.shape}, forces={force_magnitude.shape}, hessian={saddle_bias.shape}"
-        assert (
-            energy.shape[0] == samples.shape[0]
-        ), f"samples={samples.shape}, energy={energy.shape}, forces={force_magnitude.shape}, hessian={saddle_bias.shape}"
-
-        # Combine loss terms
-        energy_loss = self.energy_weight * energy
-        force_loss = self.force_weight * force_magnitude
-        hessian_loss = self.hessian_weight * saddle_bias
-
-        if self.term_aggr == "sum":
-            total_loss = energy_loss + force_loss + hessian_loss
-        elif "norm" in self.term_aggr:  # "2_norm"
-            # p‑Norms provide a way to interpolate between simple addition (p=1) and the maximum function (as p→∞)
-            p = float(self.term_aggr.split("_")[0])
-            total_loss = (energy_loss**p + force_loss**p + hessian_loss**p) ** (1 / p)
-        elif self.term_aggr == "logsumexp":
-            # Smooth Maximum via Log‑Sum‑Exp
-            total_loss = torch.logsumexp(
-                torch.stack([energy_loss, force_loss, hessian_loss], dim=-1), dim=-1
-            )
-        elif self.term_aggr == "mult":
-            total_loss = energy_loss * force_loss * hessian_loss
-        elif self.term_aggr == "multfh":
-            # multiply acts like an `and` operation
-            total_loss = energy_loss + (force_loss * hessian_loss)
-        elif self.term_aggr == "1mmultfh":
-            # multiply acts like an `and` operation
-            # total_loss = 1 - energy_loss + (force_loss * hessian_loss)
-            total_loss = energy_loss + 1 - ((1 - force_loss) * (1 - hessian_loss))
-            # total_loss += 2. # [0, inf] -> [1, inf]
-        else:
-            raise ValueError(f"Invalid term_aggr: {self.term_aggr}")
-
-        # Boltzmann distribution
-        # increase temperature to wash out the pseudo-potential
-        total_loss /= self.kbT
-
-        total_loss *= -1.0  # log(P) ~ -E
-        if return_aux_output:
-            aux_output = {
-                "energy_loss": energy_loss,
-                "force_loss": force_loss,
-                "hessian_loss": hessian_loss,
-            }
-            return total_loss, aux_output
-        return total_loss
-
+    # TODO: remove?
     def log_on_epoch_end(self, *args, **kwargs):
 
         # First plot the original GMM energy surface

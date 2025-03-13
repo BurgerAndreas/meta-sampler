@@ -1,18 +1,8 @@
-_target_: dem.energies.gmm_pseudoenergy.GMMPseudoEnergy
+defaults:
+  - pseudo_default
+  - _self_
 
-# Pseudo-energy specific parameters
-energy_weight: 0.0
-force_weight: 1.0
-forces_norm: null # None=2, 1, or inf
-force_exponent: 1
-force_exponent_eps: 0
-force_activation: 'tanh'
-force_scale: 1.0
-hessian_weight: 1.0
-hessian_eigenvalue_penalty: 'tanh'
-hessian_scale: 10.0
-term_aggr: '1mmultfh'
-kbT: 1.0
+_target_: dem.energies.gmm_pseudoenergy.GMMPseudoEnergy
 
 # Original GMM parameters
 dimensionality: 2
@@ -27,3 +17,17 @@ plot_samples_epoch_period: 1
 should_unnormalize: true
 data_normalization_factor: 50
 data_path_train: null
+
+# Pseudo-energy specific parameters
+# energy_weight: 0.0
+# force_weight: 1.0
+# forces_norm: null # None=2, 1, or inf
+# force_exponent: 1
+# force_exponent_eps: 0
+# force_activation: 'tanh'
+# force_scale: 0.1
+# hessian_weight: 1.0
+# hessian_eigenvalue_penalty: 'tanh'
+# hessian_scale: 10.0
+# term_aggr: '1mmultfh'
+# temperature: 1.0

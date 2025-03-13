@@ -45,6 +45,12 @@ class PrioritisedReplayBuffer:
     ):
         """
         Create prioritised replay buffer for batched sampling and adding of data.
+        
+        This buffer stores samples with their importance weights (log_w) and old log probabilities (log_q_old).
+        During sampling, it can prioritize samples based on their weights, selecting higher-weighted samples 
+        more frequently when prioritize=True. This is more sophisticated than SimpleReplayBuffer which only 
+        stores samples and their energy values.
+        
         Args:
             dim: dimension of x data
             max_length: maximum length of the buffer
@@ -56,6 +62,7 @@ class PrioritisedReplayBuffer:
             sample_with_replacement: Whether to sample from the buffer with replacement.
             fill_buffer_during_init: Whether to use `initial_sampler` to fill the buffer initially.
                 If a checkpoint is going to be loaded then this should be set to False.
+            prioritize: Whether to prioritize samples with higher weights during sampling.
 
         The `max_length` and `min_sample_length` should be sufficiently long to prevent overfitting
         to the replay data. For example, if `min_sample_length` is equal to the
@@ -100,6 +107,9 @@ class PrioritisedReplayBuffer:
         x = x.to(self.device)
         log_w = log_w.to(self.device)
         log_q_old = log_q_old.to(self.device)
+        assert torch.isfinite(log_w).all(), f"log_w contains NaNs or infs"
+        assert torch.isfinite(log_q_old).all(), f"log_q_old contains NaNs or infs"
+        assert torch.isfinite(x).all(), f"x contains NaNs or infs"
         indices = (torch.arange(batch_size) + self.current_index).to(
             self.device
         ) % self.max_length
@@ -280,6 +290,8 @@ class SimpleBuffer:
         batch_size = x.shape[0]
         x = x.to(self.device)
         energy = energy.to(self.device)
+        assert torch.isfinite(energy).all(), f"Energy contains NaNs or infs"
+        assert torch.isfinite(x).all(), f"x contains NaNs or infs"
         indices = (torch.arange(batch_size) + self.current_index).to(
             self.device
         ) % self.max_length

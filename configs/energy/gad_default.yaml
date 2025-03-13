@@ -1,0 +1,13 @@
+
+clip_energy: True
+stitching: True
+stop_grad_ev: False
+div_epsilon: 1e-6
+temperature: 1.0
+# change these
+gad_offset: 50.0 # max energy of saddle points you want to sample from
+clamp_min: 0
+clamp_max: null
+
+# dummy for hydra testing
+override_energy_dummy: 0.0

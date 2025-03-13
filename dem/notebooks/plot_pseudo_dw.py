@@ -13,65 +13,117 @@ from hydra.core.global_hydra import GlobalHydra
 
 import re
 
-
 configs = [
     [
         "Energy",
         "experiment=dw_idem",
     ],
+    # [
+    #     "Hessian and",
+    #     "energy.hessian_weight=1.0",
+    #     "energy.hessian_eigenvalue_penalty=and",
+    #     "energy.energy_weight=0.0",
+    #     "energy.force_weight=0.0",
+    # ],
     [
-        "GAD unstitched",
-        "experiment=dw_idem_gad",
-        "energy.stitching=False",
-        "energy.clip_energy=False",
+        "Hessian sigmoid",
+        "energy.hessian_weight=1.0",
+        "energy.hessian_eigenvalue_penalty=sigmoid",
+        "energy.energy_weight=0.0",
+        "energy.force_weight=0.0",
+        "energy.hessian_scale=1.0",
     ],
     [
-        "GAD stitched",
-        "experiment=dw_idem_gad",
-        "energy.stitching=True",
-        "energy.clip_energy=False",
+        "Hessian sigmoid_individual",
+        "energy.hessian_weight=1.0",
+        "energy.hessian_eigenvalue_penalty=sigmoid_individual",
+        "energy.energy_weight=0.0",
+        "energy.force_weight=0.0",
+        "energy.hessian_scale=1.0",
     ],
     [
-        "GAD stitched and clipped",
-        "experiment=dw_idem_gad",
-        "energy.stitching=True",
-        "energy.clip_energy=True",
-        "energy.gad_offset=50",
-        "energy.clamp_min=0",
-        "energy.clamp_max=null",
+        "Hessian tanh",
+        "energy.hessian_weight=1.0",
+        "energy.hessian_eigenvalue_penalty=tanh",
+        "energy.energy_weight=0.0",
+        "energy.force_weight=0.0",
+        "energy.hessian_scale=1.0",
+    ],
+    # [
+    #     "Hessian and, Scale 1",
+    #     "energy.hessian_weight=1.0",
+    #     "energy.hessian_eigenvalue_penalty=and",
+    #     "energy.energy_weight=0.0",
+    #     "energy.force_weight=0.0",
+    #     "energy.hessian_scale=1.0",
+    # ],
+    # [
+    #     "Hessian and, Scale 0.1",
+    #     "energy.hessian_weight=1.0",
+    #     "energy.hessian_eigenvalue_penalty=and",
+    #     "energy.energy_weight=0.0",
+    #     "energy.force_weight=0.0",
+    #     "energy.hessian_scale=0.1",
+    # ],
+    # [
+    #     "Force L2 Tanh",
+    #     "energy.hessian_weight=0.0",
+    #     "energy.energy_weight=0.0",
+    #     "energy.force_weight=1.0",
+    #     "energy.force_activation=tanh",
+    # ],
+    # [
+    #     "Force L2 Tanh, Scale 0.1",
+    #     "energy.hessian_weight=0.0",
+    #     "energy.energy_weight=0.0",
+    #     "energy.force_weight=1.0",
+    #     "energy.force_activation=tanh",
+    #     "energy.force_scale=0.1",
+    # ],
+    # [
+    #     "Force L2 Tanh AND Hessian",
+    #     "energy.hessian_weight=1.0",
+    #     "energy.hessian_eigenvalue_penalty=and",
+    #     "energy.energy_weight=0.0",
+    #     "energy.force_weight=1.0",
+    #     "energy.force_activation=tanh",
+    #     "energy.term_aggr=1mmultfh",
+    # ],
+    [
+        "Force L2 Tanh AND Hessian, 0.1x1x scale",
+        "energy.hessian_weight=1.0",
+        "energy.hessian_eigenvalue_penalty=and",
+        "energy.energy_weight=0.0",
+        "energy.force_weight=1.0",
+        "energy.force_activation=tanh",
+        "energy.term_aggr=1mmultfh",
+        "energy.force_scale=0.1",
+        "energy.hessian_scale=1.0",
     ],
     [
-        "GAD stitched and offset",
-        "experiment=dw_idem_gad",
-        "energy.stitching=True",
-        "energy.clip_energy=True",
-        "energy.gad_offset=50",
-        "energy.clamp_min=-1000",
-        "energy.clamp_max=null",
+        "Force L2 Tanh AND Hessian, 0.1x10x scale",
+        "energy.hessian_weight=1.0",
+        "energy.hessian_eigenvalue_penalty=and",
+        "energy.energy_weight=0.0",
+        "energy.force_weight=1.0",
+        "energy.force_activation=tanh",
+        "energy.term_aggr=1mmultfh",
+        "energy.force_scale=0.1",
+        "energy.hessian_scale=10.0",
     ],
+    # [
+    #     "Force L2 Tanh AND Hessian, 0.1x scale",
+    #     "energy.hessian_weight=1.0",
+    #     "energy.hessian_eigenvalue_penalty=and",
+    #     "energy.energy_weight=0.0",
+    #     "energy.force_weight=1.0",
+    #     "energy.force_activation=tanh",
+    #     "energy.term_aggr=1mmultfh",
+    #     "energy.force_scale=0.1",
+    #     "energy.hessian_scale=0.1",
+    # ],
     [
-        "GAD stitched and clipped, T=0.1",
-        "experiment=dw_idem_gad",
-        "energy.stitching=True",
-        "energy.clip_energy=True",
-        "energy.gad_offset=50",
-        "energy.clamp_min=0",
-        "energy.clamp_max=null",
-        "energy.temperature=0.1",
-    ],
-    [
-        "GAD stitched and clipped, div=1e-12",
-        "experiment=dw_idem_gad",
-        "energy.stitching=True",
-        "energy.clip_energy=True",
-        "energy.gad_offset=50",
-        "energy.clamp_min=0",
-        "energy.clamp_max=null",
-        "energy.div_epsilon=1e-12",
-    ],
-    [
-        "GAD for DEM",
-        "experiment=dw_idem_gad",
+        "Pseudopotential for DEM",
     ],
 ]
 
@@ -84,7 +136,7 @@ for config in configs:
     # if not GlobalHydra().is_initialized():
     hydra.initialize(config_path="../../configs", version_base="1.3")
     # Load the experiment config for GMM with pseudo-energy
-    cfg = hydra.compose(config_name="train", overrides=overrides)
+    cfg = hydra.compose(config_name="train", overrides=["experiment=dw_idem_pseudo"] + overrides)
 
     # Instantiate the energy function using hydra, similar to train.py
     energy_function = hydra.utils.instantiate(cfg.energy)
@@ -93,7 +145,7 @@ for config in configs:
     plt_name = re.sub(r"[^a-zA-Z0-9]", "", name)
 
     for plot_style in ["imshow", "contours"]:
-
+        plt.close()
         # img1 = energy_function.get_dataset_fig(
         #     samples=None,
         #     random_samples=False,
