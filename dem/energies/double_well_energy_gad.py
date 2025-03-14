@@ -8,6 +8,7 @@ import sys
 import traceback
 import copy
 
+
 class DoubleWellEnergyGAD(DoubleWellEnergy, BaseGADEnergyFunction):
     def __init__(self, *args, **kwargs):
         DoubleWellEnergy.__init__(self, *copy.deepcopy(args), **copy.deepcopy(kwargs))
@@ -40,12 +41,12 @@ class DoubleWellEnergyGAD(DoubleWellEnergy, BaseGADEnergyFunction):
         assert (
             samples.shape[-1] == self._dimensionality
         ), "`x` does not match `dimensionality`"
-        
+
         if len(samples.shape) == 1:
             samples = samples.unsqueeze(0)
-    
+
         pseudo_energy, aux_output = self.compute_gad_potential(self._energy, samples)
-                
+
         if temperature is None:
             temperature = self.temperature
         pseudo_energy = pseudo_energy / temperature
@@ -54,8 +55,7 @@ class DoubleWellEnergyGAD(DoubleWellEnergy, BaseGADEnergyFunction):
         # but convention of the double well energy is such that we would have to negate it
         # so we don't do anything here
         pseudo_logprob = pseudo_energy
-        
+
         if return_aux_output:
             return pseudo_logprob, aux_output
         return pseudo_logprob
-

@@ -22,8 +22,9 @@ from dem.energies.base_energy_function import BaseGADEnergyFunction
 import copy
 import traceback
 
+
 class GMMGADEnergy(GMMEnergy, BaseGADEnergyFunction):
-    
+
     def __init__(self, *args, **kwargs):
         GMMEnergy.__init__(self, *copy.deepcopy(args), **copy.deepcopy(kwargs))
         BaseGADEnergyFunction.__init__(self, *args, **kwargs)
@@ -33,7 +34,10 @@ class GMMGADEnergy(GMMEnergy, BaseGADEnergyFunction):
     #####################################################################
 
     def log_prob(
-        self, samples: torch.Tensor, temperature: Optional[float] = None, return_aux_output: bool = False
+        self,
+        samples: torch.Tensor,
+        temperature: Optional[float] = None,
+        return_aux_output: bool = False,
     ) -> torch.Tensor:
         """Compute unnormalized log-probability of GAD pseudo-energy.
         Corresponds to GMMEnergy.log_prob.
@@ -52,24 +56,24 @@ class GMMGADEnergy(GMMEnergy, BaseGADEnergyFunction):
         assert (
             samples.shape[-1] == self._dimensionality
         ), "`x` does not match `dimensionality`"
-        
+
         if len(samples.shape) == 1:
             samples = samples.unsqueeze(0)
-            
+
         pseudo_energy, aux_output = self.compute_gad_potential(self._energy, samples)
-        
+
         if temperature is None:
             temperature = self.temperature
         pseudo_energy = pseudo_energy / temperature
-        
+
         # convention
         # pseudo_log_prob = pseudo_energy
         pseudo_log_prob = -pseudo_energy
-        
+
         if return_aux_output:
             return pseudo_log_prob, aux_output
         return pseudo_log_prob
-    
+
     def physical_potential_log_prob(
         self, samples: torch.Tensor, return_aux_output: bool = False
     ) -> torch.Tensor:

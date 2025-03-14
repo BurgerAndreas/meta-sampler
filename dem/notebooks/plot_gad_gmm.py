@@ -132,13 +132,13 @@ for config in configs:
     fig_name = f"plots/gmmgad{n_mixes}_{plt_name}_hessian_eigenvalues.png"
     plt.savefig(fig_name)
     print(f"Saved {fig_name}")
-    
+
     # get minima
     minima = energy_function.get_minima()
     # get transition state by taking the middle of the first two minima
     y_idx = 1
     transition_state = (minima[0][y_idx] + minima[1][y_idx]) / 2
-    
+
     energy_function.plot_energy_crossection(name=name, y_value=transition_state.item())
     fig_name = f"plots/gmmgad{n_mixes}_{plt_name}_crossection.png"
     plt.savefig(fig_name)

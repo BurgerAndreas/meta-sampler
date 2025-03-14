@@ -6,10 +6,10 @@
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 defaults:
-  - override /energy: dw
+  - override /energy: dw_pseudo
   - override /model/noise_schedule: geometric
 
-tags: ["DW", "iDEM"]
+tags: ["DW", "iDEM", "condforce"]
 
 seed: 12345
 
@@ -49,7 +49,6 @@ model:
 
   diffusion_scale: 1.0
 
-  use_richardsons: True
   num_estimator_mc_samples: 500
   num_samples_to_generate_per_epoch: 1000
 
@@ -57,6 +56,24 @@ model:
   eval_batch_size: 1000
   scheduler: null
 
+energy:
+  # Pseudo-energy specific parameters
+  energy_weight: 0.0
+  force_weight: 1.0
+  forces_norm: null # None=2, 1, or inf
+  force_exponent: 1
+  force_exponent_eps: 0
+  force_activation: null
+  force_scale: 1.0
+  hessian_weight: 1.0
+  hessian_eigenvalue_penalty: null
+  hessian_scale: 10.0
+  temperature: 1.0
+  clamp_min: -100000.0
+  clamp_max: null
+  # different to condforce
+  term_aggr: 'cond_force_proj'
+  gad_offset: -80.0
 
 # # Add precision settings for Tensor Cores
 # trainer:

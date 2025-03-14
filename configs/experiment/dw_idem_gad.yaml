@@ -51,7 +51,7 @@ model:
 
   num_estimator_mc_samples: 500
   num_samples_to_generate_per_epoch: 1000
-  use_richardsons: false
+  use_richardsons: True
 
   # this has to be max 1000 since test_set is 1000
   eval_batch_size: 1000

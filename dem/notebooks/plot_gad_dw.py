@@ -126,12 +126,14 @@ for config in configs:
     U = lambda x: energy_function.energy(
         torch.tensor([x], device=energy_function.device, dtype=torch.float32)
     )
-    
+
     # Plot contour with samples, minima, and transition state
     # Get samples from the energy function
     samples = energy_function.sample((1000,))
     print(f"samples: min={samples.min():.1e}, max={samples.max():.1e}")
-    print(f"samples: abs min={samples.abs().min():.1e}, abs max={samples.abs().max():.1e}")
+    print(
+        f"samples: abs min={samples.abs().min():.1e}, abs max={samples.abs().max():.1e}"
+    )
     # Get minima and transition states
     minima = energy_function.get_minima()
     transition_states = energy_function.get_true_transition_states()
@@ -145,7 +147,7 @@ for config in configs:
         # plot_sample_kwargs={"color": "m", "marker": ".", "alpha": 0.5, "s": 10},
         colorbar=True,
         quantity="e",
-        return_fig=False
+        return_fig=False,
     )
     # Save the figure
     fig_name = f"plots/dw_{plt_name}_contour_with_samples.png"
@@ -156,29 +158,33 @@ for config in configs:
     fig_name = f"plots/dw_{plt_name}_hessian_eigenvalues.png"
     plt.savefig(fig_name)
     print(f"Saved {fig_name}")
-    
+
     # energy_function.plot_energy_crossection(name=name, y_value=-1.3710, plotting_bounds=(1.3, -1.4))
-    energy_function.plot_energy_crossection(name=name, y_value=-1.3710, plotting_bounds=(1.3, -1.4))
+    energy_function.plot_energy_crossection(
+        name=name, y_value=-1.3710, plotting_bounds=(1.3, -1.4)
+    )
     fig_name = f"plots/dw_{plt_name}_crossection.png"
     plt.savefig(fig_name)
     print(f"Saved {fig_name}")
-    
+
     energy_function.plot_gradient(name=name)
     fig_name = f"plots/dw_{plt_name}_gradient.png"
     plt.savefig(fig_name)
     print(f"Saved {fig_name}")
-    
+
     # deinitialize hydra
     GlobalHydra().clear()
 
-# Just do once for the final config 
-    
+# Just do once for the final config
+
 print(f"energy_function._can_normalize: {energy_function._can_normalize}")
 print(f"energy_function.should_unnormalize: {energy_function.should_unnormalize}")
 print(f"energy_function.normalization_min: {energy_function.normalization_min}")
 print(f"energy_function.normalization_max: {energy_function.normalization_max}")
-    
-energy_function.plot_energy_crossection(name=name, y_value=-1.3710, plotting_bounds=(1.3, -1.4))
+
+energy_function.plot_energy_crossection(
+    name=name, y_value=-1.3710, plotting_bounds=(1.3, -1.4)
+)
 fig_name = f"plots/dw_{plt_name}_crossection.png"
 plt.savefig(fig_name)
 print(f"Saved {fig_name}")

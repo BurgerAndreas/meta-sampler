@@ -184,7 +184,7 @@ def integrate_sde(
 
     # Combine all states into a single tensor representing the full trajectory
     samples = torch.stack(samples)
-    
+
     try:
         assert torch.isfinite(samples).all()
     except Exception as e:

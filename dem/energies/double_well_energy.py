@@ -7,6 +7,7 @@ import itertools
 
 # https://github.com/lollcat/fab-torch/blob/master/fab/target_distributions/double_well.py
 
+
 def rejection_sampling(
     n_samples: int,
     proposal: torch.distributions.Distribution,
@@ -40,7 +41,7 @@ class DoubleWellEnergy(BaseEnergyFunction):
         a=-0.5,
         b=-6.0,
         c=1.0,
-        d=0.5, # shift the minima/transition state in the first dimension (x direction)
+        d=0.5,  # shift the minima/transition state in the first dimension (x direction)
         device="cpu",
         is_molecule=False,
         true_expectation_estimation_n_samples=int(1e5),
@@ -72,7 +73,7 @@ class DoubleWellEnergy(BaseEnergyFunction):
         if self._a == -0.5 and self._b == -6 and self._c == 1.0:
             # Define proposal params for rejection sampling
             self.component_mix = torch.tensor([0.2, 0.8], device=device)
-            self.means = torch.tensor([-1.7-self._d, 1.7-self._d], device=device)
+            self.means = torch.tensor([-1.7 - self._d, 1.7 - self._d], device=device)
             self.scales = torch.tensor([0.5, 0.5], device=device)
         else:
             raise NotImplementedError
@@ -119,7 +120,7 @@ class DoubleWellEnergy(BaseEnergyFunction):
         # dim1 = 0.25 * (x[0]**2 - 1) ** 2 = 0.25 * x[0]**4 - 0.5 * x[0]**2 + 0.25
         # dim2 = 3 * x[1]**2
         x_1 = x_1 + self._d
-        return self._a * x_1 + self._b * x_1.pow(2) + self._c * x_1.pow(4) 
+        return self._a * x_1 + self._b * x_1.pow(2) + self._c * x_1.pow(4)
 
     def _energy_dim_2(self, x_2):
         """Simple harmonic well energy in y-direction: 0.5y**2"""
@@ -192,9 +193,11 @@ class DoubleWellEnergy(BaseEnergyFunction):
     #####################################################################
     # added for DEM
     #####################################################################
-    
+
     def get_minima(self):
-        return torch.tensor([[-1.7-self._d, 0.0], [1.7-self._d, 0.0]], device=self.device)
+        return torch.tensor(
+            [[-1.7 - self._d, 0.0], [1.7 - self._d, 0.0]], device=self.device
+        )
 
     def get_true_transition_states(self):
         return torch.tensor([[-self._d, 0.0]], device=self.device)
@@ -241,6 +244,7 @@ class DoubleWellEnergy(BaseEnergyFunction):
         """
         val_samples = self.sample((self.val_set_size,))
         return val_samples
+
 
 if __name__ == "__main__":
     # Test that rejection sampling is work as desired.

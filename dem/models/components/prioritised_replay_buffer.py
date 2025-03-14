@@ -45,12 +45,12 @@ class PrioritisedReplayBuffer:
     ):
         """
         Create prioritised replay buffer for batched sampling and adding of data.
-        
+
         This buffer stores samples with their importance weights (log_w) and old log probabilities (log_q_old).
-        During sampling, it can prioritize samples based on their weights, selecting higher-weighted samples 
-        more frequently when prioritize=True. This is more sophisticated than SimpleReplayBuffer which only 
+        During sampling, it can prioritize samples based on their weights, selecting higher-weighted samples
+        more frequently when prioritize=True. This is more sophisticated than SimpleReplayBuffer which only
         stores samples and their energy values.
-        
+
         Args:
             dim: dimension of x data
             max_length: maximum length of the buffer

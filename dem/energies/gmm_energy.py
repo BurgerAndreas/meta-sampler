@@ -95,13 +95,16 @@ class GMMEnergy(BaseEnergyFunction):
             plot_samples_epoch_period=plot_samples_epoch_period,
             temperature=temperature,
         )
-        
+
     ############################################################################
     # forward / call
     ############################################################################
-        
+
     def log_prob(
-        self, samples: torch.Tensor, temperature: Optional[float] = None, return_aux_output: bool = False
+        self,
+        samples: torch.Tensor,
+        temperature: Optional[float] = None,
+        return_aux_output: bool = False,
     ) -> torch.Tensor:
         """Evaluates GMM log probability at given samples.
         Used in train.py and eval.py for computing model loss.
@@ -116,24 +119,24 @@ class GMMEnergy(BaseEnergyFunction):
         assert (
             samples.shape[-1] == self._dimensionality
         ), f"`x` does not match `dimensionality` ({samples.shape[-1]} != {self._dimensionality})"
-        
+
         if len(samples.shape) == 1:
             samples = samples.unsqueeze(0)
 
         log_prob = self.gmm.log_prob(samples)
-        
+
         if temperature is None:
             temperature = self.temperature
         log_prob = log_prob / temperature
-        
+
         if return_aux_output:
             return log_prob, {}
         return log_prob
-    
+
     def _energy(self, samples: torch.Tensor) -> torch.Tensor:
         """Energy of the GMM."""
         return -self.gmm.log_prob(samples)
-    
+
     ############################################################################
     # setup
     ############################################################################
@@ -194,7 +197,7 @@ class GMMEnergy(BaseEnergyFunction):
             int: Input dimensionality
         """
         return 2
-    
+
     def get_minima(self):
         return self.gmm.distribution.component_distribution.loc
 

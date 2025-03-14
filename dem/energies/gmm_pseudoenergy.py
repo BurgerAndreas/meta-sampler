@@ -17,7 +17,10 @@ from lightning.pytorch.loggers import WandbLogger
 from typing import Optional, Tuple, List, Dict, Any
 
 import fab.target_distributions.gmm
-from dem.energies.base_energy_function import BaseEnergyFunction, BasePseudoEnergyFunction
+from dem.energies.base_energy_function import (
+    BaseEnergyFunction,
+    BasePseudoEnergyFunction,
+)
 from dem.energies.gmm_energy import GMMEnergy
 from dem.utils.logging_utils import fig_to_image
 from dem.utils.plotting import plot_fn, plot_marginal_pair
@@ -37,11 +40,7 @@ class GMMPseudoEnergy(GMMEnergy, BasePseudoEnergyFunction):
         force_exponent_eps (float): If force exponent is negative, add this value to the force magnitude to avoid division by zero. Higher value tends to smear out singularity around |force|=0.
     """
 
-    def __init__(
-        self,
-        *args,
-        **kwargs
-    ):
+    def __init__(self, *args, **kwargs):
         # Initialize GMMEnergy base class
         print(f"Initializing GMMPseudoEnergy with kwargs: {kwargs}")
         GMMEnergy.__init__(self, *copy.deepcopy(args), **copy.deepcopy(kwargs))
@@ -53,9 +52,12 @@ class GMMPseudoEnergy(GMMEnergy, BasePseudoEnergyFunction):
         self.boundary_points = None
         self.transition_points = None
         self.validation_results = None
-    
+
     def log_prob(
-        self, samples: torch.Tensor, temperature: Optional[float] = None, return_aux_output: bool = False
+        self,
+        samples: torch.Tensor,
+        temperature: Optional[float] = None,
+        return_aux_output: bool = False,
     ) -> torch.Tensor:
         """Compute unnormalized log-probability of GAD pseudo-energy.
         Corresponds to GMMEnergy.log_prob.
@@ -74,20 +76,20 @@ class GMMPseudoEnergy(GMMEnergy, BasePseudoEnergyFunction):
         assert (
             samples.shape[-1] == self._dimensionality
         ), "`x` does not match `dimensionality`"
-        
+
         if len(samples.shape) == 1:
             samples = samples.unsqueeze(0)
-            
+
         pseudo_energy, aux_output = self.compute_pseudo_potential(self._energy, samples)
-        
+
         if temperature is None:
             temperature = self.temperature
         pseudo_energy = pseudo_energy / temperature
-        
+
         # convention
         # pseudo_log_prob = pseudo_energy
         pseudo_log_prob = -pseudo_energy
-        
+
         if return_aux_output:
             return pseudo_log_prob, aux_output
         return pseudo_log_prob

@@ -18,7 +18,7 @@ from torchcfm.conditional_flow_matching import (
 )
 from torchmetrics import MeanMetric
 from tqdm import tqdm
-import os 
+import os
 import traceback
 
 from dem.energies.base_energy_function import BaseEnergyFunction
@@ -515,14 +515,20 @@ class DEMLitModule(LightningModule):
                 dem_loss, aux_output = self.get_loss(
                     times, noised_samples, return_aux_output=True
                 )
-                assert torch.isfinite(dem_loss).all(), f"{(~torch.isfinite(dem_loss)).sum().item()} entries are NaN/inf. Epoch={self.current_epoch}, step={self.global_step}"
-                for k,v in aux_output.items():
-                    assert torch.isfinite(v).all(), f"NaN/inf in {k}\n{v}. Epoch={self.current_epoch}, step={self.global_step}"
+                assert torch.isfinite(
+                    dem_loss
+                ).all(), f"{(~torch.isfinite(dem_loss)).sum().item()} entries are NaN/inf. Epoch={self.current_epoch}, step={self.global_step}"
+                for k, v in aux_output.items():
+                    assert torch.isfinite(
+                        v
+                    ).all(), f"NaN/inf in {k}\n{v}. Epoch={self.current_epoch}, step={self.global_step}"
             except Exception as e:
                 # dem_loss, aux_output = self.get_loss(
                 #     times, noised_samples, return_aux_output=True
                 # )
-                dem_loss, aux_output = self.energy_function(noised_samples, return_aux_output=True)
+                dem_loss, aux_output = self.energy_function(
+                    noised_samples, return_aux_output=True
+                )
                 nan_indices = (~torch.isfinite(dem_loss)).nonzero()
                 print("-" * 80)
                 # print(f"aux_output: {aux_output.keys()}")
@@ -531,19 +537,27 @@ class DEMLitModule(LightningModule):
                 print(traceback.format_exc())
                 with open("gad_nan_log.txt", "w") as f:
                     # f.write(traceback.format_exc())
-                    f.write(f"Epoch={self.energy_function.curr_epoch}, step={self.global_step}\n")
+                    f.write(
+                        f"Epoch={self.energy_function.curr_epoch}, step={self.global_step}\n"
+                    )
                     f.write(f"noised_samples: \n{noised_samples[nan_indices]}\n")
                     f.write(f"iter_samples: \n{iter_samples[nan_indices]}\n")
                     f.write(f"Energy: \n{aux_output['energy'][nan_indices]}\n")
                     f.write(f"Forces: \n{aux_output['forces'][nan_indices]}\n")
-                    f.write(f"Smallest eigenvalues: \n{aux_output['smallest_eigenvalues'][nan_indices]}\n")
-                    f.write(f"Smallest eigenvectors: \n{aux_output['smallest_eigenvectors'][nan_indices]}\n")
-                    f.write(f"Pseudo energy: \n{aux_output['pseudo_energy'][nan_indices]}\n")
+                    f.write(
+                        f"Smallest eigenvalues: \n{aux_output['smallest_eigenvalues'][nan_indices]}\n"
+                    )
+                    f.write(
+                        f"Smallest eigenvectors: \n{aux_output['smallest_eigenvectors'][nan_indices]}\n"
+                    )
+                    f.write(
+                        f"Pseudo energy: \n{aux_output['pseudo_energy'][nan_indices]}\n"
+                    )
                     f.write("-" * 80 + "\n")
                 print("=" * 80)
                 print(f"Logged to gad_nan_log.txt")
                 exit()
-                
+
             # Uncomment for SM
             # dem_loss = self.get_score_loss(times, iter_samples, noised_samples)
             self.log_dict(
@@ -587,7 +601,9 @@ class DEMLitModule(LightningModule):
                 )
 
             cfm_loss = self.get_cfm_loss(cfm_samples)
-            assert torch.isfinite(cfm_loss).all(), f"{(~torch.isfinite(cfm_loss)).sum().item()} entries are NaN/inf. Epoch={self.current_epoch}, step={self.global_step}"
+            assert torch.isfinite(
+                cfm_loss
+            ).all(), f"{(~torch.isfinite(cfm_loss)).sum().item()} entries are NaN/inf. Epoch={self.current_epoch}, step={self.global_step}"
             self.log_dict(
                 t_stratified_loss(
                     times, cfm_loss, loss_name="train/stratified/cfm_loss"
@@ -626,7 +642,9 @@ class DEMLitModule(LightningModule):
         num_samples = num_samples or self.num_samples_to_generate_per_epoch
 
         samples = self.prior.sample(num_samples)
-        assert torch.isfinite(samples).all(), f"prior samples: Max={samples.max()}, Min={samples.min()}"
+        assert torch.isfinite(
+            samples
+        ).all(), f"prior samples: Max={samples.max()}, Min={samples.min()}"
 
         return self.integrate(
             reverse_sde=reverse_sde,
@@ -675,7 +693,7 @@ class DEMLitModule(LightningModule):
         #         clipper=self.clipper,
         #     )
         # else:
-        
+
         # added for pseudopotentials that relies on gradients
         if self.force_grad:
             no_grad = False
@@ -691,8 +709,10 @@ class DEMLitModule(LightningModule):
             num_negative_time_steps=self.num_negative_time_steps,
             clipper=self.clipper,
         )
-            
-        assert torch.isfinite(trajectory).all(), f"trajectory: Max={trajectory.max():.1e}, Min={trajectory.min():.1e}. Epoch={self.current_epoch}, step={self.global_step}"
+
+        assert torch.isfinite(
+            trajectory
+        ).all(), f"trajectory: Max={trajectory.max():.1e}, Min={trajectory.min():.1e}. Epoch={self.current_epoch}, step={self.global_step}"
         if return_full_trajectory:
             return trajectory
 
@@ -750,9 +770,13 @@ class DEMLitModule(LightningModule):
                 diffusion_scale=self.diffusion_scale
             )
             self.last_energies = self.energy_function(self.last_samples)
-            
-        assert torch.isfinite(self.last_samples).all(), f"{(~torch.isfinite(self.last_samples)).sum().item()} entries are NaN/inf. Epoch={self.current_epoch}, step={self.global_step}"
-        assert torch.isfinite(self.last_energies).all(), f"{(~torch.isfinite(self.last_energies)).sum().item()} entries are NaN/inf. Epoch={self.current_epoch}, step={self.global_step}"
+
+        assert torch.isfinite(
+            self.last_samples
+        ).all(), f"{(~torch.isfinite(self.last_samples)).sum().item()} entries are NaN/inf. Epoch={self.current_epoch}, step={self.global_step}"
+        assert torch.isfinite(
+            self.last_energies
+        ).all(), f"{(~torch.isfinite(self.last_energies)).sum().item()} entries are NaN/inf. Epoch={self.current_epoch}, step={self.global_step}"
 
         self.buffer.add(self.last_samples, self.last_energies)
 
@@ -1182,7 +1206,11 @@ class DEMLitModule(LightningModule):
                 self.cfm_prior.sample(batch_size),
             )[-1]
 
-            assert torch.isfinite(cfm_samples).all(), f"CFM last_samples: Max={cfm_samples.max()}, Min={cfm_samples.min()}"
+            assert torch.isfinite(
+                cfm_samples
+            ).all(), (
+                f"CFM last_samples: Max={cfm_samples.max()}, Min={cfm_samples.min()}"
+            )
             self.energy_function.log_on_epoch_end(
                 latest_samples=self.last_samples,
                 latest_energies=self.last_energies,
@@ -1204,7 +1232,9 @@ class DEMLitModule(LightningModule):
                 diffusion_scale=self.diffusion_scale,
                 negative_time=self.negative_time,
             )
-            assert torch.isfinite(dem_samples).all(), f"dem_samples: Max={dem_samples.max()}, Min={dem_samples.min()}"
+            assert torch.isfinite(
+                dem_samples
+            ).all(), f"dem_samples: Max={dem_samples.max()}, Min={dem_samples.min()}"
 
             # Only plot dem samples
             self.energy_function.log_on_epoch_end(
@@ -1252,7 +1282,9 @@ class DEMLitModule(LightningModule):
 
         print("Computing log Z and ESS on generated samples")
         final_samples = torch.cat(final_samples, dim=0)
-        assert torch.isfinite(final_samples).all(), f"final_samples: Max={final_samples.max()}, Min={final_samples.min()}"
+        assert torch.isfinite(
+            final_samples
+        ).all(), f"final_samples: Max={final_samples.max()}, Min={final_samples.min()}"
 
         self.energy_function.log_on_epoch_end(
             latest_samples=final_samples,
@@ -1300,7 +1332,9 @@ class DEMLitModule(LightningModule):
                 diffusion_scale=self.diffusion_scale,
                 negative_time=self.negative_time,
             )
-            assert torch.isfinite(samples).all(), f"samples: Max={samples.max()}, Min={samples.min()}"
+            assert torch.isfinite(
+                samples
+            ).all(), f"samples: Max={samples.max()}, Min={samples.min()}"
             final_samples.append(samples)
             end = time.time()
             print(f"batch {i} took{end - start: 0.2f}s")
@@ -1361,6 +1395,7 @@ class DEMLitModule(LightningModule):
                 self.num_estimator_mc_samples,
                 # use_vmap=self.use_vmap,
             )
+
         # TODO
         reverse_sde = VEReverseSDE(_grad_fxn, self.noise_schedule)
 
@@ -1375,8 +1410,12 @@ class DEMLitModule(LightningModule):
             )
         init_energies = self.energy_function(init_states)
 
-        assert torch.isfinite(init_states).all(), f"init_states: init_from_prior={self.init_from_prior}. Epoch={self.current_epoch}, step={self.global_step}"
-        assert torch.isfinite(init_energies).all(), f"init_energies: init_from_prior={self.init_from_prior}. Epoch={self.current_epoch}, step={self.global_step}"
+        assert torch.isfinite(
+            init_states
+        ).all(), f"init_states: init_from_prior={self.init_from_prior}. Epoch={self.current_epoch}, step={self.global_step}"
+        assert torch.isfinite(
+            init_energies
+        ).all(), f"init_energies: init_from_prior={self.init_from_prior}. Epoch={self.current_epoch}, step={self.global_step}"
         self.buffer.add(init_states, init_energies)
 
         if self.hparams.compile and stage == "fit":
