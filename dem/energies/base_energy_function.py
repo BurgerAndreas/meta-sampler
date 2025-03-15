@@ -573,11 +573,11 @@ class BaseEnergyFunction(ABC):
                 assert torch.isfinite(
                     latest_samples
                 ).all(), f"Max value: {latest_samples.max()}, Min value: {latest_samples.min()}"
-                print(
-                    f"epoch={self.curr_epoch}. Samples: max={latest_samples.max()}, min={latest_samples.min()}. nan={torch.sum(torch.isnan(latest_samples))}"
-                )
+                plt.close()
                 fig, ax = plt.subplots()
                 ax.scatter(*latest_samples.detach().cpu().T)
+                plt.xlim(self._plotting_bounds[0], self._plotting_bounds[1])
+                plt.ylim(self._plotting_bounds[0], self._plotting_bounds[1])
 
                 wandb_logger.log_image(
                     f"{prefix}generated_samples_scatter", [fig_to_image(fig)]
@@ -1288,7 +1288,7 @@ class BasePseudoEnergyFunction:
                 # saddle_bias = -torch.nn.functional.softplus(
                 #     -saddle_bias - 2.0
                 # )  # [0, 1]
-                saddle_bias += 1.0  # [1, 2]
+                saddle_bias = saddle_bias + 1.0  # [1, 2]
             elif self.hessian_eigenvalue_penalty == "and":
                 saddle_bias = torch.nn.functional.softplus(
                     smallest_eigenvalues[:, 0]

@@ -54,3 +54,7 @@ use_vmap: true  # Set to false to disable vmap
 
 data:
   num_workers: 15
+
+wandb_noinfo: true
+wandb_silent: false
+verbose_val: false

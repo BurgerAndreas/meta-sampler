@@ -2,3 +2,10 @@
 
 rich_progress_bar:
   _target_: lightning.pytorch.callbacks.RichProgressBar
+  refresh_rate: 50  # Update progress bar every n steps
+
+# tqdm_progress_bar:
+#   _target_: lightning.pytorch.callbacks.TQDMProgressBar
+#   refresh_rate: 25  # Update progress bar every n steps
+#   process_position: 0
+#   # leave: True  # Keep final progress bar after completiton

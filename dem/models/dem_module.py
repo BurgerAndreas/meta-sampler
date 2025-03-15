@@ -575,7 +575,7 @@ class DEMLitModule(LightningModule):
                 self.dem_train_loss,
                 on_step=False,
                 on_epoch=True,
-                prog_bar=True,
+                prog_bar=False,
             )
             for key, value in aux_output.items():
                 self.log(
@@ -616,7 +616,7 @@ class DEMLitModule(LightningModule):
                 self.cfm_train_loss,
                 on_step=True,
                 on_epoch=False,
-                prog_bar=True,
+                prog_bar=False,
             )
 
             loss = loss + self.hparams.cfm_loss_weight * cfm_loss
@@ -727,7 +727,7 @@ class DEMLitModule(LightningModule):
         batch_size = self.nll_batch_size
         num_batches = math.ceil(len(samples) / float(batch_size))
         nlls, x_1s, logdetjacs, log_p_1s = [], [], [], []
-        for i in tqdm(range(num_batches)):
+        for i in tqdm(range(num_batches), desc="Computing NLL"):
             start_idx = i * batch_size
             end_idx = start_idx + batch_size
             iter_samples = samples[start_idx:end_idx]
@@ -818,7 +818,7 @@ class DEMLitModule(LightningModule):
             self.val_energy_w2(energy_w2),
             on_step=False,
             on_epoch=True,
-            prog_bar=True,
+            prog_bar=False,
         )
 
     def _log_dist_w2(self, prefix="val"):
@@ -847,7 +847,7 @@ class DEMLitModule(LightningModule):
             self.val_dist_w2(dist_w2),
             on_step=False,
             on_epoch=True,
-            prog_bar=True,
+            prog_bar=False,
         )
 
     def _log_dist_total_var(self, prefix="val"):
@@ -871,7 +871,7 @@ class DEMLitModule(LightningModule):
             self.val_dist_total_var(total_var),
             on_step=False,
             on_epoch=True,
-            prog_bar=True,
+            prog_bar=False,
         )
 
     def _compute_total_var(self, generated_samples, data_set):
@@ -925,7 +925,7 @@ class DEMLitModule(LightningModule):
             logz_metric,
             on_step=False,
             on_epoch=True,
-            prog_bar=True,
+            prog_bar=False,
         )
 
         ess = (torch.nn.functional.softmax(logp - logq) ** 2).sum().pow(-1)
@@ -938,7 +938,7 @@ class DEMLitModule(LightningModule):
             ess_metric,
             on_step=False,
             on_epoch=True,
-            prog_bar=True,
+            prog_bar=False,
         )
 
     def compute_and_log_nll(self, cnf, prior, samples, prefix, name):
@@ -947,7 +947,7 @@ class DEMLitModule(LightningModule):
 
         range_generator = range(num_batches)
         if num_batches > 3:
-            range_generator = tqdm(range_generator)
+            range_generator = tqdm(range_generator, desc=f"Computing NLL for {name}")
 
         for i in range_generator:
             start_idx = i * batch_size
@@ -981,7 +981,7 @@ class DEMLitModule(LightningModule):
             nll_metric,
             on_step=False,
             on_epoch=True,
-            prog_bar=True,
+            prog_bar=False,
         )
         return forwards_samples
 
@@ -1046,7 +1046,9 @@ class DEMLitModule(LightningModule):
         loss_metric(loss)
 
         self.log(
-            f"{prefix}/loss", loss_metric, on_step=True, on_epoch=True, prog_bar=True
+            f"{prefix}/loss", loss_metric, on_step=True, on_epoch=True, 
+            # if to print metrics to terminal
+            prog_bar=False
         )
 
         to_log = {
@@ -1167,7 +1169,7 @@ class DEMLitModule(LightningModule):
                 metrics,
                 on_step=False,
                 on_epoch=True,
-                prog_bar=True,
+                prog_bar=False,
             )
 
         self.eval_step_outputs.append(to_log)
