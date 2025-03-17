@@ -1046,9 +1046,12 @@ class DEMLitModule(LightningModule):
         loss_metric(loss)
 
         self.log(
-            f"{prefix}/loss", loss_metric, on_step=True, on_epoch=True, 
+            f"{prefix}/loss",
+            loss_metric,
+            on_step=True,
+            on_epoch=True,
             # if to print metrics to terminal
-            prog_bar=False
+            prog_bar=False,
         )
 
         to_log = {
@@ -1326,9 +1329,7 @@ class DEMLitModule(LightningModule):
         final_samples = []
         n_batches = self.num_samples_to_save // batch_size
         test_set = self.energy_function.sample_test_set(-1, full=True)
-        print("Generating samples")
         for i in range(n_batches):
-            start = time.time()
             samples = self.generate_samples(
                 num_samples=batch_size,
                 diffusion_scale=self.diffusion_scale,
@@ -1338,8 +1339,6 @@ class DEMLitModule(LightningModule):
                 samples
             ).all(), f"samples: Max={samples.max()}, Min={samples.min()}"
             final_samples.append(samples)
-            end = time.time()
-            print(f"batch {i} took{end - start: 0.2f}s")
 
             if i == 0:
                 self.energy_function.log_on_epoch_end(

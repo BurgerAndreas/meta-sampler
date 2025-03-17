@@ -41,7 +41,7 @@ class DoubleWellEnergy(BaseEnergyFunction):
         a=-0.5,
         b=-6.0,
         c=1.0,
-        d=0.5,  # shift the minima/transition state in the first dimension (x direction)
+        d=1,  # shift the minima/transition state in the first dimension (x direction)
         device="cpu",
         is_molecule=False,
         true_expectation_estimation_n_samples=int(1e5),

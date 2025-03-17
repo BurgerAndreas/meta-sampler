@@ -19,15 +19,15 @@ data_normalization_factor: 50
 data_path_train: null
 
 # Pseudo-energy specific parameters
-# energy_weight: 0.0
-# force_weight: 1.0
-# forces_norm: null # None=2, 1, or inf
-# force_exponent: 1
-# force_exponent_eps: 0
-# force_activation: 'tanh'
-# force_scale: 0.1
-# hessian_weight: 1.0
-# hessian_eigenvalue_penalty: 'tanh'
-# hessian_scale: 10.0
-# term_aggr: '1mmultfh'
-# temperature: 1.0
+energy_weight: 0.0
+force_weight: 1.0
+forces_norm: null # None=2, 1, or inf
+force_exponent: 1
+force_exponent_eps: 0
+force_activation: 'tanh'
+force_scale: 0.1
+hessian_weight: 1.0
+hessian_eigenvalue_penalty: 'and'
+hessian_scale: 1.0
+term_aggr: '1mmultfh'
+temperature: 1.0

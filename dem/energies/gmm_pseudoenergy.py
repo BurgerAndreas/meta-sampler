@@ -447,7 +447,7 @@ class GMMPseudoEnergy(GMMEnergy, BasePseudoEnergyFunction):
         if self.transition_points is not None:
             return self.transition_points
 
-        fname = f"dem_outputs/transition_points_gmm.npy"
+        fname = f"dem_outputs/transition_points_gmm{self.gmm.n_mixes}.npy"
         if os.path.exists(fname):
             self.transition_points = torch.tensor(np.load(fname), device=self.device)
             # print(f"Loaded transition points from {fname}")
@@ -455,12 +455,12 @@ class GMMPseudoEnergy(GMMEnergy, BasePseudoEnergyFunction):
 
         # Generate candidate points
         if self.boundary_points is None:
-            self.boundary_points = self.find_transition_boundaries()
+            self.boundary_points = self.find_transition_boundaries(grid_size=400)
 
         # Now validate these candidate points by checking the Hessian eigenvalues.
         # Only keep the true index-1 saddles (one negative eigenvalue).
         validation_results = self.validate_transition_states(
-            self.boundary_points, abs_ev_tol=1e-6, grad_tol=1e1
+            self.boundary_points, abs_ev_tol=1e-3, grad_tol=1e1
         )
         candidate_points = validation_results["valid_points"]
 

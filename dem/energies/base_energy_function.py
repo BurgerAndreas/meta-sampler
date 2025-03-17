@@ -646,7 +646,9 @@ class BaseEnergyFunction(ABC):
         batched_eigenvalues = torch.gather(batched_eigenvalues, -1, sorted_indices)
         # Need to expand sorted_indices to match eigenvectors dimensions
         # The error occurs because eigenvectors have shape [..., dim, dim] while indices are [..., dim]
-        expanded_indices = sorted_indices.unsqueeze(-1).expand(*batched_eigenvalues.shape, self._dimensionality)
+        expanded_indices = sorted_indices.unsqueeze(-1).expand(
+            *batched_eigenvalues.shape, self._dimensionality
+        )
         batched_eigenvectors = torch.gather(batched_eigenvectors, -2, expanded_indices)
 
         # Reshape for plotting
@@ -654,7 +656,10 @@ class BaseEnergyFunction(ABC):
             grid_width_n_points, grid_width_n_points, self._dimensionality
         )
         eigenvectors_grid = batched_eigenvectors.reshape(
-            grid_width_n_points, grid_width_n_points, self._dimensionality, self._dimensionality
+            grid_width_n_points,
+            grid_width_n_points,
+            self._dimensionality,
+            self._dimensionality,
         )
         x_grid = x_points_dim1.reshape(-1, 1).repeat(1, grid_width_n_points)
         y_grid = x_points_dim2.reshape(1, -1).repeat(grid_width_n_points, 1)
@@ -679,8 +684,10 @@ class BaseEnergyFunction(ABC):
             )
             return
 
-        x_grid, y_grid, eigenvalues_grid, eigenvectors_grid = self.get_hessian_eigenvalues_on_grid(
-            grid_width_n_points=grid_width_n_points, plotting_bounds=plotting_bounds
+        x_grid, y_grid, eigenvalues_grid, eigenvectors_grid = (
+            self.get_hessian_eigenvalues_on_grid(
+                grid_width_n_points=grid_width_n_points, plotting_bounds=plotting_bounds
+            )
         )
         eigenvalues_grid = eigenvalues_grid.cpu().numpy()
         eigenvectors_grid = eigenvectors_grid.cpu().numpy()
@@ -696,9 +703,12 @@ class BaseEnergyFunction(ABC):
             x_grid, y_grid, eigenvalues_grid[:, :, 0], cmap="viridis", shading="auto"
         )
         axs[0].quiver(
-            x_grid[::skip, ::skip], y_grid[::skip, ::skip], 
-            eigenvectors_grid[::skip, ::skip, 0, 0], eigenvectors_grid[::skip, ::skip, 0, 1],
-            color='white', alpha=0.8
+            x_grid[::skip, ::skip],
+            y_grid[::skip, ::skip],
+            eigenvectors_grid[::skip, ::skip, 0, 0],
+            eigenvectors_grid[::skip, ::skip, 0, 1],
+            color="white",
+            alpha=0.8,
         )
         axs[0].set_title("First (smallest) eigenvalue")
         axs[0].set_xlabel("x")
@@ -710,9 +720,12 @@ class BaseEnergyFunction(ABC):
             x_grid, y_grid, eigenvalues_grid[:, :, 1], cmap="viridis", shading="auto"
         )
         axs[1].quiver(
-            x_grid[::skip, ::skip], y_grid[::skip, ::skip], 
-            eigenvectors_grid[::skip, ::skip, 1, 0], eigenvectors_grid[::skip, ::skip, 1, 1],
-            color='white', alpha=0.8
+            x_grid[::skip, ::skip],
+            y_grid[::skip, ::skip],
+            eigenvectors_grid[::skip, ::skip, 1, 0],
+            eigenvectors_grid[::skip, ::skip, 1, 1],
+            color="white",
+            alpha=0.8,
         )
         axs[1].set_title("Second eigenvalue")
         axs[1].set_xlabel("x")
@@ -747,15 +760,19 @@ class BaseEnergyFunction(ABC):
             )
             return
 
+        device = self.device
+
         if plotting_bounds is None:
             plotting_bounds = self._plotting_bounds
 
         N = grid_width_n_points
         # Create a 2D grid
-        x = torch.linspace(plotting_bounds[0], plotting_bounds[1], N)
-        y = torch.linspace(plotting_bounds[0], plotting_bounds[1], N)
-        X, Y = torch.meshgrid(x, y)
-        grid_flat = torch.stack([X.flatten(), Y.flatten()], axis=1)
+        xgrid, ygrid = torch.meshgrid(
+            torch.linspace(plotting_bounds[0], plotting_bounds[1], N, device=device),
+            torch.linspace(plotting_bounds[0], plotting_bounds[1], N, device=device),
+            indexing="ij",
+        )
+        grid_flat = torch.stack([xgrid.flatten(), ygrid.flatten()], axis=1)
 
         def V(x):
             return -self.log_prob(x).squeeze(0)
@@ -767,6 +784,7 @@ class BaseEnergyFunction(ABC):
         # Calculate gradient using JAX for a single point
         def grad_V(x):
             return -torch.func.grad(V)(x)
+
         grad_V_vmap = torch.vmap(grad_V)
         # grad_V_vmap = torch.jit.script(grad_V_vmap)
 
@@ -776,21 +794,30 @@ class BaseEnergyFunction(ABC):
         # Calculate gradients
         V_grad = grad_V_vmap(grid_flat).reshape(N, N, 2)
 
+        # move tensors to cpu
+        xgrid = xgrid.cpu().numpy()
+        ygrid = ygrid.cpu().numpy()
+        Z = Z.cpu().numpy()
+        V_grad = V_grad.cpu().numpy()
+
         # Create the plot
         plt.close()
         plt.figure(figsize=(10, 8))
         # Create a contour plot
-        plt.contour(X, Y, Z, levels=20)
-        plt.colorbar(label='Potential Energy')
+        plt.contour(xgrid, ygrid, Z, levels=20)
+        plt.colorbar(label="Potential Energy")
 
         # Add filled contours for better visualization
-        plt.contourf(X, Y, Z, levels=20, alpha=0.7)
+        plt.contourf(xgrid, ygrid, Z, levels=20, alpha=0.7)
 
         # Add gradient field (using fewer points for clarity)
         plt.quiver(
-            X[::skip, ::skip], Y[::skip, ::skip], 
-                V_grad[::skip, ::skip, 0], V_grad[::skip, ::skip, 1],
-                color='white', alpha=0.8
+            xgrid[::skip, ::skip],
+            ygrid[::skip, ::skip],
+            V_grad[::skip, ::skip, 0],
+            V_grad[::skip, ::skip, 1],
+            color="white",
+            alpha=0.8,
         )
 
         # Add minima points if available
@@ -894,7 +921,7 @@ class BaseEnergyFunction(ABC):
         self.move_to_device(self.device)
 
         return fig
-    
+
     def plot_energy_crossection_along_axis(
         self, n_points=200, plotting_bounds=None, axis=0, axis_value=0.0, name=None
     ):
@@ -915,7 +942,7 @@ class BaseEnergyFunction(ABC):
 
         other_axis = 1 if axis == 0 else 0
         axissymbol = "x" if axis == 0 else "y"
-        
+
         self.move_to_device("cpu")
 
         # Create x points for the cross-section
@@ -1228,18 +1255,24 @@ class BasePseudoEnergyFunction:
                 # Handle batched inputs using vmap # [B, D, D]
                 batched_hessian = torch.vmap(torch.func.hessian(self._energy))(samples)
                 # Get eigenvalues and eigenvectors for each sample in batch
-                batched_eigenvalues, batched_eigenvectors = torch.linalg.eigh(batched_hessian)
+                batched_eigenvalues, batched_eigenvectors = torch.linalg.eigh(
+                    batched_hessian
+                )
                 # Sort eigenvalues in ascending order and get corresponding indices
                 sorted_indices = torch.argsort(batched_eigenvalues, dim=-1)
                 # Get sorted eigenvalues
-                batched_eigenvalues = torch.gather(batched_eigenvalues, -1, sorted_indices)
+                batched_eigenvalues = torch.gather(
+                    batched_eigenvalues, -1, sorted_indices
+                )
                 # Get 2 smallest eigenvalues for each sample
                 smallest_eigenvalues = batched_eigenvalues[..., :2]  # [B, 2]
                 # Get eigenvectors corresponding to eigenvalues
                 smallest_eigenvectors = torch.gather(
                     batched_eigenvectors,
                     -1,
-                    sorted_indices[..., 0:1].unsqueeze(-1).expand(batched_eigenvectors.shape),
+                    sorted_indices[..., 0:1]
+                    .unsqueeze(-1)
+                    .expand(batched_eigenvectors.shape),
                 )
 
             # Bias toward index-1 saddle points:
@@ -1401,7 +1434,8 @@ class BasePseudoEnergyFunction:
                 input=torch.clip(
                     # force_magnitude
                     torch.einsum("bd,bd->b", forces, smallest_eigenvectors[..., 0]) ** 2
-                    + torch.einsum("bd,bd->b", forces, smallest_eigenvectors[..., 1]) ** 2
+                    + torch.einsum("bd,bd->b", forces, smallest_eigenvectors[..., 1])
+                    ** 2
                     + self.gad_offset,
                     min=self.clamp_min,
                     max=self.clamp_max,

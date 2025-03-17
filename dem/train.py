@@ -33,6 +33,7 @@ from dem.utils import (
     instantiate_loggers,
     log_hyperparameters,
     task_wrapper,
+    get_name_from_config,
 )
 
 log = RankedLogger(__name__, rank_zero_only=True)
@@ -66,26 +67,31 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
     log.info("Instantiating callbacks...")
     callbacks: List[Callback] = instantiate_callbacks(cfg.get("callbacks"))
-    
+
     if cfg["wandb_silent"]:
         import os
+
         os.environ["WANDB_SILENT"] = "True"
 
     log.info("Instantiating loggers...")
     # TODO: create wandb name from config
-    # cfg["logger"]["wandb"]["name"] = get_name_from_config(cfg)
+    cfg["logger"]["wandb"]["name"] = get_name_from_config(cfg)
     logger: List[Logger] = instantiate_loggers(cfg.get("logger"))
-    
+
     if cfg["wandb_noinfo"]:
         import logging
-        logger = logging.getLogger("wandb")
-        logger.setLevel(logging.ERROR)
+
+        wandb_logger = logging.getLogger("wandb")
+        wandb_logger.setLevel(logging.ERROR)
 
     # https://lightning.ai/docs/pytorch/stable/common/trainer.html#trainer-class-api
     log.info(f"Instantiating trainer <{cfg.trainer._target_}>")
     trainer: Trainer = hydra.utils.instantiate(
-        cfg.trainer, callbacks=callbacks, logger=logger, num_sanity_val_steps=0,
-        enable_model_summary=False, 
+        cfg.trainer,
+        callbacks=callbacks,
+        logger=logger,
+        num_sanity_val_steps=0,
+        enable_model_summary=False,
         # log_every_n_steps=50, # default is 50
     )
 
@@ -105,7 +111,9 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
     if cfg.get("train"):
         log.info("Starting training!")
-        trainer.validate(model=model, datamodule=datamodule, verbose=cfg.get("verbose_val"))
+        trainer.validate(
+            model=model, datamodule=datamodule, verbose=cfg.get("verbose_val")
+        )
         trainer.fit(model=model, datamodule=datamodule, ckpt_path=cfg.get("ckpt_path"))
 
     train_metrics = trainer.callback_metrics

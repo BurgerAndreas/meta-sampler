@@ -56,5 +56,5 @@ data:
   num_workers: 15
 
 wandb_noinfo: true
-wandb_silent: false
+wandb_silent: true
 verbose_val: false

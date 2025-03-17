@@ -14,6 +14,7 @@ from hydra.core.global_hydra import GlobalHydra
 
 import re
 
+n_mixes = 2
 
 configs = [
     [
@@ -23,6 +24,21 @@ configs = [
         "energy.energy_weight=1.0",
         "energy.force_weight=0.0",
     ],
+    [
+        "|grad| stitched -l1*l2",
+        "experiment=gmm_idem_pseudo",
+        "energy.hessian_weight=1.0",
+        "energy.hessian_eigenvalue_penalty=null",
+        "energy.energy_weight=0.0",
+        "energy.force_weight=1.0",
+        "energy.force_activation=null",
+        "energy.term_aggr=cond_force",
+        "energy.force_scale=1.0",
+    ],
+    [
+        "|grad| condforce",
+        "experiment=gmm_idem_condforce",
+    ],
     # [
     #     "Hessian and",
     #     "experiment=gmm_idem_pseudo",
@@ -31,33 +47,33 @@ configs = [
     #     "energy.energy_weight=0.0",
     #     "energy.force_weight=0.0",
     # ],
-    [
-        "Hessian sigmoid",
-        "experiment=gmm_idem_pseudo",
-        "energy.hessian_weight=1.0",
-        "energy.hessian_eigenvalue_penalty=sigmoid",
-        "energy.energy_weight=0.0",
-        "energy.force_weight=0.0",
-        "energy.hessian_scale=1.0",
-    ],
-    [
-        "Hessian sigmoid_individual",
-        "experiment=gmm_idem_pseudo",
-        "energy.hessian_weight=1.0",
-        "energy.hessian_eigenvalue_penalty=sigmoid_individual",
-        "energy.energy_weight=0.0",
-        "energy.force_weight=0.0",
-        "energy.hessian_scale=1.0",
-    ],
-    [
-        "Hessian tanh",
-        "experiment=gmm_idem_pseudo",
-        "energy.hessian_weight=1.0",
-        "energy.hessian_eigenvalue_penalty=tanh",
-        "energy.energy_weight=0.0",
-        "energy.force_weight=0.0",
-        "energy.hessian_scale=1.0",
-    ],
+    # [
+    #     "Hessian sigmoid",
+    #     "experiment=gmm_idem_pseudo",
+    #     "energy.hessian_weight=1.0",
+    #     "energy.hessian_eigenvalue_penalty=sigmoid",
+    #     "energy.energy_weight=0.0",
+    #     "energy.force_weight=0.0",
+    #     "energy.hessian_scale=1.0",
+    # ],
+    # [
+    #     "Hessian sigmoid_individual",
+    #     "experiment=gmm_idem_pseudo",
+    #     "energy.hessian_weight=1.0",
+    #     "energy.hessian_eigenvalue_penalty=sigmoid_individual",
+    #     "energy.energy_weight=0.0",
+    #     "energy.force_weight=0.0",
+    #     "energy.hessian_scale=1.0",
+    # ],
+    # [
+    #     "Hessian tanh",
+    #     "experiment=gmm_idem_pseudo",
+    #     "energy.hessian_weight=1.0",
+    #     "energy.hessian_eigenvalue_penalty=tanh",
+    #     "energy.energy_weight=0.0",
+    #     "energy.force_weight=0.0",
+    #     "energy.hessian_scale=1.0",
+    # ],
     # [
     #     "Hessian and, Scale 1",
     #     "experiment=gmm_idem_pseudo",
@@ -103,30 +119,30 @@ configs = [
     #     "energy.force_activation=tanh",
     #     "energy.term_aggr=1mmultfh",
     # ],
-    [
-        "Force L2 Tanh AND Hessian, 0.1x1x scale",
-        "experiment=gmm_idem_pseudo",
-        "energy.hessian_weight=1.0",
-        "energy.hessian_eigenvalue_penalty=and",
-        "energy.energy_weight=0.0",
-        "energy.force_weight=1.0",
-        "energy.force_activation=tanh",
-        "energy.term_aggr=1mmultfh",
-        "energy.force_scale=0.1",
-        "energy.hessian_scale=1.0",
-    ],
-    [
-        "Force L2 Tanh AND Hessian, 0.1x10x scale",
-        "experiment=gmm_idem_pseudo",
-        "energy.hessian_weight=1.0",
-        "energy.hessian_eigenvalue_penalty=and",
-        "energy.energy_weight=0.0",
-        "energy.force_weight=1.0",
-        "energy.force_activation=tanh",
-        "energy.term_aggr=1mmultfh",
-        "energy.force_scale=0.1",
-        "energy.hessian_scale=10.0",
-    ],
+    # [
+    #     "Force L2 Tanh AND Hessian, 0.1x1x scale",
+    #     "experiment=gmm_idem_pseudo",
+    #     "energy.hessian_weight=1.0",
+    #     "energy.hessian_eigenvalue_penalty=and",
+    #     "energy.energy_weight=0.0",
+    #     "energy.force_weight=1.0",
+    #     "energy.force_activation=tanh",
+    #     "energy.term_aggr=1mmultfh",
+    #     "energy.force_scale=0.1",
+    #     "energy.hessian_scale=1.0",
+    # ],
+    # [
+    #     "Force L2 Tanh AND Hessian, 0.1x10x scale",
+    #     "experiment=gmm_idem_pseudo",
+    #     "energy.hessian_weight=1.0",
+    #     "energy.hessian_eigenvalue_penalty=and",
+    #     "energy.energy_weight=0.0",
+    #     "energy.force_weight=1.0",
+    #     "energy.force_activation=tanh",
+    #     "energy.term_aggr=1mmultfh",
+    #     "energy.force_scale=0.1",
+    #     "energy.hessian_scale=10.0",
+    # ],
     # [
     #     "Force L2 Tanh AND Hessian, 0.1x scale",
     #     "experiment=gmm_idem_pseudo",
@@ -150,7 +166,9 @@ for config in configs:
     # if not GlobalHydra().is_initialized():
     hydra.initialize(config_path="../../configs", version_base="1.3")
     # Load the experiment config for GMM with pseudo-energy
-    cfg = hydra.compose(config_name="train", overrides=overrides)
+    cfg = hydra.compose(
+        config_name="train", overrides=overrides + [f"energy.n_mixes={n_mixes}"]
+    )
 
     # Instantiate the energy function using hydra, similar to train.py
     energy_function = hydra.utils.instantiate(cfg.energy)
@@ -233,5 +251,38 @@ for config in configs:
         #     img1.save(fname)
         #     print(f"Saved {fname}")
 
+        # energy_function.plot_energy_crossection(name=name, y_value=-1.3710, plotting_bounds=(1.3, -1.4))
+        energy_function.plot_energy_crossection(
+            name=name,
+            # y_value=-1.3710, plotting_bounds=(1.3, -1.4)
+        )
+        fig_name = f"plots/gmm_{plt_name}_crossection.png"
+        plt.savefig(fig_name)
+        print(f"Saved {fig_name}")
+        energy_function.plot_energy_crossection_along_axis(
+            name=name,
+            axis=0,
+            # axis_value=0, plotting_bounds=(1.3, -1.4)
+        )
+        fig_name = f"plots/gmm_{plt_name}_crossection0.png"
+        plt.savefig(fig_name)
+        print(f"Saved {fig_name}")
+        # energy_function.plot_energy_crossection_along_axis(
+        #     name=name, axis=1, axis_value=0, plotting_bounds=(1.3, -1.4)
+        # )
+        # fig_name = f"plots/dw_{plt_name}_crossection1.png"
+        # plt.savefig(fig_name)
+        # print(f"Saved {fig_name}")
+
+        energy_function.plot_gradient(name=name)
+        fig_name = f"plots/gmm_{plt_name}_gradient.png"
+        plt.savefig(fig_name)
+        print(f"Saved {fig_name}")
+
     # deinitialize hydra
     GlobalHydra().clear()
+
+energy_function.plot_hessian_eigenvalues(name=name)
+fig_name = f"plots/gmm_hessian_eigenvalues.png"
+plt.savefig(fig_name)
+print(f"Saved {fig_name}")

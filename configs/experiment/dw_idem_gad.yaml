@@ -57,6 +57,7 @@ model:
   eval_batch_size: 1000
   scheduler: null
 
+max_epochs: 100
 
 # # Add precision settings for Tensor Cores
 # trainer:

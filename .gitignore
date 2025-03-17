@@ -4,6 +4,8 @@ src.egg-info
 .env
 dem_results
 **/dem_outputs
+**/*.pt
+
 
 **/*.egg-info
 **/*.png

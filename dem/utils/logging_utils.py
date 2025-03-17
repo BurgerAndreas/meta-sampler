@@ -3,7 +3,8 @@ from typing import Any, Dict
 
 import PIL
 from lightning_utilities.core.rank_zero import rank_zero_only
-from omegaconf import OmegaConf
+from omegaconf import OmegaConf, DictConfig
+import yaml
 
 from dem.utils import pylogger
 
@@ -48,7 +49,7 @@ def log_hyperparameters(object_dict: Dict[str, Any]) -> None:
 
     hparams["callbacks"] = cfg.get("callbacks")
     hparams["extras"] = cfg.get("extras")
-    hparams["energy_function"] = cfg["energy"]
+    hparams["energy"] = cfg["energy"]
 
     hparams["task_name"] = cfg.get("task_name")
     hparams["tags"] = cfg.get("tags")
@@ -57,6 +58,7 @@ def log_hyperparameters(object_dict: Dict[str, Any]) -> None:
 
     # send hparams to all loggers
     for logger in trainer.loggers:
+        # print(f"logging hparams to {logger} = {logger.__class__.__name__}")
         logger.log_hyperparams(hparams)
 
 
@@ -73,3 +75,28 @@ def fig_to_image(fig):
         return PIL.Image.frombytes(
             "RGB", fig.canvas.get_width_height(), fig.canvas.renderer.buffer_rgba()
         )
+
+
+def get_name_from_config(cfg: DictConfig) -> str:
+    """Human-readable name for wandb. Pretty janky."""
+    name = ""
+    energy = cfg["energy"]["_target_"].split(".")[-1]
+    if "DoubleWell" in energy:
+        energy_name = "DW"
+    elif "AlDi" in energy:
+        energy_name = "AlDi"
+    elif "GMM" in energy:
+        energy_name = "GMM"
+    else:
+        energy_name = energy
+    name += f"{energy_name} "
+    if "GAD" in energy:
+        name += "GAD"
+    elif "Pseudo" in energy:
+        if cfg["energy"]["term_aggr"] in ["cond_force", "cond_force_proj"]:
+            name += f"(|F|^{cfg['energy']['force_exponent']})"
+        else:
+            name += f"({cfg['energy']['force_activation']}{cfg['energy']['force_scale']} {cfg['energy']['hessian_eigenvalue_penalty']}{cfg['energy']['hessian_scale']} {cfg['energy']['term_aggr']})"
+    if cfg["energy"]["temperature"] != 1.0:
+        name += f"T{cfg['energy']['temperature']}"
+    return name
