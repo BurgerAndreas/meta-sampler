@@ -6,17 +6,17 @@
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 defaults:
-  - override /energy: dw_pseudo
+  - override /energy: fw
   - override /model/noise_schedule: geometric
 
-tags: ["DW", "iDEM", "pseudo"]
+tags: ["FW", "iDEM"]
 
 seed: 12345
 
 logger:
   wandb:
     tags: ${tags}
-    group: "dw"
+    group: "fw"
 
 model:
   noise_schedule:
@@ -58,3 +58,4 @@ model:
   scheduler: null
 
 max_epochs: 100
+

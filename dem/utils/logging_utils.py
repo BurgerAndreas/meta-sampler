@@ -97,6 +97,6 @@ def get_name_from_config(cfg: DictConfig) -> str:
             name += f"(|F|^{cfg['energy']['force_exponent']})"
         else:
             name += f"({cfg['energy']['force_activation']}{cfg['energy']['force_scale']} {cfg['energy']['hessian_eigenvalue_penalty']}{cfg['energy']['hessian_scale']} {cfg['energy']['term_aggr']})"
-    if cfg["energy"]["temperature"] != 1.0:
+    if "temperature" in cfg["energy"] and cfg["energy"]["temperature"] != 1.0:
         name += f"T{cfg['energy']['temperature']}"
     return name

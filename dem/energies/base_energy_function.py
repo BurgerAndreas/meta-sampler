@@ -1191,7 +1191,7 @@ class BasePseudoEnergyFunction:
         self.gad_offset = gad_offset
         self.clamp_min = float(clamp_min) if clamp_min is not None else None
         self.clamp_max = float(clamp_max) if clamp_max is not None else None
-
+        
     # def log_prob(
     #     self, samples: torch.Tensor, return_aux_output: bool = False
     # ) -> torch.Tensor:

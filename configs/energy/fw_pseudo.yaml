@@ -1,0 +1,15 @@
+defaults:
+  - pseudo_default
+  - _self_
+  
+_target_: dem.energies.four_wells_energy.FourWellEnergy
+
+device: ${trainer.accelerator}
+
+dimensionality: 2
+
+plot_samples_epoch_period: 1
+
+data_normalization_factor: 1.0
+
+is_molecule: False
