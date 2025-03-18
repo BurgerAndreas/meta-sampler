@@ -50,7 +50,7 @@ class FourWellsEnergy(BaseEnergyFunction):
         plot_samples_epoch_period=5,
         should_unnormalize=False,
         data_normalization_factor=1,
-        train_set_size=100000,
+        train_set_size=0,
         test_set_size=2000,
         val_set_size=2000,
         data_path_train=None,
@@ -269,29 +269,6 @@ class FourWellsEnergy(BaseEnergyFunction):
         val_samples = self.sample((self.val_set_size,))
         return val_samples
 
-    # def setup_test_set(self) -> Optional[torch.Tensor]:
-    #     """Sets up the test dataset.
-
-    #     Returns:
-    #         Optional[torch.Tensor]: Test dataset tensor or None
-    #     """
-    #     return None
-
-    # def setup_train_set(self) -> Optional[torch.Tensor]:
-    #     """Sets up the training dataset.
-
-    #     Returns:
-    #         Optional[torch.Tensor]: Training dataset tensor or None
-    #     """
-    #     return None
-
-    # def setup_val_set(self) -> Optional[torch.Tensor]:
-    #     """Sets up the validation dataset.
-
-    #     Returns:
-    #         Optional[torch.Tensor]: Validation dataset tensor or None
-    #     """
-    #     return None
 
 if __name__ == "__main__":
     # Test that rejection sampling is work as desired.

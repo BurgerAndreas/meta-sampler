@@ -2,17 +2,17 @@ import numpy as np
 import torch
 from typing import Callable
 from dem.energies.double_well_energy import DoubleWellEnergy
-from dem.energies.base_energy_function import BaseGADEnergyFunction
+from dem.energies.base_energy_function import BasePseudoEnergyFunction
 import os
 import sys
 import traceback
 import copy
 
 
-class DoubleWellEnergyGAD(DoubleWellEnergy, BaseGADEnergyFunction):
+class DoubleWellEnergyGAD(DoubleWellEnergy, BasePseudoEnergyFunction):
     def __init__(self, *args, **kwargs):
         DoubleWellEnergy.__init__(self, *copy.deepcopy(args), **copy.deepcopy(kwargs))
-        BaseGADEnergyFunction.__init__(
+        BasePseudoEnergyFunction.__init__(
             self,
             # gad_offset=gad_offset,
             # clip_energy=clip_energy,
@@ -45,7 +45,7 @@ class DoubleWellEnergyGAD(DoubleWellEnergy, BaseGADEnergyFunction):
         if len(samples.shape) == 1:
             samples = samples.unsqueeze(0)
 
-        pseudo_energy, aux_output = self.compute_gad_potential(self._energy, samples)
+        pseudo_energy, aux_output = self.compute_pseudo_potential(self._energy, samples)
 
         if temperature is None:
             temperature = self.temperature
@@ -59,3 +59,12 @@ class DoubleWellEnergyGAD(DoubleWellEnergy, BaseGADEnergyFunction):
         if return_aux_output:
             return pseudo_logprob, aux_output
         return pseudo_logprob
+
+    def setup_train_set(self):
+        return None
+    
+    def setup_test_set(self):
+        raise NotImplementedError
+    
+    def setup_val_set(self):
+        raise NotImplementedError

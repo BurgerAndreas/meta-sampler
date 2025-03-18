@@ -13,3 +13,16 @@ plot_samples_epoch_period: 1
 data_normalization_factor: 1.0
 
 is_molecule: False
+
+# energy:
+#   hessian_weight: 1.0
+#   hessian_eigenvalue_penalty: null
+#   energy_weight: 0.0
+#   force_weight: 1.0
+#   force_activation: null
+#   term_aggr: cond_force
+#   force_scale: 1.0
+
+train_set_size: 0 # 100000
+test_set_size: 2000
+val_set_size: 2000

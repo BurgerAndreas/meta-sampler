@@ -50,7 +50,7 @@ class DoubleWellEnergy(BaseEnergyFunction):
         plot_samples_epoch_period=5,
         should_unnormalize=False,
         data_normalization_factor=1,
-        train_set_size=100000,
+        train_set_size=0,
         test_set_size=2000,
         val_set_size=2000,
         data_path_train=None,
@@ -72,8 +72,8 @@ class DoubleWellEnergy(BaseEnergyFunction):
         self._c = c
         self.shift = shift
         if self._b == -6 and self._c == 1.0:
-            self.means = torch.tensor([-1.7, 1.7])
-            self.scales = torch.tensor([0.5, 0.5])
+            self.means = torch.tensor([-1.7, 1.7], device=self.device)
+            self.scales = torch.tensor([0.5, 0.5], device=self.device)
         else:
             raise NotImplementedError
         
@@ -100,8 +100,8 @@ class DoubleWellEnergy(BaseEnergyFunction):
         # p ∝ exp(-E/kT)
         # For relative populations, we can set kT = 1 (temperature scaling is handled in the energy function)
         # Get energies at the minima
-        energy_min1 = self.energy(torch.tensor([[-1.7, 0]]))
-        energy_min2 = self.energy(torch.tensor([[1.7, 0]]))
+        energy_min1 = self.energy(torch.tensor([[-1.7, 0]], device=self.device))
+        energy_min2 = self.energy(torch.tensor([[1.7, 0]], device=self.device))
         # Calculate Boltzmann factors
         boltzmann_factor_min1 = torch.exp(-energy_min1)
         boltzmann_factor_min2 = torch.exp(-energy_min2)

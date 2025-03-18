@@ -19,77 +19,6 @@ configs = [
         "experiment=dw_idem",
     ],
     # [
-    #     "Hessian and",
-    #     "energy.hessian_weight=1.0",
-    #     "energy.hessian_eigenvalue_penalty=and",
-    #     "energy.energy_weight=0.0",
-    #     "energy.force_weight=0.0",
-    # ],
-    # [
-    #     "Hessian sigmoid",
-    #     "energy.hessian_weight=1.0",
-    #     "energy.hessian_eigenvalue_penalty=sigmoid",
-    #     "energy.energy_weight=0.0",
-    #     "energy.force_weight=0.0",
-    #     "energy.hessian_scale=1.0",
-    # ],
-    # [
-    #     "Hessian sigmoid_individual",
-    #     "energy.hessian_weight=1.0",
-    #     "energy.hessian_eigenvalue_penalty=sigmoid_individual",
-    #     "energy.energy_weight=0.0",
-    #     "energy.force_weight=0.0",
-    #     "energy.hessian_scale=1.0",
-    # ],
-    # [
-    #     "Hessian tanh",
-    #     "energy.hessian_weight=1.0",
-    #     "energy.hessian_eigenvalue_penalty=tanh",
-    #     "energy.energy_weight=0.0",
-    #     "energy.force_weight=0.0",
-    #     "energy.hessian_scale=1.0",
-    # ],
-    # [
-    #     "Hessian and, Scale 1",
-    #     "energy.hessian_weight=1.0",
-    #     "energy.hessian_eigenvalue_penalty=and",
-    #     "energy.energy_weight=0.0",
-    #     "energy.force_weight=0.0",
-    #     "energy.hessian_scale=1.0",
-    # ],
-    # [
-    #     "Hessian and, Scale 0.1",
-    #     "energy.hessian_weight=1.0",
-    #     "energy.hessian_eigenvalue_penalty=and",
-    #     "energy.energy_weight=0.0",
-    #     "energy.force_weight=0.0",
-    #     "energy.hessian_scale=0.1",
-    # ],
-    # [
-    #     "Force L2 Tanh",
-    #     "energy.hessian_weight=0.0",
-    #     "energy.energy_weight=0.0",
-    #     "energy.force_weight=1.0",
-    #     "energy.force_activation=tanh",
-    # ],
-    # [
-    #     "Force L2 Tanh, Scale 0.1",
-    #     "energy.hessian_weight=0.0",
-    #     "energy.energy_weight=0.0",
-    #     "energy.force_weight=1.0",
-    #     "energy.force_activation=tanh",
-    #     "energy.force_scale=0.1",
-    # ],
-    # [
-    #     "Force L2 Tanh AND Hessian",
-    #     "energy.hessian_weight=1.0",
-    #     "energy.hessian_eigenvalue_penalty=and",
-    #     "energy.energy_weight=0.0",
-    #     "energy.force_weight=1.0",
-    #     "energy.force_activation=tanh",
-    #     "energy.term_aggr=1mmultfh",
-    # ],
-    # [
     #     "Force L2 Tanh AND Hessian, 0.1x1x scale",
     #     "energy.hessian_weight=1.0",
     #     "energy.hessian_eigenvalue_penalty=and",
@@ -166,6 +95,36 @@ configs = [
     #     "energy.hessian_scale=0.1",
     # ],
     [
+        "GAD unstitched",
+        "experiment=dw_idem_gad",
+        "energy.stitching=False",
+        "energy.clip_energy=False",
+    ],
+    [
+        "GAD stitched",
+        "experiment=dw_idem_gad",
+        "energy.stitching=True",
+        "energy.clip_energy=False",
+    ],
+    [
+        "GAD stitched and clipped",
+        "experiment=dw_idem_gad",
+        "energy.stitching=True",
+        "energy.clip_energy=True",
+        "energy.gad_offset=50",
+        "energy.clamp_min=0",
+        "energy.clamp_max=null",
+    ],
+    [
+        "GAD stitched and offset",
+        "experiment=dw_idem_gad",
+        "energy.stitching=True",
+        "energy.clip_energy=True",
+        "energy.gad_offset=50",
+        "energy.clamp_min=-1000",
+        "energy.clamp_max=null",
+    ],
+    [
         "Pseudopotential for DEM",
     ],
 ]
@@ -227,19 +186,16 @@ for config in configs:
 
     # Plot contour with samples, minima, and transition state
     # Get samples from the energy function
-    samples = energy_function.sample((1000,))
-    print(f"samples: min={samples.min():.1e}, max={samples.max():.1e}")
-    print(
-        f"samples: abs min={samples.abs().min():.1e}, abs max={samples.abs().max():.1e}"
-    )
+    samples = energy_function.setup_val_set()
     # Get minima and transition states
     minima = energy_function.get_minima()
     transition_states = energy_function.get_true_transition_states()
     # Create the contour plot with samples
     img = energy_function.get_single_dataset_fig(
         samples=samples,
-        name=f"{name} with samples and critical points",
+        name=f"{name}",
         plot_minima=True,
+        plot_transition_states=True,
         grid_width_n_points=800,
         plot_style="contours",
         # plot_sample_kwargs={"color": "m", "marker": ".", "alpha": 0.5, "s": 10},

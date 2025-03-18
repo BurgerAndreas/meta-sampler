@@ -3,7 +3,7 @@ defaults:
   - gad_default
   - _self_
 
-_target_: dem.energies.double_well_energy_gad.DoubleWellEnergyGAD
+_target_: dem.energies.double_well_pseudoenergy.DoubleWellPseudoEnergy
 
 device: ${trainer.accelerator}
 
@@ -16,6 +16,7 @@ data_normalization_factor: 1.0
 is_molecule: False
 
 # GAD parameters
+term_aggr: gad
 gad_offset: 50.0
 clip_energy: True
 stitching: True
@@ -26,3 +27,7 @@ clamp_max: null
 temperature: 1.0
 
 override_energy_dummy: 1.0
+
+train_set_size: 0 # 100000
+test_set_size: 2000
+val_set_size: 2000 

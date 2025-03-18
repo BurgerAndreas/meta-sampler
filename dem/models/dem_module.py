@@ -387,7 +387,7 @@ class DEMLitModule(LightningModule):
         self.generate_constrained_samples = generate_constrained_samples
         self.constrained_score_norm_target = constrained_score_norm_target
         self.force_grad = force_grad
-
+        
     def forward(self, t: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
         """Perform a forward pass through the model `self.net`.
 
@@ -1376,6 +1376,12 @@ class DEMLitModule(LightningModule):
         path2 = f"{self.energy_function.name}/samples_{self.hparams.version}_{self.num_samples_to_save}.pt"
         torch.save(final_samples, path2)
         print(f"Saving samples to {path2}")
+        
+    def on_fit_start(self):
+        """Called at the beginning of training after sanity check."""
+        wandb_logger = get_wandb_logger(self.loggers)
+        if wandb_logger:
+            self.energy_function.log_datasets(wandb_logger)
 
     def setup(self, stage: str) -> None:
         """Lightning hook that is called at the beginning of fit (train + validate), validate,
@@ -1386,6 +1392,10 @@ class DEMLitModule(LightningModule):
 
         :param stage: Either `"fit"`, `"validate"`, `"test"`, or `"predict"`.
         """
+        
+        # # log datasets
+        # wandb_logger = get_wandb_logger(self.loggers)
+        # self.energy_function.log_datasets(wandb_logger)
 
         def _grad_fxn(t, x):
             return self.clipped_grad_fxn(

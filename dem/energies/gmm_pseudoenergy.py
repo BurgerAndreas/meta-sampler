@@ -43,8 +43,9 @@ class GMMPseudoEnergy(GMMEnergy, BasePseudoEnergyFunction):
     def __init__(self, *args, **kwargs):
         # Initialize GMMEnergy base class
         print(f"Initializing GMMPseudoEnergy with kwargs: {kwargs}")
-        GMMEnergy.__init__(self, *copy.deepcopy(args), **copy.deepcopy(kwargs))
         BasePseudoEnergyFunction.__init__(self, *args, **kwargs)
+        # calls setup_val_set, setup_test_set, setup_train_set
+        GMMEnergy.__init__(self, *copy.deepcopy(args), **copy.deepcopy(kwargs))
 
         self._is_molecule = False
 
@@ -115,7 +116,6 @@ class GMMPseudoEnergy(GMMEnergy, BasePseudoEnergyFunction):
             return self.gmm.log_prob(samples), {}
         return self.gmm.log_prob(samples)
 
-    # TODO: remove?
     def log_on_epoch_end(self, *args, **kwargs):
 
         # First plot the original GMM energy surface
@@ -169,76 +169,6 @@ class GMMPseudoEnergy(GMMEnergy, BasePseudoEnergyFunction):
                 # del fig, ax, img
                 print(f"Plotted pseudo-energy surface at epoch {self.curr_epoch}")
 
-    def get_single_dataset_fig(
-        self,
-        samples,
-        name,
-        n_contour_levels=50,
-        plotting_bounds=(-1.4 * 40, 1.4 * 40),
-        plot_minima=False,
-        grid_width_n_points=200,
-        plot_style="contours",
-        with_legend=False,
-        plot_prob_kwargs={},
-        plot_sample_kwargs={},
-        colorbar=False,
-        quantity=False,
-    ):
-        """Creates visualization of samples against GMM contours.
-        Used in train.py for sample visualization.
-
-        Args:
-            samples (torch.Tensor): Samples to plot
-            name (str): Title for plot
-            plotting_bounds (tuple, optional): Plot bounds. Defaults to (-1.4*40, 1.4*40)
-            plot_minima (bool, optional): Whether to plot the Gaussian centers of the potential. Defaults to False.
-            grid_width_n_points (int, optional): Number of points along each dimension for the grid. Defaults to 200.
-            plot_style (str, optional): Plot style. Defaults to "contours".
-            with_legend (bool, optional): Whether to show the legend. Defaults to False.
-            plot_prob_kwargs (dict, optional): Keyword arguments for the plot function. Defaults to {}.
-            plot_sample_kwargs (dict, optional): Keyword arguments for the plot function. Defaults to {}.
-            colorbar (bool, optional): Whether to show the colorscale of the plot. Defaults to False.
-            quantity (bool, optional): Whether to exponentiate the log probability. Defaults to False.
-
-        Returns:
-            numpy.ndarray: Plot as image array
-        """
-        plt.close()
-        fig, ax = plt.subplots(1, 1, figsize=(8, 8))
-
-        self.gmm.to("cpu")
-
-        plot_fn(
-            self.log_prob,
-            bounds=plotting_bounds,
-            ax=ax,
-            plot_style=plot_style,
-            n_contour_levels=n_contour_levels,
-            grid_width_n_points=grid_width_n_points,
-            plot_kwargs=plot_prob_kwargs,
-            colorbar=colorbar,
-            quantity=quantity,
-        )
-        if samples is not None:
-            samples = samples.to("cpu")
-            plot_marginal_pair(
-                samples, ax=ax, bounds=plotting_bounds, plot_kwargs=plot_sample_kwargs
-            )
-        if name is not None:
-            ax.set_title(f"{name}")
-
-        if plot_minima:
-            means = self.gmm.distribution.component_distribution.loc
-            ax.scatter(*means.detach().cpu().T, color="red", marker="x")
-            # ax.legend()
-
-        self.gmm.to(self.device)
-
-        if with_legend:
-            ax.legend()
-
-        return fig_to_image(fig)
-
     def log_samples(
         self,
         samples: torch.Tensor,
@@ -289,7 +219,7 @@ class GMMPseudoEnergy(GMMEnergy, BasePseudoEnergyFunction):
     ###########################################################################
     # Ground truth transition states
     ###########################################################################
-
+    
     def find_transition_boundaries(self, grid_size=200, bounds=(-56, 56)):
         """Find candidate transition points by detecting boundary cells.
 
@@ -434,12 +364,11 @@ class GMMPseudoEnergy(GMMEnergy, BasePseudoEnergyFunction):
             "saddle_boundary_ratio": accuracy,
         }
 
-    def get_true_transition_states(self, grid_size=200, bounds=(-56, 56)):
+    def get_true_transition_states(self, grid_size=200):
         """Find saddle points using scipy.optimize.root and Hessian eigenvalue analysis.
 
         Args:
             grid_size (int, optional): Number of points along each dimension
-            bounds (tuple, optional): (min, max) bounds for grid
 
         Returns:
             torch.Tensor: Coordinates of identified saddle points
@@ -496,7 +425,16 @@ class GMMPseudoEnergy(GMMEnergy, BasePseudoEnergyFunction):
         np.save(fname, self.transition_points.detach().cpu().numpy())
         print(f"Found {len(self.transition_points)} transition states")
         return self.transition_points
-
+    
+    def setup_val_set(self):
+        return self._setup_dataset(self.val_set_size)
+    
+    def setup_test_set(self):
+        return self._setup_dataset(self.test_set_size)
+    
+    def setup_train_set(self):
+        return self._setup_dataset(self.train_set_size)
+    
 
 def find_stationary_point(initial_guess, gmm, method="hybr"):
     """

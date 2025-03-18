@@ -3,7 +3,7 @@ defaults:
   - gad_default
   - _self_
 
-_target_: dem.energies.gmm_energy_gad.GMMGADEnergy
+_target_: dem.energies.gmm_pseudoenergy.GMMPseudoEnergy
 
 dimensionality: 2
 n_mixes: 40
@@ -19,6 +19,7 @@ data_normalization_factor: 50
 data_path_train: null
 
 # GAD parameters
+term_aggr: gad
 gad_offset: 50.0
 clip_energy: True
 stitching: True
@@ -27,3 +28,7 @@ div_epsilon: 1e-6
 clamp_min: 0
 clamp_max: null
 temperature: 1.0
+
+train_set_size: 0 # 100000
+test_set_size: 2000
+val_set_size: 2000

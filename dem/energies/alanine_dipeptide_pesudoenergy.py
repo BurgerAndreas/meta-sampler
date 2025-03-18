@@ -55,7 +55,7 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
         use_vmap=True,
         batch_size=1,
         #
-        train_set_size=100000,
+        train_set_size=0,
         test_set_size=2000,
         val_set_size=2000,
     ):
@@ -143,6 +143,7 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
         """Returns a test set of 2D points (dihedral angles).
         Is a 2d grid of points in the range [-pi, pi] x [-pi, pi].
         """
+        raise NotImplementedError
         samples = torch.linspace(-np.pi, np.pi, self.test_set_size, device=self.device)
         samples = torch.cartesian_prod(samples, samples)
         return samples
@@ -151,6 +152,7 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
         """Returns a training set of 2D points (dihedral angles).
         Is a random set of 2D points in the range [-pi, pi] x [-pi, pi].
         """
+        raise NotImplementedError
         samples = (
             torch.rand(self.train_set_size, 2, device=self.device) * 2 * np.pi - np.pi
         )
@@ -161,6 +163,7 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
         """Returns a validation set of 2D points (dihedral angles).
         Is a 2d grid of points in the range [-pi, pi] x [-pi, pi].
         """
+        raise NotImplementedError
         samples = torch.linspace(-np.pi, np.pi, self.val_set_size, device=self.device)
         samples = torch.cartesian_prod(samples, samples)
         return samples

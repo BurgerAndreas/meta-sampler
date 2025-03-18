@@ -42,8 +42,8 @@ class DoubleWellPseudoEnergy(DoubleWellEnergy, BasePseudoEnergyFunction):
     def __init__(self, *args, **kwargs):
         # Initialize DoubleWellEnergy base class
         print(f"Initializing DoubleWellPseudoEnergy with kwargs: {kwargs}")
-        DoubleWellEnergy.__init__(self, *copy.deepcopy(args), **copy.deepcopy(kwargs))
         BasePseudoEnergyFunction.__init__(self, *args, **kwargs)
+        DoubleWellEnergy.__init__(self, *copy.deepcopy(args), **copy.deepcopy(kwargs))
 
         self._is_molecule = False
 
@@ -92,3 +92,24 @@ class DoubleWellPseudoEnergy(DoubleWellEnergy, BasePseudoEnergyFunction):
         if return_aux_output:
             return pseudo_log_prob, aux_output
         return pseudo_log_prob
+    
+    def sample(self, shape):
+        raise NotImplementedError
+        dim1_samples = self.sample_dimension(shape, first_dim=True)
+        # dim2_samples = torch.distributions.Normal(
+        #     torch.tensor(0.0).to(dim1_samples.device),
+        #     torch.tensor(1.0).to(dim1_samples.device),
+        # ).sample(shape)
+        dim2_samples = self.sample_dimension(shape, first_dim=False)
+        return torch.stack([dim1_samples, dim2_samples], dim=-1)
+    
+    def setup_val_set(self):
+        return self._setup_dataset(self.val_set_size)
+    
+    def setup_test_set(self):
+        return self._setup_dataset(self.test_set_size)
+    
+    def setup_train_set(self):
+        return self._setup_dataset(self.train_set_size)
+    
+    

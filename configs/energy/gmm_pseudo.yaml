@@ -31,3 +31,7 @@ hessian_eigenvalue_penalty: 'and'
 hessian_scale: 1.0
 term_aggr: '1mmultfh'
 temperature: 1.0
+
+train_set_size: 0 # 100000
+test_set_size: 2000
+val_set_size: 2000

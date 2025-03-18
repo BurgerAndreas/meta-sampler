@@ -11,3 +11,7 @@ clamp_max: null
 
 # dummy for hydra testing
 override_energy_dummy: 0.0
+
+train_set_size: 0 # 100000
+test_set_size: 2000
+val_set_size: 2000

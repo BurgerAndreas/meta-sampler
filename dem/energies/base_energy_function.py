@@ -78,8 +78,79 @@ class BaseEnergyFunction(ABC):
         self._test_set = self.setup_test_set()
         self._val_set = self.setup_val_set()
         self._train_set = None
-
         self.name = self.__class__.__name__
+        
+    def log_datasets(
+        self,
+        wandb_logger: Optional[WandbLogger] = None,
+        n_contour_levels: int = 50,
+        plotting_bounds: Optional[tuple] = None,
+        plot_minima: bool = True,
+        grid_width_n_points: int = 200,
+        prefix: str = "",
+        return_fig: bool = False,
+    ) -> None:
+        """Logs visualizations of test, validation, and training datasets.
+
+        Args:
+            wandb_logger (WandbLogger, optional): Logger for visualizations. Defaults to None.
+            n_contour_levels (int, optional): Number of contour levels for plots. Defaults to 50.
+            plotting_bounds (tuple, optional): Plot bounds. Defaults to None.
+            plot_minima (bool, optional): Whether to plot minima. Defaults to True.
+            grid_width_n_points (int, optional): Grid width for plotting. Defaults to 200.
+            prefix (str, optional): Prefix for logged metrics. Defaults to "".
+        """
+        if wandb_logger is None and not return_fig:
+            return
+
+        if len(prefix) > 0 and prefix[-1] != "/":
+            prefix += "/"
+
+        # Plot test set if available
+        if self.test_set is not None:
+            test_fig = self.get_single_dataset_fig(
+                self.test_set,
+                name="Test Set",
+                n_contour_levels=n_contour_levels,
+                plotting_bounds=plotting_bounds,
+                plot_minima=plot_minima,
+                grid_width_n_points=grid_width_n_points,
+            )
+            wandb_logger.log_image(
+                f"{prefix}test_set", [test_fig]
+            )
+
+        # Plot validation set if available
+        if self.val_set is not None:
+            val_fig = self.get_single_dataset_fig(
+                self.val_set,
+                name="Validation Set",
+                n_contour_levels=n_contour_levels,
+                plotting_bounds=plotting_bounds,
+                plot_minima=plot_minima,
+                grid_width_n_points=grid_width_n_points,
+            )
+            wandb_logger.log_image(
+                f"{prefix}val_set", [val_fig]
+            )
+
+        # Plot training set if available
+        if self.train_set is not None:
+            train_fig = self.get_single_dataset_fig(
+                self.train_set,
+                name="Training Set",
+                n_contour_levels=n_contour_levels,
+                plotting_bounds=plotting_bounds,
+                plot_minima=plot_minima,
+                grid_width_n_points=grid_width_n_points,
+            )
+            wandb_logger.log_image(
+                f"{prefix}train_set", [train_fig]
+            )
+        # if return_fig:
+        #     return fig
+        # else:
+        #     return fig_to_image(fig)
 
     def setup_test_set(self) -> Optional[torch.Tensor]:
         """Sets up the test dataset.
@@ -244,6 +315,7 @@ class BaseEnergyFunction(ABC):
         n_contour_levels=50,
         plotting_bounds=None,
         plot_minima=False,
+        plot_transition_states=False,
         grid_width_n_points=200,
         plot_style="contours",
         with_legend=False,
@@ -296,6 +368,10 @@ class BaseEnergyFunction(ABC):
             minima = self.get_minima()
             ax.scatter(*minima.detach().cpu().T, color="red", marker="x")
             # ax.legend()
+            
+        if plot_transition_states and hasattr(self, "get_true_transition_states"):
+            transition_states = self.get_true_transition_states()
+            ax.scatter(*transition_states.detach().cpu().T, color="green", marker="o")
 
         if with_legend:
             ax.legend()
@@ -1011,66 +1087,75 @@ class BaseEnergyFunction(ABC):
         return fig
 
 
-class BaseGADEnergyFunction:
+class BasePseudoEnergyFunction:
     def __init__(
         self,
-        gad_offset=100.0,
+        energy_weight=1.0,
+        force_weight=1.0,
+        forces_norm=None,
+        force_exponent=1,
+        force_exponent_eps=1e-6,
+        force_activation=None,
+        force_scale=1.0,
+        hessian_weight=1.0,
+        hessian_eigenvalue_penalty="softplus",
+        hessian_scale=10.0,
+        term_aggr="sum",
+        gad_offset=10.0,
+        clamp_min=None,
+        clamp_max=None,
+        use_vmap=True,
+        dataset_noise_scale=0.0,
+        # GAD parameters
         clip_energy=True,
         stitching=True,
         stop_grad_ev=False,
         div_epsilon=1e-12,
-        clamp_min=None,
-        clamp_max=None,
         *args,
         **kwargs,
     ):
+        self.energy_weight = energy_weight
+        self.force_weight = force_weight
+        self.forces_norm = forces_norm
+        self.force_exponent = force_exponent
+        self.force_exponent_eps = force_exponent_eps
+        self.force_activation = force_activation
+        self.force_scale = force_scale
+        self.hessian_weight = hessian_weight
+        self.hessian_eigenvalue_penalty = hessian_eigenvalue_penalty
+        self.hessian_scale = hessian_scale
+        self.use_vmap = use_vmap
+        self.term_aggr = term_aggr
         self.gad_offset = gad_offset
+        self.clamp_min = float(clamp_min) if clamp_min is not None else None
+        self.clamp_max = float(clamp_max) if clamp_max is not None else None
+        self.dataset_noise_scale = dataset_noise_scale
+        # GAD parameters
         self.clip_energy = clip_energy
         self.stitching = stitching
         self.stop_grad_ev = stop_grad_ev
         self.div_epsilon = div_epsilon
-        self.clamp_min = float(clamp_min) if clamp_min is not None else None
-        self.clamp_max = float(clamp_max) if clamp_max is not None else None
-
-    def compute_gad_potential(self, get_energy, samples):
+        
+        self.transition_points = None
+        
+    def compute_pseudo_potential(self, get_energy, samples):
+        # TODO: clean up this mess
+        if self.term_aggr.lower() == "gad":
+            return self._compute_gad_potential(get_energy, samples)
+        else:
+            return self._compute_pseudo_potential(get_energy, samples)
+        
+    def _compute_gad_potential(self, get_energy, samples):
         #####################################################################
         # Compute energy
         energy = get_energy(samples)
 
         #####################################################################
         # Compute forces
-
-        # Use functorch.grad to compute forces
-        try:
-            # if len(samples.shape) == 1:
-            #     forces = torch.func.grad(get_energy)(samples)
-            # else:
-            forces = torch.vmap(torch.func.grad(get_energy))(samples)
-        except Exception as e:
-            print(f"Samples: {samples}")
-            print(f"Energy: {energy}")
-            with open("gad_nan_log.txt", "a") as f:
-                f.write(traceback.format_exc())
-                f.write(f"Epoch: {self.curr_epoch}\n")
-                f.write(f"Samples: {samples}\n")
-                f.write(f"Energy: {energy}\n")
-                f.write("-" * 80 + "\n")
-            raise e
+        forces = torch.vmap(torch.func.grad(get_energy))(samples)
 
         #####################################################################
         # Compute two smallest eigenvalues of Hessian
-        # if len(samples.shape) == 1:
-        #     # Handle single sample
-        #     hessian = torch.func.hessian(get_energy)(samples)
-        #     eigenvalues, eigenvectors = torch.linalg.eigh(hessian)
-        #     # Sort eigenvalues and corresponding eigenvectors
-        #     sorted_indices = torch.argsort(eigenvalues)
-        #     eigenvalues = eigenvalues[sorted_indices]
-        #     eigenvectors = eigenvectors[:, sorted_indices]
-        #     # Get 2 smallest eigenvalues and their eigenvectors
-        #     smallest_eigenvalues = eigenvalues[:2]
-        #     smallest_eigenvectors = eigenvectors[:, :2]
-        # else:
         # Handle batched inputs using vmap # [B, D, D]
         batched_hessian = torch.vmap(torch.func.hessian(get_energy))(samples)
         # Get eigenvalues and eigenvectors for each sample in batch
@@ -1154,48 +1239,7 @@ class BaseGADEnergyFunction:
         }
         return pseudo_energy, aux_output
 
-
-class BasePseudoEnergyFunction:
-    def __init__(
-        self,
-        energy_weight=1.0,
-        force_weight=1.0,
-        forces_norm=None,
-        force_exponent=1,
-        force_exponent_eps=1e-6,
-        force_activation=None,
-        force_scale=1.0,
-        hessian_weight=1.0,
-        hessian_eigenvalue_penalty="softplus",
-        hessian_scale=10.0,
-        term_aggr="sum",
-        gad_offset=10.0,
-        clamp_min=None,
-        clamp_max=None,
-        use_vmap=True,
-        *args,
-        **kwargs,
-    ):
-        self.energy_weight = energy_weight
-        self.force_weight = force_weight
-        self.forces_norm = forces_norm
-        self.force_exponent = force_exponent
-        self.force_exponent_eps = force_exponent_eps
-        self.force_activation = force_activation
-        self.force_scale = force_scale
-        self.hessian_weight = hessian_weight
-        self.hessian_eigenvalue_penalty = hessian_eigenvalue_penalty
-        self.hessian_scale = hessian_scale
-        self.use_vmap = use_vmap
-        self.term_aggr = term_aggr
-        self.gad_offset = gad_offset
-        self.clamp_min = float(clamp_min) if clamp_min is not None else None
-        self.clamp_max = float(clamp_max) if clamp_max is not None else None
-        
-    # def log_prob(
-    #     self, samples: torch.Tensor, return_aux_output: bool = False
-    # ) -> torch.Tensor:
-    def compute_pseudo_potential(self, get_energy, samples):
+    def _compute_pseudo_potential(self, get_energy, samples):
         """Compute unnormalized pseudo-energy.
 
         Args:
@@ -1451,3 +1495,133 @@ class BasePseudoEnergyFunction:
             "hessian_loss": hessian_loss,
         }
         return pseudo_energy, aux_output
+
+    def _setup_dataset(self, n_samples):
+        """Return the true transition states as the test set.
+        
+        Duplicates entries to match the number of requested samples.
+        Optionally adds a small amount of Gaussian noise to prevent exact duplicates.
+        """
+        # Get the true transition states
+        transition_states = self.get_true_transition_states()
+        
+        # If no transition states found, return empty tensor
+        if len(transition_states) == 0:
+            return torch.tensor([], device=self.device)
+            
+        # Calculate how many times to repeat each transition state
+        n_states = len(transition_states)
+        repeats = max(1, n_samples // n_states)
+        
+        # Duplicate the transition states to match requested sample count
+        duplicated_states = transition_states.repeat(repeats, 1)
+        
+        # Optionally add small Gaussian noise to prevent exact duplicates
+        if self.dataset_noise_scale > 0:
+            noise = torch.randn_like(duplicated_states) * self.dataset_noise_scale
+            duplicated_states = duplicated_states + noise
+            
+        # Trim to exact number of samples if needed
+        duplicated_states = duplicated_states[:n_samples]
+            
+        return duplicated_states
+    
+    def setup_val_set(self):
+        return self._setup_dataset(self.val_set_size)
+    
+    def setup_test_set(self):
+        return self._setup_dataset(self.test_set_size)
+    
+    def setup_train_set(self):
+        return self._setup_dataset(self.train_set_size)
+    
+    
+    # def find_stationary_point(self, initial_guess, method="hybr"):
+    #     """
+    #     Solve grad_neg_log_prob(x) = 0 starting from initial_guess.
+
+    #     Args:
+    #         initial_guess: np.ndarray of shape (dim,)
+    #         gmm: instance of GMM class
+    #         method: solver method (e.g., 'hybr', 'lm', etc.)
+    #     Returns:
+    #         result: scipy.optimize.OptimizeResult object
+    #     """
+    #     # Convert initial guess to numpy if it's a torch tensor
+    #     if isinstance(initial_guess, torch.Tensor):
+    #         initial_guess = initial_guess.detach().cpu().numpy()
+
+    #     result = scipy.optimize.root(
+    #         fun=grad_neg_log_prob, x0=initial_guess, args=(self,), method=method
+    #     )
+    #     return result
+    
+    # def get_true_transition_states(self, grid_size=200):
+    #     """Find saddle points using scipy.optimize.root and Hessian eigenvalue analysis.
+
+    #     Args:
+    #         grid_size (int, optional): Number of points along each dimension
+    #         bounds (tuple, optional): (min, max) bounds for grid
+
+    #     Returns:
+    #         torch.Tensor: Coordinates of identified saddle points
+    #     """
+    #     if self.transition_points is not None:
+    #         return self.transition_points
+
+    #     fname = f"dem_outputs/transition_points_gmm{self.gmm.n_mixes}.npy"
+    #     if os.path.exists(fname):
+    #         self.transition_points = torch.tensor(np.load(fname), device=self.device)
+    #         # print(f"Loaded transition points from {fname}")
+    #         return self.transition_points
+        
+    #     starting_points = torch.meshgrid(
+    #         torch.linspace(self.plotting_bounds[0], self.plotting_bounds[1], grid_size),
+    #         torch.linspace(self.plotting_bounds[0], self.plotting_bounds[1], grid_size),
+    #     )
+    #     starting_points = starting_points.reshape(-1, 2)
+    # for each starting point, find the stationary point
+    #     transition_points = []
+    #     for point in starting_points:
+    #         result = self.find_stationary_point(point)
+    #         if result.success:
+    #             transition_points.append(result.x)
+    #     transition_points = torch.tensor(transition_points, device=self.device)
+        
+    #     # Validate that this is indeed a saddle point by checking:
+    #     # 1. The gradient (force) should be close to zero
+    #     # 2. The Hessian should have exactly one negative eigenvalue
+        
+    #     # Set up for gradient and Hessian computation
+    #     x = transition_state.clone().requires_grad_(True)
+        
+    #     # Compute the energy (negative log probability)
+    #     def neg_log_prob(x):
+    #         return -self.log_prob(x)
+        
+    #     # Compute gradient (force)
+    #     grad = torch.func.grad(neg_log_prob)(x)
+        
+    #     # Compute Hessian
+    #     hessian = torch.func.hessian(neg_log_prob)(x)
+        
+    #     # Check eigenvalues
+    #     eigenvals, _ = torch.linalg.eigh(hessian)
+        
+    #     # Verify this is a saddle point (index-1)
+    #     grad_norm = grad.norm().item()
+    #     n_negative = torch.sum(eigenvals < -1e-6).item()
+        
+    #     print(f"Transition state: {transition_state.tolist()}")
+    #     print(f"Gradient norm: {grad_norm:.6f}")
+    #     print(f"Hessian eigenvalues: {eigenvals.tolist()}")
+    #     print(f"Number of negative eigenvalues: {n_negative}")
+        
+    #     # Store the validated transition state
+    #     self.transition_points = transition_state
+        
+    #     # Save to file for future use
+    #     os.makedirs("dem_outputs", exist_ok=True)
+    #     np.save(fname, self.transition_points.detach().cpu().numpy())
+        
+    #     return self.transition_points

@@ -55,7 +55,7 @@ class GMMEnergy(BaseEnergyFunction):
         plot_samples_epoch_period=5,
         should_unnormalize=False,
         data_normalization_factor=50,
-        train_set_size=100000,
+        train_set_size=0,
         test_set_size=2000,
         val_set_size=2000,
         data_path_train=None,
