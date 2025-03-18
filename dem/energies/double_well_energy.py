@@ -4,7 +4,8 @@ from typing import Callable
 from dem.energies.base_energy_function import BaseEnergyFunction
 import matplotlib.pyplot as plt
 import itertools
-
+from typing import Optional, Dict, Any, Tuple
+from dem.utils.plotting import plot_contours, plot_marginal_pair
 # https://github.com/lollcat/fab-torch/blob/master/fab/target_distributions/double_well.py
 
 
@@ -41,7 +42,7 @@ class DoubleWellEnergy(BaseEnergyFunction):
         a=-0.5,
         b=-6.0,
         c=1.0,
-        d=0.5,  # shift the minima/transition state in the first dimension (x direction)
+        shift=0.5,  # shift the minima/transition state in the first dimension (x direction)
         device="cpu",
         is_molecule=False,
         true_expectation_estimation_n_samples=int(1e5),
@@ -69,15 +70,16 @@ class DoubleWellEnergy(BaseEnergyFunction):
         self._a = a
         self._b = b
         self._c = c
-        self._d = d
-        if self._a == -0.5 and self._b == -6 and self._c == 1.0:
-            # Define proposal params for rejection sampling
-            self.component_mix = torch.tensor([0.2, 0.8], device=device)
-            self.means = torch.tensor([-1.7 - self._d, 1.7 - self._d], device=device)
-            self.scales = torch.tensor([0.5, 0.5], device=device)
+        self.shift = shift
+        if self._b == -6 and self._c == 1.0:
+            self.means = torch.tensor([-1.7, 1.7])
+            self.scales = torch.tensor([0.5, 0.5])
         else:
             raise NotImplementedError
-
+        
+        self.temperature = temperature # necessary to call log_prob and energy
+        self.component_mix = self.compute_mc_component_mix()
+        
         # this will setup test, train, val sets
         super().__init__(
             dimensionality=dimensionality,
@@ -91,6 +93,23 @@ class DoubleWellEnergy(BaseEnergyFunction):
             data_path_train=data_path_train,
             temperature=temperature,
         )
+        
+    def compute_mc_component_mix(self):
+        # Calculate component_mix based on bias parameter a
+        # Calculate relative populations using Boltzmann distribution
+        # p ∝ exp(-E/kT)
+        # For relative populations, we can set kT = 1 (temperature scaling is handled in the energy function)
+        # Get energies at the minima
+        energy_min1 = self.energy(torch.tensor([[-1.7, 0]]))
+        energy_min2 = self.energy(torch.tensor([[1.7, 0]]))
+        # Calculate Boltzmann factors
+        boltzmann_factor_min1 = torch.exp(-energy_min1)
+        boltzmann_factor_min2 = torch.exp(-energy_min2)
+        # Convert to mixture weights that sum to 1 = relative populations
+        total_factor = boltzmann_factor_min1 + boltzmann_factor_min2
+        population_min1 = boltzmann_factor_min1 / total_factor
+        population_min2 = boltzmann_factor_min2 / total_factor
+        return torch.tensor([population_min1, population_min2], device=self.device)
 
     def move_to_device(self, device):
         self.component_mix = self.component_mix.to(device)
@@ -119,7 +138,7 @@ class DoubleWellEnergy(BaseEnergyFunction):
         # compare to Luca's example:
         # dim1 = 0.25 * (x[0]**2 - 1) ** 2 = 0.25 * x[0]**4 - 0.5 * x[0]**2 + 0.25
         # dim2 = 3 * x[1]**2
-        x_1 = x_1 + self._d
+        x_1 = x_1 + self.shift
         return self._a * x_1 + self._b * x_1.pow(2) + self._c * x_1.pow(4)
 
     def _energy_dim_2(self, x_2):
@@ -146,40 +165,35 @@ class DoubleWellEnergy(BaseEnergyFunction):
     def sample_first_dimension(self, shape):
         assert len(shape) == 1
         # see fab.sampling_methods.rejection_sampling_test.py
-        if self._a == -0.5 and self._b == -6 and self._c == 1.0:
-            # Define target.
-            def target_log_prob(x):
-                x = x + self._d
-                return -(x**4) + 6 * x**2 + 1 / 2 * x
+        # Define target.
+        def target_log_prob(x):
+            x = x + self.shift
+            return -(self._a * x + self._b * x.pow(2) + self._c * x.pow(4))
+            
+        TARGET_Z = 11784.50927
 
-            TARGET_Z = 11784.50927
+        # Define proposal
+        mix = torch.distributions.Categorical(self.component_mix)
+        com = torch.distributions.Normal(self.means, self.scales)
 
-            # Define proposal
-            mix = torch.distributions.Categorical(self.component_mix)
-            com = torch.distributions.Normal(self.means, self.scales)
+        proposal = torch.distributions.MixtureSameFamily(
+            mixture_distribution=mix, component_distribution=com
+        )
 
-            proposal = torch.distributions.MixtureSameFamily(
-                mixture_distribution=mix, component_distribution=com
-            )
+        k = TARGET_Z * 3
 
-            k = TARGET_Z * 3
-
-            samples = rejection_sampling(shape[0], proposal, target_log_prob, k)
-            return samples
-        else:
-            raise NotImplementedError
+        samples = rejection_sampling(shape[0], proposal, target_log_prob, k)
+        return samples
 
     def sample(self, shape):
-        if self._a == -0.5 and self._b == -6 and self._c == 1.0:
-            dim1_samples = self.sample_first_dimension(shape)
-            # mean and std of the second dimension
-            dim2_samples = torch.distributions.Normal(
-                torch.tensor(0.0).to(dim1_samples.device),
-                torch.tensor(1.0).to(dim1_samples.device),
-            ).sample(shape)
-            return torch.stack([dim1_samples, dim2_samples], dim=-1)
-        else:
-            raise NotImplementedError
+        dim1_samples = self.sample_first_dimension(shape)
+        # mean and std of the second dimension
+        dim2_samples = torch.distributions.Normal(
+            torch.tensor(0.0).to(dim1_samples.device),
+            torch.tensor(1.0).to(dim1_samples.device),
+        ).sample(shape)
+        # dim2_samples = self.sample_first_dimension(shape)
+        return torch.stack([dim1_samples, dim2_samples], dim=-1)
 
     @property
     def log_Z_2D(self):
@@ -196,11 +210,11 @@ class DoubleWellEnergy(BaseEnergyFunction):
 
     def get_minima(self):
         return torch.tensor(
-            [[-1.7 - self._d, 0.0], [1.7 - self._d, 0.0]], device=self.device
+            [[-1.7 - self.shift, 0.0], [1.7 - self.shift, 0.0]], device=self.device
         )
 
     def get_true_transition_states(self):
-        return torch.tensor([[-self._d, 0.0]], device=self.device)
+        return torch.tensor([[-self.shift, 0.0]], device=self.device)
 
     def setup_test_set(self):
         """Sets up test dataset by sampling from GMM.
@@ -252,22 +266,37 @@ if __name__ == "__main__":
 
     target = DoubleWellEnergy(2)
 
-    x_linspace = torch.linspace(-4, 4, 200)
+    # x_linspace = torch.linspace(-4, 4, 200)
 
-    Z_dim_1 = 11784.50927
-    samples = target.sample((10000,))
-    p_1 = torch.exp(-target._energy_dim_1(x_linspace))
-    # plot first dimension vs normalised log prob
-    plt.plot(x_linspace, p_1 / Z_dim_1, label="p_1 normalised")
-    plt.hist(samples[:, 0], density=True, bins=100, label="sample density")
-    plt.legend()
-    plt.show()
+    # Z_dim_1 = 11784.50927
+    # samples = target.sample((10000,))
+    # p_1 = torch.exp(-target._energy_dim_1(x_linspace))
+    # # plot first dimension vs normalised log prob
+    # plt.plot(x_linspace, p_1 / Z_dim_1, label="p_1 normalised")
+    # plt.hist(samples[:, 0], density=True, bins=100, label="sample density")
+    # plt.legend()
+    # plt.show()
 
-    # Now dimension 2.
-    Z_dim_2 = (2 * torch.pi) ** 0.5
-    p_2 = torch.exp(-target._energy_dim_2(x_linspace))
-    # plot first dimension vs normalised log prob
-    plt.plot(x_linspace, p_2 / Z_dim_2, label="p_2 normalised")
-    plt.hist(samples[:, 1], density=True, bins=100, label="sample density")
-    plt.legend()
-    plt.show()
+    # # Now dimension 2.
+    # Z_dim_2 = (2 * torch.pi) ** 0.5
+    # p_2 = torch.exp(-target._energy_dim_2(x_linspace))
+    # # plot first dimension vs normalised log prob
+    # plt.plot(x_linspace, p_2 / Z_dim_2, label="p_2 normalised")
+    # plt.hist(samples[:, 1], density=True, bins=100, label="sample density")
+    # plt.legend()
+    # plt.show()
+    
+    plt.close()
+    fig, ax = plt.subplots()
+    plot_contours(target.log_prob, bounds=(-4, 4), grid_width_n_points=200, n_contour_levels=100, ax=ax)
+    samples = target.sample((1000,))
+    plot_marginal_pair(samples, bounds=(-4, 4), marginal_dims=(0, 1), ax=ax)
+    ax.set_title("samples")
+    # plot minima
+    minima = target.get_minima()
+    ax.scatter(minima[:, 0].cpu(), minima[:, 1].cpu(), color='black', marker='x', s=100)
+    # plot transition states
+    transition_states = target.get_true_transition_states()
+    ax.scatter(transition_states[:, 0].cpu(), transition_states[:, 1].cpu(), color='red', marker='x', s=100)
+    plt.savefig("double_well_potential.png")
+    print("saved figure to double_well_potential.png")

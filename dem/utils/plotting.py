@@ -159,7 +159,7 @@ def plot_contours(
         x_points[:, 1].reshape((grid_width_n_points, grid_width_n_points)).numpy()
     )
     #
-    ax.contour(
+    im = ax.contour(
         x_points_dim1,
         x_points_dim2,
         log_p_x,

@@ -56,7 +56,8 @@ model:
   eval_batch_size: 1000
   scheduler: null
 
-max_epochs: 100
+trainer:
+  max_epochs: 100
 
 energy:
   # Pseudo-energy specific parameters
@@ -76,15 +77,3 @@ energy:
   clamp_min: -100000.0
   clamp_max: null
 
-# # Add precision settings for Tensor Cores
-# trainer:
-#   precision: "32-true"  # or "16-mixed" for mixed precision
-#   strategy: "auto"
-#   # Add DataLoader workers
-#   num_workers: 15
-  
-# # Set float32 matmul precision
-# callbacks:
-#   model_summary:
-#     _target_: dem.callbacks.tensor_cores_callback.TensorCoresCallback
-#     precision: "medium"  # or "high" for more performance but less precision

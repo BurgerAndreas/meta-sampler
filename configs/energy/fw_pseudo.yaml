@@ -1,8 +1,9 @@
 defaults:
   - pseudo_default
   - _self_
-  
-_target_: dem.energies.four_wells_energy.FourWellEnergy
+
+# dem/energies/four_wells_pseudoenergy.py FourWellsPseudoEnergy
+_target_: dem.energies.four_wells_pseudoenergy.FourWellsPseudoEnergy
 
 device: ${trainer.accelerator}
 

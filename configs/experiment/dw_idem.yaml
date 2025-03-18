@@ -57,5 +57,6 @@ model:
   eval_batch_size: 1000
   scheduler: null
 
-max_epochs: 100
+trainer:
+  max_epochs: 100
 

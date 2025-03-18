@@ -1,4 +1,4 @@
-_target_: dem.energies.four_wells_energy.FourWellEnergy
+_target_: dem.energies.four_wells_energy.FourWellsEnergy
 
 device: ${trainer.accelerator}
 
