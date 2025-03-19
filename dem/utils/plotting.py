@@ -49,6 +49,13 @@ def plot_fn(
     elif quantity in ["energy", "e"]:
         log_p_x = -log_p_x
         label = "E"
+    elif quantity in ["loge", "log"]:
+        log_p_x = -log_p_x
+        if log_p_x.min() <= 0:
+            print(f"Warning: shifting log_p_x by {log_p_x.min()} to avoid log(0)")
+            log_p_x += torch.abs(log_p_x.min()) + 1e-1
+        log_p_x = torch.log(log_p_x)
+        label = "log(E)"
     else:
         label = "Log(P) = -E"
     log_p_x = log_p_x.reshape((grid_width_n_points, grid_width_n_points))

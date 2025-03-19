@@ -39,6 +39,10 @@ configs = [
         "|grad| condforce",
         "experiment=gmm_idem_condforce",
     ],
+    [
+        "Pseudo",
+        "experiment=gmm_idem_pseudo",
+    ],
     # [
     #     "Force L2 Tanh AND Hessian",
     #     "experiment=gmm_idem_pseudo",
@@ -67,23 +71,23 @@ configs = [
         "energy.stitching=False",
         "energy.clip_energy=False",
     ],
-    [
-        "GAD stitched",
-        "experiment=gmm_idem_gad",
-        "energy.stitching=True",
-        "energy.clip_energy=True",
-        "energy.clamp_min=-0.4",
-        "energy.clamp_max=null",
-    ],
-    [
-        "GAD offset",
-        "experiment=gmm_idem_gad",
-        "energy.stitching=False",
-        "energy.clip_energy=True",
-        "energy.gad_offset=-400",
-        "energy.clamp_min=-10",
-        "energy.clamp_max=null",
-    ],
+    # [
+    #     "GAD stitched",
+    #     "experiment=gmm_idem_gad",
+    #     "energy.stitching=True",
+    #     "energy.clip_energy=True",
+    #     "energy.clamp_min=-0.4",
+    #     "energy.clamp_max=null",
+    # ],
+    # [
+    #     "GAD offset",
+    #     "experiment=gmm_idem_gad",
+    #     "energy.stitching=False",
+    #     "energy.clip_energy=True",
+    #     "energy.gad_offset=-400",
+    #     "energy.clamp_min=-10",
+    #     "energy.clamp_max=null",
+    # ],
     [
         "GAD stitched and offset",
         "experiment=gmm_idem_gad",
@@ -129,8 +133,8 @@ for config in configs:
             plot_style=plot_style,
             plot_sample_kwargs={"color": "m", "marker": "."},
             colorbar=True,
+            quantity="e",
         )
-
         # save individual images
         img1.save(f"plots/gmm_{plt_name}_{plot_style}.png")
         print(f"Saved {f'plots/gmm_{plt_name}_{plot_style}.png'}")
@@ -143,6 +147,7 @@ for config in configs:
             plot_style=plot_style,
             plot_sample_kwargs={"color": "m", "marker": "."},
             colorbar=True,
+            quantity="e",
         )
 
         # # save individual images
@@ -188,6 +193,21 @@ for config in configs:
         #     fname = f"plots/gmmB{temp}_{plt_name}_{plot_style}.png"
         #     img1.save(fname)
         #     print(f"Saved {fname}")
+        
+        plt.close()
+        img1 = energy_function.get_single_dataset_fig(
+            samples=None,
+            name=name,
+            plot_minima=False,
+            grid_width_n_points=800,
+            plot_style=plot_style,
+            plot_sample_kwargs={"color": "m", "marker": "."},
+            colorbar=True,
+            quantity="loge",
+        )
+        # save individual images
+        img1.save(f"plots/gmm_{plt_name}_log_{plot_style}.png")
+        print(f"Saved {f'plots/gmm_{plt_name}_log_{plot_style}.png'}")
 
         # energy_function.plot_energy_crossection(name=name, y_value=-1.3710, plotting_bounds=(1.3, -1.4))
         energy_function.plot_energy_crossection(

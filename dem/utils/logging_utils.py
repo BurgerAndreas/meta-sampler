@@ -96,7 +96,7 @@ def get_name_from_config(cfg: DictConfig) -> str:
         name += "GAD"
     elif "Pseudo" in energy:
         if cfg["energy"]["term_aggr"] in ["cond_force", "cond_force_proj"]:
-            name += f"(|F|^{cfg['energy']['force_exponent']})"
+            name += f"(|F|^{cfg['energy']['force_exponent']}, -l1 * l2)"
         else:
             name += f"({cfg['energy']['force_activation']}{cfg['energy']['force_scale']} {cfg['energy']['hessian_eigenvalue_penalty']}{cfg['energy']['hessian_scale']} {cfg['energy']['term_aggr']})"
     if "temperature" in cfg["energy"] and cfg["energy"]["temperature"] != 1.0:

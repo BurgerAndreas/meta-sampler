@@ -82,8 +82,21 @@ for config in configs:
             colorbar=True,
             quantity="e",
         )
-
         fig_name = f"plots/fw_{plt_name}_{plot_style}.png"
+        img2.save(fig_name)
+        print(f"Saved {fig_name}")
+        
+        img2 = energy_function.get_single_dataset_fig(
+            samples=None,
+            name=name,
+            # plot_minima=False,
+            grid_width_n_points=800,
+            plot_style=plot_style,
+            # plot_sample_kwargs={"color": "m", "marker": "."},
+            colorbar=True,
+            quantity="loge",
+        )
+        fig_name = f"plots/fw_{plt_name}_log_{plot_style}.png"
         img2.save(fig_name)
         print(f"Saved {fig_name}")
 
@@ -129,7 +142,7 @@ for config in configs:
     plt.savefig(fig_name)
     print(f"Saved {fig_name}")
     energy_function.plot_energy_crossection_along_axis(
-        name=name, axis=0, axis_value=0, plotting_bounds=(1.3, -1.4)
+        name=name, axis=0, axis_value=1.2, # plotting_bounds=(1.3, -1.4)
     )
     fig_name = f"plots/fw_{plt_name}_crossection0.png"
     plt.savefig(fig_name)
@@ -149,8 +162,8 @@ for config in configs:
     # deinitialize hydra
     GlobalHydra().clear()
 
-# Just do once for the final config
 
+# Just do once for the final config
 
 # energy_function.plot_energy_crossection(
 #     name=name, 
