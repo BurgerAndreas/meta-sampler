@@ -103,4 +103,13 @@ class FourWellsPseudoEnergy(FourWellsEnergy, BasePseudoEnergyFunction):
         dim2_samples = self.sample_dimension(shape, first_dim=False)
         return torch.stack([dim1_samples, dim2_samples], dim=-1)
     
-        
+    def setup_val_set(self):
+        return self._setup_dataset(self.val_set_size)
+    
+    def setup_test_set(self):
+        return self._setup_dataset(self.test_set_size)
+    
+    def setup_train_set(self):
+        return self._setup_dataset(self.train_set_size)
+    
+    

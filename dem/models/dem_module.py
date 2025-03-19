@@ -1393,6 +1393,9 @@ class DEMLitModule(LightningModule):
         :param stage: Either `"fit"`, `"validate"`, `"test"`, or `"predict"`.
         """
         
+        # setup energy function
+        self.energy_function.setup()
+        
         # # log datasets
         # wandb_logger = get_wandb_logger(self.loggers)
         # self.energy_function.log_datasets(wandb_logger)

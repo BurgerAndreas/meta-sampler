@@ -187,6 +187,8 @@ class FourWellsEnergy(BaseEnergyFunction):
         return samples
 
     def sample(self, shape):
+        if shape[0] == 0:
+            return None
         dim1_samples = self.sample_dimension(shape, first_dim=True)
         # dim2_samples = torch.distributions.Normal(
         #     torch.tensor(0.0).to(dim1_samples.device),
@@ -234,7 +236,11 @@ class FourWellsEnergy(BaseEnergyFunction):
         Returns:
             torch.Tensor: Test dataset tensor
         """
-        return self.sample((self.test_set_size,))
+        if self.test_set_size > 0:
+            test_samples = self.normalize(self.sample((self.test_set_size,)))
+        else:
+            test_samples = None
+        return test_samples
 
     def setup_train_set(self):
         """Sets up training dataset by sampling from GMM or loading from file.
@@ -244,7 +250,10 @@ class FourWellsEnergy(BaseEnergyFunction):
             torch.Tensor: Training dataset tensor
         """
         if self.data_path_train is None:
-            train_samples = self.normalize(self.sample((self.train_set_size,)))
+            if self.train_set_size > 0:
+                train_samples = self.normalize(self.sample((self.train_set_size,)))
+            else:
+                train_samples = None
 
         else:
             # Assume the samples we are loading from disk are already normalized.
@@ -266,7 +275,10 @@ class FourWellsEnergy(BaseEnergyFunction):
         Returns:
             torch.Tensor: Validation dataset tensor
         """
-        val_samples = self.sample((self.val_set_size,))
+        if self.val_set_size > 0:
+            val_samples = self.sample((self.val_set_size,))
+        else:
+            val_samples = None
         return val_samples
 
 

@@ -87,6 +87,8 @@ def get_name_from_config(cfg: DictConfig) -> str:
         energy_name = "AlDi"
     elif "GMM" in energy:
         energy_name = "GMM"
+    elif "FourWells" in energy:
+        energy_name = "FW"
     else:
         energy_name = energy
     name += f"{energy_name} "

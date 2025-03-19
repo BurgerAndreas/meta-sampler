@@ -50,7 +50,7 @@ class BaseEnergyFunction(ABC):
         plotting_buffer_sample_size: int = 512,
         plot_samples_epoch_period: int = 5,
         should_unnormalize: bool = False,
-        train_set_size: int = 100000,
+        train_set_size: int = 0,
         test_set_size: int = 2000,
         val_set_size: int = 2000,
         data_path_train: Optional[str] = None,
@@ -75,10 +75,15 @@ class BaseEnergyFunction(ABC):
 
         self.temperature = temperature
 
-        self._test_set = self.setup_test_set()
-        self._val_set = self.setup_val_set()
-        self._train_set = None
         self.name = self.__class__.__name__
+        self.train_set = None
+        self.test_set = None
+        self.val_set = None
+        
+    def setup(self):
+        self.train_set = self.setup_train_set()
+        self.test_set = self.setup_test_set()
+        self.val_set = self.setup_val_set()
         
     def log_datasets(
         self,
@@ -422,8 +427,10 @@ class BaseEnergyFunction(ABC):
             Optional[torch.Tensor]: Sampled points or None if no training set
         """
         if self.train_set is None:
-            self._train_set = self.setup_train_set()
-
+            self.train_set = self.setup_train_set()
+        if self.train_set is None:
+            return None
+        
         idxs = torch.randperm(len(self.train_set))[:num_points]
         outs = self.train_set[idxs]
         if normalize:
@@ -471,32 +478,32 @@ class BaseEnergyFunction(ABC):
         """
         return self._is_molecule
 
-    @property
-    def test_set(self) -> Optional[torch.Tensor]:
-        """The test dataset.
+    # @property
+    # def test_set(self) -> Optional[torch.Tensor]:
+    #     """The test dataset.
 
-        Returns:
-            Optional[torch.Tensor]: Test dataset tensor
-        """
-        return self._test_set
+    #     Returns:
+    #         Optional[torch.Tensor]: Test dataset tensor
+    #     """
+    #     return self.test_set
 
-    @property
-    def val_set(self) -> Optional[torch.Tensor]:
-        """The validation dataset.
+    # @property
+    # def val_set(self) -> Optional[torch.Tensor]:
+    #     """The validation dataset.
 
-        Returns:
-            Optional[torch.Tensor]: Validation dataset tensor
-        """
-        return self._val_set
+    #     Returns:
+    #         Optional[torch.Tensor]: Validation dataset tensor
+    #     """
+    #     return self.val_set
 
-    @property
-    def train_set(self) -> Optional[torch.Tensor]:
-        """The training dataset.
+    # @property
+    # def train_set(self) -> Optional[torch.Tensor]:
+    #     """The training dataset.
 
-        Returns:
-            Optional[torch.Tensor]: Training dataset tensor
-        """
-        return self._train_set
+    #     Returns:
+    #         Optional[torch.Tensor]: Training dataset tensor
+    #     """
+    #     return self.train_set
 
     # @abstractmethod
     def __call__(

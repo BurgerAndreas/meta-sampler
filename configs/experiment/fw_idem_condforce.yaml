@@ -6,17 +6,17 @@
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 defaults:
-  - override /energy: dw_pseudo
+  - override /energy: fw_pseudo
   - override /model/noise_schedule: geometric
 
-tags: ["DW", "iDEM", "condforce"]
+tags: ["FW", "iDEM", "pseudo"]
 
 seed: 12345
 
 logger:
   wandb:
     tags: ${tags}
-    group: "dw"
+    group: "fw"
 
 model:
   noise_schedule:
@@ -49,6 +49,7 @@ model:
 
   diffusion_scale: 1.0
 
+  use_richardsons: True
   num_estimator_mc_samples: 500
   num_samples_to_generate_per_epoch: 1000
 
@@ -71,10 +72,9 @@ energy:
   hessian_weight: 1.0
   hessian_eigenvalue_penalty: null
   hessian_scale: 10.0
+  term_aggr: 'cond_force'
   temperature: 1.0
+  gad_offset: -10.0
   clamp_min: -100000.0
   clamp_max: null
-  # different to condforce
-  term_aggr: 'cond_force_proj'
-  gad_offset: -80.0
 

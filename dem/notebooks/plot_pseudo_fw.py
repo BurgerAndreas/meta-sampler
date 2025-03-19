@@ -31,6 +31,10 @@ configs = [
     [
         "Pseudopotential for DEM",
     ],
+    [
+        "|F| for DEM",
+        "experiment=fw_idem_condforce",
+    ],
 ]
 
 for config in configs:
@@ -90,11 +94,7 @@ for config in configs:
 
     # Plot contour with samples, minima, and transition state
     # Get samples from the energy function
-    samples = energy_function.sample((1000,))
-    print(f"samples: min={samples.min():.1e}, max={samples.max():.1e}")
-    print(
-        f"samples: abs min={samples.abs().min():.1e}, abs max={samples.abs().max():.1e}"
-    )
+    samples = energy_function.setup_test_set()
     # Get minima and transition states
     minima = energy_function.get_minima()
     transition_states = energy_function.get_true_transition_states()
@@ -122,7 +122,8 @@ for config in configs:
 
     # energy_function.plot_energy_crossection(name=name, y_value=-1.3710, plotting_bounds=(1.3, -1.4))
     energy_function.plot_energy_crossection(
-        name=name, y_value=-1.3710, plotting_bounds=(1.3, -1.4)
+        name=name, 
+        #y_value=-1.3710, plotting_bounds=(1.3, -1.4)
     )
     fig_name = f"plots/fw_{plt_name}_crossection.png"
     plt.savefig(fig_name)
@@ -150,14 +151,11 @@ for config in configs:
 
 # Just do once for the final config
 
-print(f"energy_function._can_normalize: {energy_function._can_normalize}")
-print(f"energy_function.should_unnormalize: {energy_function.should_unnormalize}")
-print(f"energy_function.normalization_min: {energy_function.normalization_min}")
-print(f"energy_function.normalization_max: {energy_function.normalization_max}")
 
-energy_function.plot_energy_crossection(
-    name=name, y_value=-1.3710, plotting_bounds=(1.3, -1.4)
-)
-fig_name = f"plots/fw_{plt_name}_crossection.png"
-plt.savefig(fig_name)
-print(f"Saved {fig_name}")
+# energy_function.plot_energy_crossection(
+#     name=name, 
+#     #y_value=-1.3710, plotting_bounds=(1.3, -1.4)
+# )
+# fig_name = f"plots/fw_{plt_name}_crossection.png"
+# plt.savefig(fig_name)
+# print(f"Saved {fig_name}")

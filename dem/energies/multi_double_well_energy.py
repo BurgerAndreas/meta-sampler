@@ -63,7 +63,7 @@ class MultiDoubleWellEnergy(BaseEnergyFunction):
 
         self.val_set_size = 1000
         self.test_set_size = 1000
-        self.train_set_size = 100000
+        self.train_set_size = 0
 
         self.multi_double_well = MultiDoubleWellPotential(
             dim=dimensionality,
