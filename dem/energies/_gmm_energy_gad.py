@@ -101,9 +101,9 @@
 
 #     def setup_train_set(self):
 #         return None
-    
+
 #     def setup_test_set(self):
 #         raise NotImplementedError
-    
+
 #     def setup_val_set(self):
 #         raise NotImplementedError

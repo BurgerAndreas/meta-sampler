@@ -79,12 +79,12 @@ class BaseEnergyFunction(ABC):
         self.train_set = None
         self.test_set = None
         self.val_set = None
-        
+
     def setup(self):
         self.train_set = self.setup_train_set()
         self.test_set = self.setup_test_set()
         self.val_set = self.setup_val_set()
-        
+
     def log_datasets(
         self,
         wandb_logger: Optional[WandbLogger] = None,
@@ -121,9 +121,7 @@ class BaseEnergyFunction(ABC):
                 plot_minima=plot_minima,
                 grid_width_n_points=grid_width_n_points,
             )
-            wandb_logger.log_image(
-                f"{prefix}test_set", [test_fig]
-            )
+            wandb_logger.log_image(f"{prefix}test_set", [test_fig])
 
         # Plot validation set if available
         if self.val_set is not None:
@@ -135,9 +133,7 @@ class BaseEnergyFunction(ABC):
                 plot_minima=plot_minima,
                 grid_width_n_points=grid_width_n_points,
             )
-            wandb_logger.log_image(
-                f"{prefix}val_set", [val_fig]
-            )
+            wandb_logger.log_image(f"{prefix}val_set", [val_fig])
 
         # Plot training set if available
         if self.train_set is not None:
@@ -149,9 +145,7 @@ class BaseEnergyFunction(ABC):
                 plot_minima=plot_minima,
                 grid_width_n_points=grid_width_n_points,
             )
-            wandb_logger.log_image(
-                f"{prefix}train_set", [train_fig]
-            )
+            wandb_logger.log_image(f"{prefix}train_set", [train_fig])
         # if return_fig:
         #     return fig
         # else:
@@ -373,7 +367,7 @@ class BaseEnergyFunction(ABC):
             minima = self.get_minima()
             ax.scatter(*minima.detach().cpu().T, color="red", marker="x")
             # ax.legend()
-            
+
         if plot_transition_states and hasattr(self, "get_true_transition_states"):
             transition_states = self.get_true_transition_states()
             ax.scatter(*transition_states.detach().cpu().T, color="green", marker="o")
@@ -430,7 +424,7 @@ class BaseEnergyFunction(ABC):
             self.train_set = self.setup_train_set()
         if self.train_set is None:
             return None
-        
+
         idxs = torch.randperm(len(self.train_set))[:num_points]
         outs = self.train_set[idxs]
         if normalize:
@@ -1142,16 +1136,16 @@ class BasePseudoEnergyFunction:
         self.stitching = stitching
         self.stop_grad_ev = stop_grad_ev
         self.div_epsilon = div_epsilon
-        
+
         self.transition_points = None
-        
+
     def compute_pseudo_potential(self, get_energy, samples):
         # TODO: clean up this mess
         if self.term_aggr.lower() == "gad":
             return self._compute_gad_potential(get_energy, samples)
         else:
             return self._compute_pseudo_potential(get_energy, samples)
-        
+
     def _compute_gad_potential(self, get_energy, samples):
         #####################################################################
         # Compute energy
@@ -1505,44 +1499,43 @@ class BasePseudoEnergyFunction:
 
     def _setup_dataset(self, n_samples):
         """Return the true transition states as the test set.
-        
+
         Duplicates entries to match the number of requested samples.
         Optionally adds a small amount of Gaussian noise to prevent exact duplicates.
         """
         # Get the true transition states
         transition_states = self.get_true_transition_states()
-        
+
         # If no transition states found, return empty tensor
         if len(transition_states) == 0:
             return torch.tensor([], device=self.device)
-            
+
         # Calculate how many times to repeat each transition state
         n_states = len(transition_states)
         repeats = max(1, n_samples // n_states)
-        
+
         # Duplicate the transition states to match requested sample count
         duplicated_states = transition_states.repeat(repeats, 1)
-        
+
         # Optionally add small Gaussian noise to prevent exact duplicates
         if self.dataset_noise_scale > 0:
             noise = torch.randn_like(duplicated_states) * self.dataset_noise_scale
             duplicated_states = duplicated_states + noise
-            
+
         # Trim to exact number of samples if needed
         duplicated_states = duplicated_states[:n_samples]
-            
+
         return duplicated_states
-    
+
     def setup_val_set(self):
         return self._setup_dataset(self.val_set_size)
-    
+
     def setup_test_set(self):
         return self._setup_dataset(self.test_set_size)
-    
+
     def setup_train_set(self):
         return self._setup_dataset(self.train_set_size)
-    
-    
+
     # def find_stationary_point(self, initial_guess, method="hybr"):
     #     """
     #     Solve grad_neg_log_prob(x) = 0 starting from initial_guess.
@@ -1562,7 +1555,7 @@ class BasePseudoEnergyFunction:
     #         fun=grad_neg_log_prob, x0=initial_guess, args=(self,), method=method
     #     )
     #     return result
-    
+
     # def get_true_transition_states(self, grid_size=200):
     #     """Find saddle points using scipy.optimize.root and Hessian eigenvalue analysis.
 
@@ -1581,7 +1574,7 @@ class BasePseudoEnergyFunction:
     #         self.transition_points = torch.tensor(np.load(fname), device=self.device)
     #         # print(f"Loaded transition points from {fname}")
     #         return self.transition_points
-        
+
     #     starting_points = torch.meshgrid(
     #         torch.linspace(self.plotting_bounds[0], self.plotting_bounds[1], grid_size),
     #         torch.linspace(self.plotting_bounds[0], self.plotting_bounds[1], grid_size),
@@ -1594,41 +1587,41 @@ class BasePseudoEnergyFunction:
     #         if result.success:
     #             transition_points.append(result.x)
     #     transition_points = torch.tensor(transition_points, device=self.device)
-        
+
     #     # Validate that this is indeed a saddle point by checking:
     #     # 1. The gradient (force) should be close to zero
     #     # 2. The Hessian should have exactly one negative eigenvalue
-        
+
     #     # Set up for gradient and Hessian computation
     #     x = transition_state.clone().requires_grad_(True)
-        
+
     #     # Compute the energy (negative log probability)
     #     def neg_log_prob(x):
     #         return -self.log_prob(x)
-        
+
     #     # Compute gradient (force)
     #     grad = torch.func.grad(neg_log_prob)(x)
-        
+
     #     # Compute Hessian
     #     hessian = torch.func.hessian(neg_log_prob)(x)
-        
+
     #     # Check eigenvalues
     #     eigenvals, _ = torch.linalg.eigh(hessian)
-        
+
     #     # Verify this is a saddle point (index-1)
     #     grad_norm = grad.norm().item()
     #     n_negative = torch.sum(eigenvals < -1e-6).item()
-        
+
     #     print(f"Transition state: {transition_state.tolist()}")
     #     print(f"Gradient norm: {grad_norm:.6f}")
     #     print(f"Hessian eigenvalues: {eigenvals.tolist()}")
     #     print(f"Number of negative eigenvalues: {n_negative}")
-        
+
     #     # Store the validated transition state
     #     self.transition_points = transition_state
-        
+
     #     # Save to file for future use
     #     os.makedirs("dem_outputs", exist_ok=True)
     #     np.save(fname, self.transition_points.detach().cpu().numpy())
-        
+
     #     return self.transition_points

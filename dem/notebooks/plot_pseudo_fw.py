@@ -85,7 +85,7 @@ for config in configs:
         fig_name = f"plots/fw_{plt_name}_{plot_style}.png"
         img2.save(fig_name)
         print(f"Saved {fig_name}")
-        
+
         img2 = energy_function.get_single_dataset_fig(
             samples=None,
             name=name,
@@ -135,14 +135,16 @@ for config in configs:
 
     # energy_function.plot_energy_crossection(name=name, y_value=-1.3710, plotting_bounds=(1.3, -1.4))
     energy_function.plot_energy_crossection(
-        name=name, 
-        #y_value=-1.3710, plotting_bounds=(1.3, -1.4)
+        name=name,
+        # y_value=-1.3710, plotting_bounds=(1.3, -1.4)
     )
     fig_name = f"plots/fw_{plt_name}_crossection.png"
     plt.savefig(fig_name)
     print(f"Saved {fig_name}")
     energy_function.plot_energy_crossection_along_axis(
-        name=name, axis=0, axis_value=1.2, # plotting_bounds=(1.3, -1.4)
+        name=name,
+        axis=0,
+        axis_value=1.2,  # plotting_bounds=(1.3, -1.4)
     )
     fig_name = f"plots/fw_{plt_name}_crossection0.png"
     plt.savefig(fig_name)
@@ -166,7 +168,7 @@ for config in configs:
 # Just do once for the final config
 
 # energy_function.plot_energy_crossection(
-#     name=name, 
+#     name=name,
 #     #y_value=-1.3710, plotting_bounds=(1.3, -1.4)
 # )
 # fig_name = f"plots/fw_{plt_name}_crossection.png"

@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import itertools
 from typing import Optional, Dict, Any, Tuple
 from dem.utils.plotting import plot_contours, plot_marginal_pair
+
 # https://github.com/lollcat/fab-torch/blob/master/fab/target_distributions/double_well.py
 
 
@@ -76,10 +77,10 @@ class FourWellsEnergy(BaseEnergyFunction):
             self.scales = torch.tensor([0.5, 0.5], device=self.device)
         else:
             raise NotImplementedError
-        
-        self.temperature = temperature # necessary to call log_prob and energy
+
+        self.temperature = temperature  # necessary to call log_prob and energy
         self.component_mix = self.compute_mc_component_mix()
-        
+
         # this will setup test, train, val sets
         super().__init__(
             dimensionality=dimensionality,
@@ -93,7 +94,7 @@ class FourWellsEnergy(BaseEnergyFunction):
             data_path_train=data_path_train,
             temperature=temperature,
         )
-        
+
     def compute_mc_component_mix(self):
         # Calculate component_mix based on bias parameter a
         # Calculate relative populations using Boltzmann distribution
@@ -165,12 +166,13 @@ class FourWellsEnergy(BaseEnergyFunction):
 
     def sample_dimension(self, shape, first_dim=True):
         assert len(shape) == 1
+
         # see fab.sampling_methods.rejection_sampling_test.py
         def target_log_prob(x):
             if first_dim:
                 x = x + self.shift
             return -(self._a * x + self._b * x.pow(2) + self._c * x.pow(4))
-        
+
         TARGET_Z = 11784.50927
 
         # Define proposal
@@ -214,20 +216,25 @@ class FourWellsEnergy(BaseEnergyFunction):
         """Return the locations of the four minima (well centers)."""
         return torch.tensor(
             [
-                [-1.7 - self.shift, 1.7], [1.7 - self.shift, 1.7],
-                [-1.7 - self.shift, -1.7], [1.7 - self.shift, -1.7]
-            ], device=self.device
+                [-1.7 - self.shift, 1.7],
+                [1.7 - self.shift, 1.7],
+                [-1.7 - self.shift, -1.7],
+                [1.7 - self.shift, -1.7],
+            ],
+            device=self.device,
         )
 
     def get_true_transition_states(self):
         """Return the saddle points between the wells."""
-        return torch.tensor([
-            [-1.7-self.shift, 0],
-            [1.7-self.shift, 0],
-            [-self.shift, 1.7],
-            [-self.shift, -1.7]
-        ], device=self.device)
-        
+        return torch.tensor(
+            [
+                [-1.7 - self.shift, 0],
+                [1.7 - self.shift, 0],
+                [-self.shift, 1.7],
+                [-self.shift, -1.7],
+            ],
+            device=self.device,
+        )
 
     def setup_test_set(self):
         """Sets up test dataset by sampling from GMM.
@@ -304,30 +311,42 @@ if __name__ == "__main__":
     # plt.ylabel('y')
     # plt.grid(True)
     # plt.show()
-    
+
     # four_well_samples = four_well.sample((2000,))
 
     # plt.figure(figsize=(8, 6))
     # plt.contourf(X.cpu(), Y.cpu(), Z.cpu(), 50, cmap='viridis', alpha=0.7)
-    # plt.scatter(four_well_samples[:, 0].cpu(), four_well_samples[:, 1].cpu(), 
+    # plt.scatter(four_well_samples[:, 0].cpu(), four_well_samples[:, 1].cpu(),
     #         s=1, color='red', alpha=0.5)
     # plt.title('Four-Well Potential with Samples')
     # plt.xlabel('x')
     # plt.ylabel('y')
     # plt.grid(True)
     # plt.show()
-    
+
     plt.close()
     fig, ax = plt.subplots()
-    plot_contours(four_well.log_prob, bounds=(-4, 4), grid_width_n_points=200, n_contour_levels=100, ax=ax)
+    plot_contours(
+        four_well.log_prob,
+        bounds=(-4, 4),
+        grid_width_n_points=200,
+        n_contour_levels=100,
+        ax=ax,
+    )
     samples = four_well.sample((1000,))
     plot_marginal_pair(samples, bounds=(-4, 4), marginal_dims=(0, 1), ax=ax)
     ax.set_title("samples")
     # plot minima
     minima = four_well.get_minima()
-    ax.scatter(minima[:, 0].cpu(), minima[:, 1].cpu(), color='black', marker='x', s=100)
+    ax.scatter(minima[:, 0].cpu(), minima[:, 1].cpu(), color="black", marker="x", s=100)
     # plot transition states
     transition_states = four_well.get_true_transition_states()
-    ax.scatter(transition_states[:, 0].cpu(), transition_states[:, 1].cpu(), color='red', marker='x', s=100)
+    ax.scatter(
+        transition_states[:, 0].cpu(),
+        transition_states[:, 1].cpu(),
+        color="red",
+        marker="x",
+        s=100,
+    )
     plt.savefig("four_wells_potential.png")
     print("saved figure to four_wells_potential.png")

@@ -219,7 +219,7 @@ class GMMPseudoEnergy(GMMEnergy, BasePseudoEnergyFunction):
     ###########################################################################
     # Ground truth transition states
     ###########################################################################
-    
+
     def find_transition_boundaries(self, grid_size=200, bounds=(-56, 56)):
         """Find candidate transition points by detecting boundary cells.
 
@@ -425,16 +425,16 @@ class GMMPseudoEnergy(GMMEnergy, BasePseudoEnergyFunction):
         np.save(fname, self.transition_points.detach().cpu().numpy())
         print(f"Found {len(self.transition_points)} transition states")
         return self.transition_points
-    
+
     def setup_val_set(self):
         return self._setup_dataset(self.val_set_size)
-    
+
     def setup_test_set(self):
         return self._setup_dataset(self.test_set_size)
-    
+
     def setup_train_set(self):
         return self._setup_dataset(self.train_set_size)
-    
+
 
 def find_stationary_point(initial_guess, gmm, method="hybr"):
     """

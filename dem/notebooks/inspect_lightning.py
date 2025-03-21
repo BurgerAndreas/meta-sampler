@@ -1,5 +1,3 @@
-
-
 """
 PyTorch Lightning has a rich set of lifecycle hooks that are automatically called during different stages of training
 
@@ -57,17 +55,23 @@ import lightning as L
 import inspect
 
 # Get all hooks from LightningModule
-lightning_hooks = [method for method in dir(L.LightningModule) 
-                  if method.startswith('on_') or method.endswith('_step') 
-                  or method in ['setup', 'configure_optimizers', 'configure_callbacks']]
+lightning_hooks = [
+    method
+    for method in dir(L.LightningModule)
+    if method.startswith("on_")
+    or method.endswith("_step")
+    or method in ["setup", "configure_optimizers", "configure_callbacks"]
+]
 print("LightningModule hooks:")
 for hook in lightning_hooks:
     print("", hook)
 
 # Get all hooks from Callback
-callback_hooks = [method for method in dir(L.Callback) 
-                 if method.startswith('on_') or method.endswith('_step')]
+callback_hooks = [
+    method
+    for method in dir(L.Callback)
+    if method.startswith("on_") or method.endswith("_step")
+]
 print("Callback hooks:")
 for hook in callback_hooks:
     print("", hook)
-

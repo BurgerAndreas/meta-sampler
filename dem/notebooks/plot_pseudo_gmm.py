@@ -193,7 +193,7 @@ for config in configs:
         #     fname = f"plots/gmmB{temp}_{plt_name}_{plot_style}.png"
         #     img1.save(fname)
         #     print(f"Saved {fname}")
-        
+
         plt.close()
         img1 = energy_function.get_single_dataset_fig(
             samples=None,
