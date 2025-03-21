@@ -60,10 +60,11 @@ def streaming_log_expectation_reward(
         Log expectation of rewards averaged over Monte Carlo samples
     """
     # TODO: implement
-    return reward_val
+    raise NotImplementedError("Streaming log expectation reward not implemented")
 
 
-def log_expectation_reward(
+# original implementation in DEM codebase, using vmap
+def log_expectation_reward_vmap(
     t: torch.Tensor,
     x: torch.Tensor,
     energy_function: BaseEnergyFunction,
@@ -76,8 +77,8 @@ def log_expectation_reward(
     """Computes the log expectation of rewards using Monte Carlo sampling.
 
     Args:
-        t: Time tensor
-        x: Position tensor
+        t: Time tensor [1]
+        x: Position tensor [D]
         energy_function: Energy function to evaluate samples
         noise_schedule: Noise schedule for perturbing samples
         num_mc_samples: Number of Monte Carlo samples S to use
@@ -88,12 +89,12 @@ def log_expectation_reward(
     Returns:
         Log expectation of rewards averaged over Monte Carlo samples
     """
-    repeated_t = t.unsqueeze(0).repeat_interleave(num_mc_samples, dim=0) # [S]
-    repeated_x = x.unsqueeze(0).repeat_interleave(num_mc_samples, dim=0) # [S, D]
+    repeated_t = t.unsqueeze(0).repeat_interleave(num_mc_samples, dim=0)  # [S]
+    repeated_x = x.unsqueeze(0).repeat_interleave(num_mc_samples, dim=0)  # [S, D]
 
     # Add noise to positions
-    h_t = noise_schedule.h(repeated_t).unsqueeze(1) # [S, 1]
-    samples = repeated_x + (torch.randn_like(repeated_x) * h_t.sqrt()) # [S, D]
+    h_t = noise_schedule.h(repeated_t).unsqueeze(1)  # [S, 1]
+    samples = repeated_x + (torch.randn_like(repeated_x) * h_t.sqrt())  # [S, D]
 
     # Compute log rewards per MC sample [S]
     if return_aux_output:
@@ -113,6 +114,7 @@ def log_expectation_reward(
         return reward_val
 
 
+# Andreas' implementation using batching
 def log_expectation_reward_batched(
     t: torch.Tensor,
     x: torch.Tensor,
@@ -138,20 +140,20 @@ def log_expectation_reward_batched(
     Returns:
         Log expectation of rewards averaged over Monte Carlo samples
     """
-    repeated_t = t.unsqueeze(1).repeat_interleave(num_mc_samples, dim=1) # [B, S]
-    repeated_x = x.unsqueeze(1).repeat_interleave(num_mc_samples, dim=1) # [B, S, D]
+    repeated_t = t.unsqueeze(1).repeat_interleave(num_mc_samples, dim=1)  # [B, S]
+    repeated_x = x.unsqueeze(1).repeat_interleave(num_mc_samples, dim=1)  # [B, S, D]
 
     # Add noise to positions
-    h_t = noise_schedule.h(repeated_t).unsqueeze(-1) # [B, S, 1]
-    samples = repeated_x + (torch.randn_like(repeated_x) * h_t.sqrt()) # [B, S, D]  
+    h_t = noise_schedule.h(repeated_t).unsqueeze(-1)  # [B, S, 1]
+    samples = repeated_x + (torch.randn_like(repeated_x) * h_t.sqrt())  # [B, S, D]
 
     # Compute log rewards per MC sample [B, S]
-    samples = samples.view(-1, samples.shape[-1]) # [B * S, D]
+    samples = samples.view(-1, samples.shape[-1])  # [B * S, D]
     if return_aux_output:
         log_rewards, aux_output = energy_function(samples, return_aux_output=True)
     else:
         log_rewards = energy_function(samples)
-    log_rewards = log_rewards.view(t.shape[0], -1) # [B*S] -> [B, S]
+    log_rewards = log_rewards.view(t.shape[0], -1)  # [B*S] -> [B, S]
 
     # Clip log rewards if necessary
     if clipper is not None and clipper.should_clip_log_rewards:
@@ -166,6 +168,7 @@ def log_expectation_reward_batched(
         return reward_val
 
 
+# Andreas' implementation using batching and torch.autograd.grad
 def _estimate_grad_Rt_batched(
     t: torch.Tensor,
     x: torch.Tensor,
@@ -179,7 +182,7 @@ def _estimate_grad_Rt_batched(
     if t.ndim == 0:
         t = t.unsqueeze(0).repeat(len(x))
 
-    # computes grad w.r.t. to x 
+    # computes grad w.r.t. to x
     x = x.requires_grad_(True)
     reward, aux_output = log_expectation_reward_batched(
         t,
@@ -200,6 +203,7 @@ def _estimate_grad_Rt_batched(
     return grad_output, aux_output
 
 
+# original implementation in DEM codebase, using vmap and torch.func.grad
 def _estimate_grad_Rt_vmap(
     t: torch.Tensor,
     x: torch.Tensor,
@@ -214,7 +218,7 @@ def _estimate_grad_Rt_vmap(
         t = t.unsqueeze(0).repeat(len(x))
 
     def _log_expectation_reward(t, x, energy_function, noise_schedule, num_mc_samples):
-        return log_expectation_reward(
+        return log_expectation_reward_vmap(
             t,
             x,
             energy_function,
@@ -277,8 +281,6 @@ def estimate_grad_Rt(
 
 
 if __name__ == "__main__":
-    import torch
-    import numpy as np
     from dem.energies.double_well_energy import DoubleWellEnergy
     from dem.models.components.noise_schedules import GeometricNoiseSchedule
 
@@ -312,7 +314,6 @@ if __name__ == "__main__":
         use_vmap=True,
         return_aux_output=True,
     )
-
     print(f"Gradient shape: {grad_output.shape}")
     print(
         f"Gradient mean: {grad_output.mean().item():.4f}, std: {grad_output.std().item():.4f}"
@@ -321,7 +322,9 @@ if __name__ == "__main__":
 
     # Test with vmap=False
     print(f"\nRunning with vmap=False, batch_size={batch_size}, dim={dim}")
-    energy_function = DoubleWellEnergy(device=device, dimensionality=dim, use_vmap=False)
+    energy_function = DoubleWellEnergy(
+        device=device, dimensionality=dim, use_vmap=False
+    )
     grad_output_no_vmap, aux_output_no_vmap = estimate_grad_Rt(
         t=t,
         x=x,
@@ -331,40 +334,8 @@ if __name__ == "__main__":
         use_vmap=False,
         return_aux_output=True,
     )
-
     print(f"Gradient shape: {grad_output_no_vmap.shape}")
     print(
         f"Gradient mean: {grad_output_no_vmap.mean().item():.4f}, std: {grad_output_no_vmap.std().item():.4f}"
     )
     print(f"Auxiliary output keys: {aux_output_no_vmap.keys()}")
-
-    # # Test with streaming computation
-    # print("\nTesting with streaming computation...")
-    # streaming_batch_size = 50  # smaller than num_mc_samples
-    # grad_output_streaming, aux_output_streaming = estimate_grad_Rt(
-    #     t=t,
-    #     x=x,
-    #     energy_function=energy_function,
-    #     noise_schedule=noise_schedule,
-    #     num_mc_samples=num_mc_samples,
-    #     use_vmap=True,
-    #     return_aux_output=True,
-    #     streaming_batch_size=streaming_batch_size
-    # )
-
-    # print(f"Streaming gradient shape: {grad_output_streaming.shape}")
-    # print(f"Streaming gradient mean: {grad_output_streaming.mean().item():.4f}, std: {grad_output_streaming.std().item():.4f}")
-
-    # # Verify that gradients require gradients
-    # x_with_grad = torch.randn(batch_size, dim, device=device, requires_grad=True)
-    # grad_output_with_grad = estimate_grad_Rt(
-    #     t=t,
-    #     x=x_with_grad,
-    #     energy_function=energy_function,
-    #     noise_schedule=noise_schedule,
-    #     num_mc_samples=num_mc_samples,
-    #     use_vmap=True,
-    #     return_aux_output=False
-    # )
-
-    # print(f"\nGradient requires_grad: {grad_output_with_grad.requires_grad}")

@@ -45,11 +45,15 @@ def get_indices(indices, convention):
             i, j, k, l = phi_indices_andreas
         elif convention == "bg":
             i, j, k, l = phi_indices_bg
+        else:
+            raise ValueError(f"Invalid convention: {convention}")
     elif indices == "psi":
         if convention == "andreas":
             i, j, k, l = psi_indices_andreas
         elif convention == "bg":
             i, j, k, l = psi_indices_bg
+        else:
+            raise ValueError(f"Invalid convention: {convention}")
     else:
         i, j, k, l = indices
     return i, j, k, l
@@ -279,14 +283,80 @@ def set_dihedral_torch(
     # Compute rotation matrix using torch operations
     R = rotation_matrix_torch(axis, delta)
 
+    # TODO: not vmap-able
     # Rotate the specified atoms.
     for idx in rotating_indices:
         vec = positions[idx] - origin
-        # Note: using torch.matmul to multiply R and vec.
         rotated_vec = torch.matmul(R, vec)
         positions[idx] = origin + rotated_vec
 
     return positions
+
+
+def set_dihedral_torch_vmap(
+    positions: torch.Tensor,
+    indices: Iterable[int] | str,
+    target_angle: torch.Tensor,
+    atoms_to_rotate: Iterable[int] | str,
+    convention: str = "andreas",
+    absolute: bool = True,
+) -> torch.Tensor:
+    """
+    Adjust the dihedral angle defined by the four atoms specified in 'indices'
+    to 'target_angle' (in radians) by rotating the part of the molecule specified by atoms_to_rotate.
+    This version is built from differentiable torch operations and is compatible with vmap.
+
+    Parameters:
+      positions   : Torch tensor of shape (N_atoms, 3)
+      indices     : A list or tuple of 4 atom indices [i, j, k, l] defining the dihedral
+      target_angle: The desired dihedral angle (in radians), as a torch scalar
+      atoms_to_rotate: Either a string ("psi" or "phi") or a list of indices.
+
+    Returns:
+      positions   : Modified torch tensor of positions.
+    """
+    target_angle = target_angle.to(positions.device)
+
+    i, j, k, l = get_indices(indices, convention)
+    # Use clone to avoid modifying the original tensor
+    positions = positions.clone()
+    p0 = positions[i].clone()
+    p1 = positions[j].clone()
+    p2 = positions[k].clone()
+    p3 = positions[l].clone()
+
+    current_angle = compute_dihedral_torch(p0, p1, p2, p3)
+    if absolute:
+        delta = target_angle - current_angle
+    else:
+        delta = target_angle
+
+    # Define the rotation axis (passing through atoms 1 and 2)
+    axis = positions[k] - positions[j]
+    axis = axis / torch.norm(axis)
+
+    rotating_indices = get_atoms_to_rotate(atoms_to_rotate)
+    origin = positions[k].clone()
+
+    # Compute rotation matrix using torch operations
+    R = rotation_matrix_torch(axis, delta)
+
+    # Create a mask for rotating atoms
+    mask = torch.zeros(positions.shape[0], dtype=torch.bool, device=positions.device)
+    mask[rotating_indices] = True
+
+    # Compute all vectors from origin
+    vectors = positions - origin.unsqueeze(0)
+
+    # Apply rotation only to selected atoms
+    rotated_vectors = torch.where(
+        mask.unsqueeze(1), torch.matmul(R, vectors.unsqueeze(2)).squeeze(2), vectors
+    )
+
+    # Update positions out-of-place
+    new_positions = origin.unsqueeze(0) + rotated_vectors
+
+    return new_positions
 
 
 ########################################
@@ -455,6 +525,98 @@ def set_dihedral_torch_batched(
 #######################################################################################
 # Testing
 #######################################################################################
+
+
+def test_set_dihedral_variants():
+    """
+    Test that the batched variant of set_dihedral_torch produces the same results
+    as the unbatched counterpart. Also tests gradient flow through both operations.
+    """
+    print("-" * 80)
+    print("Testing set_dihedral variants...")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Create a test positions tensor simulating a molecule
+    N_atoms = 22  # Number of atoms in alanine dipeptide
+    positions = torch.randn(N_atoms, 3, device=device, requires_grad=True)
+
+    # Set target angle
+    target_angle = torch.tensor(math.pi / 3.0, device=device, requires_grad=True)
+
+    # Test unbatched version
+    new_pos_unbatched = set_dihedral_torch(
+        positions,
+        indices="phi",
+        target_angle=target_angle,
+        atoms_to_rotate="phi",
+        convention="andreas",
+    )
+
+    # Test vmap-compatible version
+    new_pos_vmap = set_dihedral_torch_vmap(
+        positions,
+        indices="phi",
+        target_angle=target_angle,
+        atoms_to_rotate="phi",
+        convention="andreas",
+    )
+
+    # Test batched version (with batch size 1)
+    positions_batch = positions.unsqueeze(0)  # [1, N_atoms, 3]
+    new_pos_batched = set_dihedral_torch_batched(
+        positions_batch,
+        indices="phi",
+        target_angle=target_angle,
+        atoms_to_rotate="phi",
+        convention="andreas",
+    ).squeeze(
+        0
+    )  # Remove batch dimension for comparison
+
+    # Check that all versions produce the same result
+    assert torch.allclose(
+        new_pos_unbatched, new_pos_vmap, atol=1e-6
+    ), "set_dihedral_torch and set_dihedral_torch_vmap produce different results"
+
+    assert torch.allclose(
+        new_pos_unbatched, new_pos_batched, atol=1e-6
+    ), "set_dihedral_torch and set_dihedral_torch_batched produce different results"
+
+    print("All set_dihedral variants produce the same results!")
+
+    # Test with multiple batch items
+    B = 5  # Batch size
+    positions_multi_batch = positions.unsqueeze(0).expand(B, -1, -1).clone()
+    target_angles = torch.linspace(0, math.pi, B, device=device)
+
+    # Process each item individually
+    individual_results = []
+    for b in range(B):
+        pos_b = set_dihedral_torch(
+            positions,
+            indices="phi",
+            target_angle=target_angles[b],
+            atoms_to_rotate="phi",
+            convention="andreas",
+        )
+        individual_results.append(pos_b)
+    individual_results = torch.stack(individual_results)
+
+    # Process batch at once
+    batched_results = set_dihedral_torch_batched(
+        positions_multi_batch,
+        indices="phi",
+        target_angle=target_angles,
+        atoms_to_rotate="phi",
+        convention="andreas",
+    )
+
+    assert torch.allclose(
+        individual_results, batched_results, atol=1e-6
+    ), "Batched processing doesn't match individual processing"
+
+    print("Batched processing matches individual processing!")
+    print("-" * 80)
 
 
 def test_batched_variants():
@@ -834,6 +996,7 @@ def test_absolute_vs_relative_rotation():
 
 if __name__ == "__main__":
     test_numpy_is_torch()
+    test_set_dihedral_variants()
     test_absolute_vs_relative_rotation()
     test_set_is_inverse_of_compute()
     test_compute_dihedral_is_mdtraj()

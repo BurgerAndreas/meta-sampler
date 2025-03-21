@@ -357,9 +357,11 @@ class DEMLitModule(LightningModule):
         self.test_train_ess = MeanMetric()
 
         self.num_init_samples = num_init_samples
+        # number of samples to de-/noise in loss. corresponds to batch size
+        self.num_samples_to_sample_from_buffer = num_samples_to_sample_from_buffer
+        # number of MC samples per batch for score estimation in loss
         self.num_estimator_mc_samples = num_estimator_mc_samples
         self.num_samples_to_generate_per_epoch = num_samples_to_generate_per_epoch
-        self.num_samples_to_sample_from_buffer = num_samples_to_sample_from_buffer
         self.num_integration_steps = num_integration_steps
         self.num_samples_to_save = num_samples_to_save
         self.eval_batch_size = eval_batch_size
@@ -387,7 +389,7 @@ class DEMLitModule(LightningModule):
         self.generate_constrained_samples = generate_constrained_samples
         self.constrained_score_norm_target = constrained_score_norm_target
         self.force_grad = force_grad
-        
+
     def forward(self, t: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
         """Perform a forward pass through the model `self.net`.
 
@@ -438,6 +440,8 @@ class DEMLitModule(LightningModule):
         samples: torch.Tensor,
         return_aux_output: bool = False,
     ) -> torch.Tensor:
+        print(f"get_loss: shape={samples.shape}, times.shape={times.shape}")
+        # TODO: not Richardson extrapolation? grad_fxn
         _out = estimate_grad_Rt(
             times,
             samples,
@@ -1376,7 +1380,7 @@ class DEMLitModule(LightningModule):
         path2 = f"{self.energy_function.name}/samples_{self.hparams.version}_{self.num_samples_to_save}.pt"
         torch.save(final_samples, path2)
         print(f"Saving samples to {path2}")
-        
+
     def on_fit_start(self):
         """Called at the beginning of training after sanity check."""
         wandb_logger = get_wandb_logger(self.loggers)
@@ -1392,10 +1396,10 @@ class DEMLitModule(LightningModule):
 
         :param stage: Either `"fit"`, `"validate"`, `"test"`, or `"predict"`.
         """
-        
+
         # setup energy function
         self.energy_function.setup()
-        
+
         # # log datasets
         # wandb_logger = get_wandb_logger(self.loggers)
         # self.energy_function.log_datasets(wandb_logger)

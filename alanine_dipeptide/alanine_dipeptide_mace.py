@@ -67,7 +67,7 @@ def repeated_atoms_to_batch(
     return batch
 
 
-def update_alanine_dipeptide_xyz_from_dihedrals(
+def update_alanine_dipeptide_xyz_from_dihedrals_ase(
     atoms, phi_psi: torch.Tensor = None, convention="andreas"
 ):
     """
@@ -92,6 +92,25 @@ def update_alanine_dipeptide_xyz_from_dihedrals(
     atoms.set_positions(positions.numpy())
 
     return atoms
+
+
+def update_alanine_dipeptide_xyz_from_dihedrals_torch(
+    positions: torch.Tensor, phi_psi: torch.Tensor = None, convention="andreas"
+):
+    """
+    Update the positions of alanine dipeptide with the specified
+    backbone dihedral angles phi and psi (in radians).
+
+    Parameters:
+      phi_psi: Desired φ and ψ dihedral angles (radians)
+
+    Returns:
+      positions: torch.Tensor with updated positions
+    """
+    # Set dihedral angles
+    positions1 = set_dihedral_torch(positions, "phi", phi_psi[0], "phi", convention)
+    positions2 = set_dihedral_torch(positions1, "psi", phi_psi[1], "psi", convention)
+    return positions2
 
 
 def update_alanine_dipeptide_xyz_from_dihedrals_batched(
