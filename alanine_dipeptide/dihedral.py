@@ -189,7 +189,8 @@ def rotation_matrix_torch(axis: torch.Tensor, theta: torch.Tensor) -> torch.Tens
     This function is built entirely from differentiable torch operations.
     """
     # Ensure axis is a tensor of float type
-    axis = axis / torch.norm(axis)
+    # axis = axis / torch.norm(axis)
+    axis = axis / torch.sum(axis**2).sqrt()
     # Compute half-angle quantities
     half_theta = theta / 2.0
     a = torch.cos(half_theta)
@@ -224,7 +225,8 @@ def compute_dihedral_torch(p0, p1, p2, p3):
     b2 = p3 - p2
 
     # Normalize b1 so that it does not influence magnitude
-    b1_norm = torch.norm(b1)
+    # b1_norm = torch.norm(b1)
+    b1_norm = torch.sum(b1**2).sqrt()
     b1 = b1 / b1_norm
 
     # Compute projections to get vectors normal to the planes
@@ -275,7 +277,8 @@ def set_dihedral_torch(
 
     # Define the rotation axis (passing through atoms 1 and 2)
     axis = positions[k] - positions[j]
-    axis = axis / torch.norm(axis)
+    # axis = axis / torch.norm(axis)
+    axis = axis / torch.sum(axis**2).sqrt()
 
     rotating_indices = get_atoms_to_rotate(atoms_to_rotate)
     origin = positions[k].clone()
@@ -336,7 +339,8 @@ def set_dihedral_torch_vmap(
 
     # Define the rotation axis (passing through atoms 1 and 2)
     axis = positions[k] - positions[j]
-    axis = axis / torch.norm(axis)
+    # axis = axis / torch.norm(axis)
+    axis = axis / torch.sum(axis**2).sqrt()
 
     rotating_indices = get_atoms_to_rotate(atoms_to_rotate)
     origin = positions[k].clone()
@@ -395,7 +399,9 @@ def rotation_matrix_torch_batched(
       R: Tensor of shape (B, 3, 3)
     """
     # Normalize each axis vector.
-    axis = axis / torch.norm(axis, dim=1, keepdim=True)
+    # _norm = torch.norm(axis, dim=1, keepdim=True)
+    _norm = torch.sum(axis**2, dim=-1, keepdim=True).sqrt()
+    axis = axis / _norm
     half_theta = theta / 2.0  # shape (B,)
     a = torch.cos(half_theta)  # shape (B,)
     sin_half = torch.sin(half_theta)  # shape (B,)
@@ -508,7 +514,8 @@ def set_dihedral_torch_batched(
 
     # Define the rotation axis (through atoms j and k).
     axis = positions[:, k] - positions[:, j]  # (B, 3)
-    axis = axis / torch.norm(axis, dim=1, keepdim=True)  # (B, 3)
+    # axis = axis / torch.norm(axis, dim=1, keepdim=True)  # (B, 3)
+    axis = axis / torch.sum(axis**2, dim=-1, keepdim=True).sqrt()
 
     rotating_indices = get_atoms_to_rotate(atoms_to_rotate)
     origin = positions[:, k].clone()  # (B, 3)
