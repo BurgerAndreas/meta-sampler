@@ -440,7 +440,8 @@ class DEMLitModule(LightningModule):
         samples: torch.Tensor,
         return_aux_output: bool = False,
     ) -> torch.Tensor:
-        print(f"get_loss: shape={samples.shape}, times.shape={times.shape}")
+        # B = num_samples_to_sample_from_buffer
+        # samples [B, D] times [B]
         # TODO: not Richardson extrapolation? grad_fxn
         _out = estimate_grad_Rt(
             times,

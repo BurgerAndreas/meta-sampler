@@ -315,6 +315,9 @@ def set_dihedral_torch_vmap(
     Returns:
       positions   : Modified torch tensor of positions.
     """
+    assert (
+        len(target_angle.shape) == 0
+    ), f"target_angle must be a scalar, got shape {target_angle.shape}"
     target_angle = target_angle.to(positions.device)
 
     i, j, k, l = get_indices(indices, convention)
@@ -553,6 +556,7 @@ def test_set_dihedral_variants():
     )
 
     # Test vmap-compatible version
+    print("positions.shape: ", positions.shape)
     new_pos_vmap = set_dihedral_torch_vmap(
         positions,
         indices="phi",

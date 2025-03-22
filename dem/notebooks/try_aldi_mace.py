@@ -48,8 +48,27 @@ from alanine_dipeptide.alanine_dipeptide_mace import (
 from dem.models.components.score_estimator import estimate_grad_Rt
 
 
+def set_jit_enabled(enabled: bool):
+    """Enables/disables JIT"""
+    if torch.__version__ < "1.7":
+        torch.jit._enabled = enabled
+    else:
+        if enabled:
+            torch.jit._state.enable()
+        else:
+            torch.jit._state.disable()
+
+
+def jit_enabled():
+    """Returns whether JIT is enabled"""
+    if torch.__version__ < "1.7":
+        return torch.jit._enabled
+    else:
+        return torch.jit._state._enabled.enabled
+
+
 #############################################################################
-# TODO: Vectorize MACE
+# Vectorize MACE
 #############################################################################
 
 
@@ -70,79 +89,106 @@ def get_edge_vectors_and_lengths(
 
     return vectors, lengths
 
+
+def _broadcast(src: torch.Tensor, other: torch.Tensor, dim: int):
+    if dim < 0:
+        dim = other.dim() + dim
+    if src.dim() == 1:
+        for _ in range(0, dim):
+            src = src.unsqueeze(0)
+    for _ in range(src.dim(), other.dim()):
+        src = src.unsqueeze(-1)
+    src = src.expand_as(other)
+    return src
+
+
+def scatter_sum(
+    src: torch.Tensor,
+    index: torch.Tensor,
+    dim: int = -1,
+    out: Optional[torch.Tensor] = None,
+    dim_size: Optional[int] = None,
+    reduce: str = "sum",
+) -> torch.Tensor:
+    assert reduce == "sum"  # for now, TODO
+    index = _broadcast(index, src, dim)
+    if out is None:
+        size = list(src.size())
+        if dim_size is not None:
+            size[dim] = dim_size
+        elif index.numel() == 0:
+            size[dim] = 0
+        else:
+            size[dim] = int(index.max()) + 1
+        out = torch.zeros(size, dtype=src.dtype, device=src.device)
+        # self[index[i][j][k]][j][k] += src[i][j][k]  # if dim == 0
+        # self[i][index[i][j][k]][k] += src[i][j][k]  # if dim == 1
+        # self[i][j][index[i][j][k]] += src[i][j][k]  # if dim == 2
+        # return out.scatter_add_(dim, index, src)
+        return torch.scatter_add(out, dim, index, src)
+    else:
+        # return out.scatter_add_(dim, index, src)
+        return torch.scatter_add(out, dim, index, src)
+
+
 class VectorizedMACE(torch.nn.Module):
     """Wrapper around MACE model to vmap the forward pass.
     Implements force and hessian, but not virial or stress.
     """
+
     def __init__(self, model: mace.modules.models.MACE):
         super().__init__()
         self.model = model
-    
+
+    # @torch.jit.unused
     def forward(
         self,
-        data: Dict[str, torch.Tensor],
-        training: bool = False,
-        compute_force: bool = True,
-        compute_virials: bool = False,
-        compute_stress: bool = False,
-        compute_displacement: bool = False,
-        compute_hessian: bool = False,
+        positions: torch.Tensor,
+        node_attrs: torch.Tensor,
+        edge_index: torch.Tensor,
+        batch: torch.Tensor,
+        head: torch.Tensor,
+        shifts: torch.Tensor,
+        ptr: torch.Tensor,
     ) -> Dict[str, Optional[torch.Tensor]]:
-        # Setup
-        # TODO: torch.func.grad instead of torch.autograd.grad
-        data["node_attrs"].requires_grad_(True) # TODO: necessary? do outside forward?
-        data["positions"].requires_grad_(True)
-        num_atoms_arange = torch.arange(data["positions"].shape[0])
-        num_graphs = data["ptr"].numel() - 1
-        node_heads = (
-            data["head"][data["batch"]]
-            if "head" in data
-            else torch.zeros_like(data["batch"])
-        )
-        displacement = torch.zeros(
-            (num_graphs, 3, 3),
-            dtype=data["positions"].dtype,
-            device=data["positions"].device,
-        )
-        # Don't need this for our systems
-        # if compute_virials or compute_stress or compute_displacement:
-        #     (
-        #         data["positions"],
-        #         data["shifts"],
-        #         displacement,
-        #     ) = get_symmetric_displacement(
-        #         positions=data["positions"],
-        #         unit_shifts=data["unit_shifts"],
-        #         cell=data["cell"],
-        #         edge_index=data["edge_index"],
-        #         num_graphs=num_graphs,
-        #         batch=data["batch"],
-        #     )
+        """Returns only energy. Virials, stress, etc. not implemented."""
+
+        num_atoms_arange = torch.arange(positions.shape[0])
+        num_graphs = ptr.numel() - 1
+        node_heads = head[batch]
+        # node_heads = (
+        #     data["head"][data["batch"]]
+        #     if "head" in data
+        #     else torch.zeros_like(data["batch"])
+        # )
 
         # Atomic energies
-        node_e0 = self.model.atomic_energies_fn(data["node_attrs"])[
+        node_e0 = self.model.atomic_energies_fn(node_attrs)[
             num_atoms_arange, node_heads
         ]
         e0 = scatter_sum(
-            src=node_e0, index=data["batch"], dim=0, dim_size=num_graphs
+            src=node_e0, index=batch, dim=0, dim_size=num_graphs
         )  # [n_graphs, n_heads]
         # Embeddings
-        node_feats = self.model.node_embedding(data["node_attrs"])
+        node_feats = self.model.node_embedding(node_attrs)
         vectors, lengths = get_edge_vectors_and_lengths(
-            positions=data["positions"],
-            edge_index=data["edge_index"],
-            shifts=data["shifts"],
+            positions=positions,
+            edge_index=edge_index,
+            shifts=shifts,
         )
         edge_attrs = self.model.spherical_harmonics(vectors)
         edge_feats = self.model.radial_embedding(
-            lengths, data["node_attrs"], data["edge_index"], self.model.atomic_numbers
+            lengths, node_attrs, edge_index, self.model.atomic_numbers
         )
         if hasattr(self, "pair_repulsion"):
             pair_node_energy = self.model.pair_repulsion_fn(
-                lengths, data["node_attrs"], data["edge_index"], self.model.atomic_numbers
+                lengths,
+                node_attrs,
+                edge_index,
+                self.model.atomic_numbers,
             )
             pair_energy = scatter_sum(
-                src=pair_node_energy, index=data["batch"], dim=-1, dim_size=num_graphs
+                src=pair_node_energy, index=batch, dim=-1, dim_size=num_graphs
             )  # [n_graphs,]
         else:
             pair_node_energy = torch.zeros_like(node_e0)
@@ -156,16 +202,16 @@ class VectorizedMACE(torch.nn.Module):
             self.model.interactions, self.model.products, self.model.readouts
         ):
             node_feats, sc = interaction(
-                node_attrs=data["node_attrs"],
+                node_attrs=node_attrs,
                 node_feats=node_feats,
                 edge_attrs=edge_attrs,
                 edge_feats=edge_feats,
-                edge_index=data["edge_index"],
+                edge_index=edge_index,
             )
             node_feats = product(
                 node_feats=node_feats,
                 sc=sc,
-                node_attrs=data["node_attrs"],
+                node_attrs=node_attrs,
             )
             node_feats_list.append(node_feats)
             node_energies = readout(node_feats, node_heads)[
@@ -173,7 +219,7 @@ class VectorizedMACE(torch.nn.Module):
             ]  # [n_nodes, len(heads)]
             energy = scatter_sum(
                 src=node_energies,
-                index=data["batch"],
+                index=batch,
                 dim=0,
                 dim_size=num_graphs,
             )  # [n_graphs,]
@@ -188,43 +234,155 @@ class VectorizedMACE(torch.nn.Module):
         node_energy_contributions = torch.stack(node_energies_list, dim=-1)
         node_energy = torch.sum(node_energy_contributions, dim=-1)  # [n_nodes, ]
 
-        # Outputs
-        # TODO: torch.func.grad instead of torch.autograd.grad
-        energy=total_energy
-        positions=data["positions"]
-        cell=data["cell"]
-        virials, stress = None, None
-        if compute_force:
-            forces = torch.autograd.grad(
-                outputs=[energy],  # [n_graphs, ]
-                inputs=[positions],  # [n_nodes, 3]
-                grad_outputs=[torch.ones_like(energy)],
-                retain_graph=True,  # Make sure the graph is not destroyed during training
-                create_graph=True,  # Create graph for second derivative
-                # allow_unused=True,  # For complete dissociation turn to true
-            )[0]  # [n_nodes, 3]
-            if forces is None:
-                forces = torch.zeros_like(positions)
-            forces = -1 * forces
-        else:
-            forces = None
-        if compute_hessian:
-            assert forces is not None, "Forces must be computed to get the hessian"
-            hessian = compute_hessians_vmap(forces, positions)
-        else:
-            hessian = None
-
         return {
             "energy": total_energy,
             "node_energy": node_energy,
             "contributions": contributions,
-            "forces": forces,
-            "virials": virials,
-            "stress": stress,
-            "displacement": displacement,
-            "hessian": hessian,
             "node_feats": node_feats_out,
         }
+
+    # TODO: untested
+    def forward_with_hessian(
+        self,
+        data: Dict[str, torch.Tensor],
+    ) -> Dict[str, Optional[torch.Tensor]]:
+        # Setup
+        # TODO: torch.func.grad instead of torch.autograd.grad
+
+        node_heads = (
+            data["head"][data["batch"]]
+            if "head" in data
+            else torch.zeros_like(data["batch"])
+        )
+
+        def _get_energy(
+            positions, node_attrs, edge_index, batch, node_heads, shifts, ptr
+        ):
+            num_atoms_arange = torch.arange(positions.shape[0])
+            num_graphs = ptr.numel() - 1
+
+            # Atomic energies
+            node_e0 = self.model.atomic_energies_fn(data["node_attrs"])[
+                num_atoms_arange, node_heads
+            ]
+            e0 = scatter_sum(
+                src=node_e0, index=batch, dim=0, dim_size=num_graphs
+            )  # [n_graphs, n_heads]
+            # Embeddings
+            node_feats = self.model.node_embedding(node_attrs)
+            vectors, lengths = get_edge_vectors_and_lengths(
+                positions=positions,
+                edge_index=edge_index,
+                shifts=shifts,
+            )
+            edge_attrs = self.model.spherical_harmonics(vectors)
+            edge_feats = self.model.radial_embedding(
+                lengths, node_attrs, edge_index, self.model.atomic_numbers
+            )
+            if hasattr(self, "pair_repulsion"):
+                pair_node_energy = self.model.pair_repulsion_fn(
+                    lengths,
+                    node_attrs,
+                    edge_index,
+                    self.model.atomic_numbers,
+                )
+                pair_energy = scatter_sum(
+                    src=pair_node_energy, index=batch, dim=-1, dim_size=num_graphs
+                )  # [n_graphs,]
+            else:
+                pair_node_energy = torch.zeros_like(node_e0)
+                pair_energy = torch.zeros_like(e0)
+
+            # Interactions
+            energies = [e0, pair_energy]
+            node_energies_list = [node_e0, pair_node_energy]
+            node_feats_list = []
+            for interaction, product, readout in zip(
+                self.model.interactions, self.model.products, self.model.readouts
+            ):
+                node_feats, sc = interaction(
+                    node_attrs=node_attrs,
+                    node_feats=node_feats,
+                    edge_attrs=edge_attrs,
+                    edge_feats=edge_feats,
+                    edge_index=edge_index,
+                )
+                node_feats = product(
+                    node_feats=node_feats,
+                    sc=sc,
+                    node_attrs=node_attrs,
+                )
+                node_feats_list.append(node_feats)
+                node_energies = readout(node_feats, node_heads)[
+                    num_atoms_arange, node_heads
+                ]  # [n_nodes, len(heads)]
+                energy = scatter_sum(
+                    src=node_energies,
+                    index=batch,
+                    dim=0,
+                    dim_size=num_graphs,
+                )  # [n_graphs,]
+                energies.append(energy)
+                node_energies_list.append(node_energies)
+            # Concatenate node features
+            node_feats_out = torch.cat(node_feats_list, dim=-1)
+
+            # Sum over energy contributions
+            contributions = torch.stack(energies, dim=-1)
+            total_energy = torch.sum(contributions, dim=-1)  # [n_graphs, ]
+            # node_energy_contributions = torch.stack(node_energies_list, dim=-1)
+            # node_energy = torch.sum(node_energy_contributions, dim=-1)  # [n_nodes, ]
+            return total_energy
+
+        # Energy [1]
+        energy = _get_energy(
+            data["positions"],
+            data["node_attrs"],
+            data["edge_index"],
+            data["batch"],
+            node_heads,
+            data["shifts"],
+            data["ptr"],
+        )
+
+        # Forces [N, 3]
+        forces = -1 * torch.func.grad(_get_energy)(
+            data["positions"],
+            data["node_attrs"],
+            data["edge_index"],
+            data["batch"],
+            node_heads,
+            data["shifts"],
+            data["ptr"],
+            argnums=0,
+            has_aux=False,
+        )
+        print("forces.shape: ", forces.shape)
+
+        # Hessian [N, 3, 3]
+        # hessian = torch.vmap(torch.func.hessian(self._energy))(x_points)
+        hessian = torch.func.hessian(_get_energy)(
+            data["positions"],
+            data["node_attrs"],
+            data["edge_index"],
+            data["batch"],
+            node_heads,
+            data["shifts"],
+            data["ptr"],
+            argnums=0,
+            has_aux=False,
+        )
+        print("hessian.shape: ", hessian.shape)
+
+        return {
+            "energy": energy,
+            # "node_energy": node_energy,
+            # "contributions": contributions,
+            # "node_feats": node_feats_out,
+            "forces": forces,
+            "hessian": hessian,
+        }
+
 
 ######################################################
 # Get MACE model
@@ -262,6 +420,7 @@ batch_base = batch_base.to_dict()
 
 model = atoms_calc.models[0]
 atoms_calc = atoms_calc
+vectorized_model = VectorizedMACE(model)
 
 # Make minibatch version of batch, that is just multiple copies of the same AlDi configuration
 # but mimicks a batch from a typical torch_geometric dataloader
@@ -366,35 +525,32 @@ def try_mace_hessian():
 
 
 ####################################################################################################
+# Energy forward pass (without forces and hessian) of MACE
+####################################################################################################
 
 
-def tensor_like(_new, _base):
-    return torch.tensor(_new, device=_base.device, dtype=_base.dtype)
+@torch.jit.unused
+def _energy_vmap(
+    samples: torch.Tensor, return_aux_output: bool = False
+) -> torch.Tensor:
+    """Takes in a samples of phi/psi values and returns the energies."""
+    minibatch = atoms_calc._clone_batch(singlebatch_base)
+    # minibatch = singlebatch_base.clone()
+    # positions_list = tg.utils.unbatch(src=batch["positions"], batch=batch["batch"], dim=0) # [B, N_atoms, 3]
 
-
-def _forward_vmap(samples: torch.Tensor) -> torch.Tensor:
-    """Takes in a single sample and returns the pseudoenergy.
-    No batch dimension
-    """
-    raise NotImplementedError
-    minibatch = singlebatch_base.clone()
-
-    # Update xyz positions of atoms based on phi/psi values
-    # forces = gradient of energy with respect to phi/psi
-    phi_psi_batch = samples
-
-    # Define a function to compute energy for functorch.grad
-    def compute_energy(phi_psi, minibatch):
-        positions = minibatch["positions"]
-        print("vmap positions.shape: ", positions.shape)
-        positions1 = set_dihedral_torch_vmap(
-            positions, "phi", phi_psi[0], "phi", convention
+    def _dihedrals_to_energies(
+        _phi_psi, positions, node_attrs, edge_index, batch, head, shifts, ptr
+    ):
+        # positions [N, 3]
+        # phi_psi [2]
+        _positions = positions
+        # Update xyz positions of atoms based on phi/psi values
+        _positions1 = set_dihedral_torch_vmap(
+            _positions, "phi", _phi_psi[0], "phi", convention
         )
-        print("vmap positions1.shape: ", positions1.shape)
-        minibatch["positions"] = set_dihedral_torch_vmap(
-            positions1, "psi", phi_psi[1], "psi", convention
+        positions = set_dihedral_torch_vmap(
+            _positions1, "psi", _phi_psi[1], "psi", convention
         )
-        print("vmap minibatch['positions'].shape: ", minibatch["positions"].shape)
 
         # Update edge indices
         # not vmap-able, because the shape of edge_index is data dependent
@@ -404,41 +560,133 @@ def _forward_vmap(samples: torch.Tensor) -> torch.Tensor:
         # )
 
         # Compute energies
-        # Mace is not vmap-able, because it uses torch grad to compute the forces
-        # mace/modules/models.py", line 353, in forward
-        # data["positions"].requires_grad_(True)
-        # RuntimeError: You are attempting to call Tensor.requires_grad_() (or perhaps using torch.autograd.functional.* APIs)
-        # inside of a function being transformed by a functorch transform.
-        # This is unsupported, please attempt to use the functorch transforms (e.g. grad, vjp, jacrev, jacfwd, hessian)
-        # or call requires_grad_() outside of a function being transformed instead
-        result = model(minibatch, compute_stress=False, training=True)
+        result = vectorized_model.forward(
+            positions, node_attrs, edge_index, batch, head, shifts, ptr
+        )
         return result["energy"]
 
-    # Compute energy and forces
-    energy_fn = lambda x: compute_energy(x, minibatch)
-    grad_fn = torch.func.grad(energy_fn)
+    positions = minibatch["positions"]
+    node_attrs = minibatch["node_attrs"]
+    edge_index = minibatch["edge_index"]
+    batch = minibatch["batch"]
+    head = minibatch["head"][batch] if "head" in minibatch else torch.zeros_like(batch)
+    shifts = minibatch["shifts"]
+    ptr = minibatch["ptr"]
 
-    # Get energy and forces
-    out = {"energy": compute_energy(phi_psi_batch, minibatch)}
-    forces = -grad_fn(phi_psi_batch)  # Negative gradient gives forces
+    # [B, 1]
+    _dihedrals_to_energies_vmapped = torch.vmap(
+        _dihedrals_to_energies, in_dims=(0, None, None, None, None, None, None, None)
+    )
+    energies = _dihedrals_to_energies_vmapped(
+        samples, positions, node_attrs, edge_index, batch, head, shifts, ptr
+    )
+    energies = energies.squeeze(-1)
 
-    forces_norm = torch.linalg.norm(forces, dim=1)
-
-    energy_loss = (energy_weight * out["energy"]).mean()
-    force_loss = (force_weight * forces_norm).mean()
-    total_loss = energy_loss + force_loss
     if return_aux_output:
-        aux_output = {
-            "energy_loss": energy_loss,
-            "force_loss": force_loss,
-            "total_loss": total_loss,
-        }
+        aux_output = {}
+        return energies, aux_output
+    return energies
+
+
+####################################################################################################
+# Psuedo energy forward pass using forces and hessian of MACE
+####################################################################################################
+
+
+def tensor_like(_new, _base):
+    return torch.tensor(_new, device=_base.device, dtype=_base.dtype)
+
+
+def _pseudoenergy_vmap(
+    samples: torch.Tensor, return_aux_output: bool = False
+) -> torch.Tensor:
+    """Takes in samples of phi/psi values and returns the pseudoenergy.
+    Args:
+        samples (torch.Tensor): [B, 2]
+    Returns:
+        torch.Tensor: [B]
+    """
+    minibatch = atoms_calc._clone_batch(singlebatch_base)
+    # minibatch = singlebatch_base.clone()
+
+    def _dihedrals_to_energies(
+        _phi_psi, positions, node_attrs, edge_index, batch, head, shifts, ptr
+    ):
+        # Update xyz positions of atoms based on phi/psi values
+        positions1 = set_dihedral_torch_vmap(
+            positions, "phi", _phi_psi[0], "phi", convention
+        )
+        positions2 = set_dihedral_torch_vmap(
+            positions1, "psi", _phi_psi[1], "psi", convention
+        )
+
+        # Update edge indices
+        # not vmap-able, because the shape of edge_index is data dependent
+        # minibatch = update_neighborhood_graph_torch(
+        #     minibatch,
+        #     model.r_max.item(),
+        # )
+
+        result = vectorized_model(
+            positions2, node_attrs, edge_index, batch, head, shifts, ptr
+        )
+        return result["energy"].squeeze(-1)
+
+    # Get input variables as tensors
+    positions = minibatch["positions"]
+    node_attrs = minibatch["node_attrs"]
+    edge_index = minibatch["edge_index"]
+    batch = minibatch["batch"]
+    head = minibatch["head"][batch] if "head" in minibatch else torch.zeros_like(batch)
+    shifts = minibatch["shifts"]
+    ptr = minibatch["ptr"]
+
+    # [B]
+    _dihedrals_to_energies_vmapped = torch.vmap(
+        _dihedrals_to_energies, in_dims=(0, None, None, None, None, None, None, None)
+    )
+    energies = _dihedrals_to_energies_vmapped(
+        samples, positions, node_attrs, edge_index, batch, head, shifts, ptr
+    )
+
+    # forces = gradient of energy with respect to phi/psi [B, 2]
+    # forces = -torch.func.grad(_dihedrals_to_energies_vmapped, argnums=0)(samples, positions, node_attrs, edge_index, batch, head, shifts, ptr)
+    forces = -1 * torch.vmap(
+        torch.func.grad(_dihedrals_to_energies, argnums=0),
+        in_dims=(0, None, None, None, None, None, None, None),
+    )(samples, positions, node_attrs, edge_index, batch, head, shifts, ptr)
+
+    # Force magnitude [B]
+    forces_norm = torch.linalg.norm(forces, dim=1)  # [B]
+
+    # TODO: Hessian causes issues
+    # compute Hessian [B, 2, 2]
+    # hessian = torch.func.hessian(_dihedrals_to_energies_vmapped, argnums=0)(samples, positions, node_attrs, edge_index, batch, head, shifts, ptr)
+    hessian = torch.vmap(
+        torch.func.hessian(_dihedrals_to_energies, argnums=0),
+        in_dims=(0, None, None, None, None, None, None, None),
+    )(samples, positions, node_attrs, edge_index, batch, head, shifts, ptr)
+
+    # [B, D], [B, D, D]
+    eigenvalues, eigenvectors = torch.linalg.eigh(hessian)
+
+    # [B]
+    eigval_product = eigenvalues[:, 0] * eigenvalues[:, 1]
+
+    # Pseudoenergy [B]
+    energy_loss = 1.0 * energies
+    force_loss = 1.0 * forces_norm
+    hessian_loss = 1.0 * eigval_product
+    total_loss = energy_loss + force_loss + hessian_loss
+
+    if return_aux_output:
+        aux_output = {}
         return total_loss, aux_output
     return total_loss
 
 
 # TODO: figure out Hessian computation with batching
-def _forward_batched(samples: torch.Tensor) -> torch.Tensor:
+def _pseudoenergy_batched(samples: torch.Tensor) -> torch.Tensor:
     raise NotImplementedError
     bs = samples.shape[0]
     if bs == batch_size:
@@ -520,7 +768,9 @@ def _forward_batched(samples: torch.Tensor) -> torch.Tensor:
     return pseudoenergy
 
 
-def _forward_batched_loop(samples: torch.Tensor, return_aux_output: bool = False) -> torch.Tensor:
+def _pseudoenergy_batched_loop(
+    samples: torch.Tensor, return_aux_output: bool = False
+) -> torch.Tensor:
     """
     Compute pseudoenergy for a batch of dihedral angles
     Args:
@@ -593,16 +843,21 @@ def _forward_batched_loop(samples: torch.Tensor, return_aux_output: bool = False
 ####################################################################################################
 
 
-def test_score_estimator_vmap():
+# Energy + force + hessian
+def test_score_estimator_pseudoenergy_vmap():
     """In DEM the energy function is called in the score estimator, which computes the gradient of the energy w.r.t. the input."""
     from dem.energies.double_well_energy import DoubleWellEnergy
     from dem.models.components.noise_schedules import GeometricNoiseSchedule
 
+    print("")
+    print("=" * 80)
+    print("Test score estimator pseudoenergy_vmap")
+
     # Set up test parameters
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    batch_size = 5
+    batch_size = 4
     dim = 2
-    num_mc_samples = 100
+    num_mc_samples = 8
 
     # Create noise schedule
     noise_schedule = GeometricNoiseSchedule(sigma_min=0.00001, sigma_max=1.0)
@@ -613,7 +868,7 @@ def test_score_estimator_vmap():
 
     # Test with vmap=True
     # energy_function = DoubleWellEnergy(device=device, dimensionality=dim, use_vmap=True)
-    energy_function = _forward_vmap
+    energy_function = _pseudoenergy_vmap
     print(f"Running with vmap=True, batch_size={batch_size}, dim={dim}")
     grad_output, aux_output = estimate_grad_Rt(
         t=t,
@@ -632,18 +887,22 @@ def test_score_estimator_vmap():
     return
 
 
-def test_score_estimator_batched():
+# Energy + force + hessian
+def test_score_estimator_pseudoenergy_batched_loop():
     """In DEM the energy function is called in the score estimator, which computes the gradient of the energy w.r.t. the input.
     Original DEM codebase uses vmap and torch.func.grad, we use a batched version instead
     """
-    from dem.energies.double_well_energy import DoubleWellEnergy
+    print("")
+    print("=" * 80)
+    print("Test score estimator pseudoenergy_batched_loop")
+    # from dem.energies.double_well_energy import DoubleWellEnergy
     from dem.models.components.noise_schedules import GeometricNoiseSchedule
 
     # Set up test parameters
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    batch_size = 4
+    batch_size = 4  # num_samples_to_sample_from_buffer
     dim = 2
-    num_mc_samples = 16
+    num_mc_samples = 16  # num_estimator_mc_samples
 
     # Create noise schedule
     noise_schedule = GeometricNoiseSchedule(sigma_min=0.00001, sigma_max=1.0)
@@ -653,9 +912,17 @@ def test_score_estimator_batched():
     x = torch.randn(batch_size, dim, device=device)  # random positions
 
     # Test with vmap=False
-    print(f"\nRunning with vmap=False, batch_size={batch_size}, dim={dim}")
+    print(f"Running with vmap=False, batch_size={batch_size}, dim={dim}")
     # energy_function = DoubleWellEnergy(device=device, dimensionality=dim, use_vmap=False)
-    energy_function = _forward_batched_loop
+    energy_function = _pseudoenergy_batched_loop
+    energy_output = energy_function(x)
+    print(f"Energy shape: {energy_output.shape}")
+    assert energy_output.shape == (
+        batch_size,
+    ), f"Energy shape should be (batch_size,), got {energy_output.shape}"
+
+    print("Estimating score...")
+    t1 = time.time()
     grad_output_no_vmap, aux_output_no_vmap = estimate_grad_Rt(
         t=t,
         x=x,
@@ -665,14 +932,96 @@ def test_score_estimator_batched():
         use_vmap=False,
         return_aux_output=True,
     )
+    t2 = time.time()
+    print(f"Time gradient estimation no vmap: {t2 - t1:.4f} seconds")
     print(f"Gradient shape: {grad_output_no_vmap.shape}")
-    print(
-        f"Gradient mean: {grad_output_no_vmap.mean().item():.4f}, std: {grad_output_no_vmap.std().item():.4f}"
-    )
     print(f"Auxiliary output keys: {aux_output_no_vmap.keys()}")
+    assert grad_output_no_vmap.shape == (
+        batch_size,
+        dim,
+    ), f"Gradient shape should be (batch_size, dim), got {grad_output_no_vmap.shape}"
+    print("_pseudoenergy_batched_loop ✅")
+
+
+# Energy only (no forces or hessians)
+def test_score_estimator_energy_vmap():
+    """In DEM the energy function is called in the score estimator, which computes the gradient of the energy w.r.t. the input."""
+    print("")
+    print("=" * 80)
+    print("Test score estimator energy_vmap")
+    from dem.models.components.noise_schedules import GeometricNoiseSchedule
+
+    # Set up test parameters
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    batch_size = 4  # num_samples_to_sample_from_buffer
+    dim = 2
+    num_mc_samples = 16  # num_estimator_mc_samples
+
+    # Create noise schedule
+    noise_schedule = GeometricNoiseSchedule(sigma_min=0.00001, sigma_max=1.0)
+
+    # Create test inputs
+    t = torch.ones(batch_size, device=device) * 0.5  # mid-point in time
+    x = torch.randn(batch_size, dim, device=device)  # random positions
+
+    # Test with vmap=True
+    energy_function = _energy_vmap
+    print(f"Running with vmap=True, batch_size={batch_size}, dim={dim}")
+    energy_output = energy_function(x)
+    print(f"Energy shape: {energy_output.shape}")
+    assert energy_output.shape == (
+        batch_size,
+    ), f"Energy shape should be (batch_size,), got {energy_output.shape}"
+    print(
+        f"Energy mean: {energy_output.mean().item():.4f}, std: {energy_output.std().item():.4f}"
+    )
+
+    print("Estimating score...")
+    t1 = time.time()
+    grad_output, aux_output = estimate_grad_Rt(
+        t=t,
+        x=x,
+        energy_function=energy_function,
+        noise_schedule=noise_schedule,
+        num_mc_samples=num_mc_samples,
+        use_vmap=True,
+        return_aux_output=True,
+    )
+    t2 = time.time()
+    print(f"Time gradient estimation vmap: {t2 - t1:.4f} seconds")
+    print(f"Gradient shape: {grad_output.shape}")
+    print(f"Auxiliary output keys: {aux_output.keys()}")
+    assert grad_output.shape == (
+        batch_size,
+        dim,
+    ), f"Gradient shape should be (batch_size, dim), got {grad_output.shape}"
+    print("_energy_vmap ✅")
+
+
+def test_forward_pass_pseudoenergy_batched_loop():
+    # Create test dihedral angles
+    # Create a grid of phi/psi angles
+    phi_range = torch.linspace(-np.pi, np.pi, 5)
+    psi_range = torch.linspace(-np.pi, np.pi, 5)
+    phi_grid, psi_grid = torch.meshgrid(phi_range, psi_range, indexing="ij")
+    dihedrals = torch.stack([phi_grid.flatten(), psi_grid.flatten()], dim=1).to(device)
+
+    print(f"Testing with {len(dihedrals)} dihedral angle pairs")
+
+    # test with loop
+    print("Testing loop version...")
+    print("dihedrals.shape: ", dihedrals.shape)
+    t1 = time.time()
+    pseudoenergies = _pseudoenergy_batched_loop(dihedrals)
+    t2 = time.time()
+    print(f"Time forward pass: {t2 - t1:.4f} seconds")
+    print(f"Pseudoenergies shape: {pseudoenergies.shape}")
+    print("passed! ✅")
 
 
 if __name__ == "__main__":
+    print("=" * 80)
+    # set_jit_enabled(False)
 
     # try_mace_hessian()
 
@@ -683,50 +1032,16 @@ if __name__ == "__main__":
     convention = "bg"
     return_aux_output = False
 
-    # Create test dihedral angles
-    # Create a grid of phi/psi angles
-    phi_range = torch.linspace(-np.pi, np.pi, 5)
-    psi_range = torch.linspace(-np.pi, np.pi, 5)
-    phi_grid, psi_grid = torch.meshgrid(phi_range, psi_range, indexing="ij")
-    dihedrals = torch.stack([phi_grid.flatten(), psi_grid.flatten()], dim=1).to(device)
-
-    print(f"Testing with {len(dihedrals)} dihedral angle pairs")
-    print("=" * 80)
-
-    ##################################################################################
-    # Test forward passes of AlDi energy function
-    ##################################################################################
-
-    # test with loop
-    print("Testing loop version...")
-    print("dihedrals.shape: ", dihedrals.shape)
-    t1 = time.time()
-    pseudoenergies = _forward_batched_loop(dihedrals)
-    t2 = time.time()
-    print(f"Time taken: {t2 - t1:.4f} seconds")
-    print(f"Pseudoenergies shape: {pseudoenergies.shape}")
-    print("passed! ✅")
-
-    # # Test without vmap (batched version)
-    # print("Testing batched version...")
-    # batch_energies = _forward_batched(dihedrals[:batch_size])
-    # print(f"Batch energies shape: {batch_energies.shape}")
-
-    # # Test with vmap
-    # print("\nTesting vmap version...")
-    # # Use torch.vmap to vectorize the _forward_vmap function over the batch dimension
-    # t1 = time.time()
-    # vmapped_forward = torch.vmap(_forward_vmap)
-    # t2 = time.time()
-    # print(f"Time taken: {t2 - t1:.4f} seconds")
-    # # Apply the vmapped function to the first batch_size samples
-    # vmap_energies = vmapped_forward(dihedrals[: min(batch_size, len(dihedrals))])
-    # print(f"Vmap energies shape: {vmap_energies.shape}")
-    # print("passed! ✅")
-
     ##################################################################################
     # Test score estimator (gradient of energy w.r.t. input) of AlDi energy function
     ##################################################################################
 
-    test_score_estimator_batched()
-    # test_score_estimator_vmap()
+    test_score_estimator_energy_vmap()
+
+    ##################################################################################
+    # Test score estimator (gradient of energy w.r.t. input) of AlDi pseudo-energy function
+    ##################################################################################
+
+    # test_forward_pass_pseudoenergy_batched_loop()
+    test_score_estimator_pseudoenergy_batched_loop()
+    test_score_estimator_pseudoenergy_vmap()

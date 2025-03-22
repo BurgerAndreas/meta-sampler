@@ -205,8 +205,8 @@ def _estimate_grad_Rt_batched(
 
 # original implementation in DEM codebase, using vmap and torch.func.grad
 def _estimate_grad_Rt_vmap(
-    t: torch.Tensor,
-    x: torch.Tensor,
+    t: torch.Tensor,  # [num_samples_from_buffer]
+    x: torch.Tensor,  # [num_samples_from_buffer, D]
     energy_function: BaseEnergyFunction,
     noise_schedule: BaseNoiseSchedule,
     num_mc_samples: int,
@@ -218,6 +218,7 @@ def _estimate_grad_Rt_vmap(
         t = t.unsqueeze(0).repeat(len(x))
 
     def _log_expectation_reward(t, x, energy_function, noise_schedule, num_mc_samples):
+        # t: [], x: [D]
         return log_expectation_reward_vmap(
             t,
             x,
@@ -232,6 +233,8 @@ def _estimate_grad_Rt_vmap(
     grad_fxn = torch.func.grad(
         _log_expectation_reward, argnums=1, has_aux=return_aux_output
     )
+    # we have two "batch" dimensions: S=num_mc_samples and B=num_samples_from_buffer
+    # [B], [B,D] -> [], [D]
     vmapped_fxn = torch.vmap(
         grad_fxn, in_dims=(0, 0, None, None, None), randomness="different"
     )
@@ -246,7 +249,7 @@ def estimate_grad_Rt(
     energy_function,
     noise_schedule,
     num_mc_samples,
-    use_vmap: bool,
+    use_vmap: bool = True,
     *args,
     **kwargs,
 ):
