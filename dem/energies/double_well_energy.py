@@ -236,7 +236,10 @@ class DoubleWellEnergy(BaseEnergyFunction):
             torch.Tensor: Training dataset tensor
         """
         if self.data_path_train is None:
-            train_samples = self.normalize(self.sample((self.train_set_size,)))
+            if self.train_set_size > 0:
+                train_samples = self.normalize(self.sample((self.train_set_size,)))
+            else:
+                return None
 
         else:
             # Assume the samples we are loading from disk are already normalized.

@@ -41,15 +41,14 @@ class GMMPseudoEnergy(GMMEnergy, BasePseudoEnergyFunction):
     """
 
     def __init__(self, *args, **kwargs):
-        # Initialize GMMEnergy base class
+        # Initialize base class
         print(f"Initializing GMMPseudoEnergy with kwargs: {kwargs}")
         BasePseudoEnergyFunction.__init__(self, *args, **kwargs)
-        # calls setup_val_set, setup_test_set, setup_train_set
         GMMEnergy.__init__(self, *copy.deepcopy(args), **copy.deepcopy(kwargs))
 
         self._is_molecule = False
 
-        # transition states of the GMM potential
+        # transition states of the true energy surface
         self.boundary_points = None
         self.transition_points = None
         self.validation_results = None

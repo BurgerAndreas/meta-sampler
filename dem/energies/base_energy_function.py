@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 import numpy as np
+import math
 import torch
 from pytorch_lightning.loggers import WandbLogger
 
@@ -55,9 +56,13 @@ class BaseEnergyFunction(ABC):
         val_set_size: int = 2000,
         data_path_train: Optional[str] = None,
         temperature: float = 1.0,
+        plotting_batch_size: int = -1,
+        plotting_device: str = "cpu",
     ):
         self._dimensionality = dimensionality
         self._plotting_bounds = plotting_bounds
+        self.plotting_batch_size = plotting_batch_size
+        self.plotting_device = plotting_device
 
         self.normalization_min = normalization_min
         self.normalization_max = normalization_max
@@ -254,7 +259,7 @@ class BaseEnergyFunction(ABC):
         plt.close()
         fig, axs = plt.subplots(1, 2, figsize=(12, 4))
 
-        self.move_to_device("cpu")
+        self.move_to_device(self.plotting_device)
         plot_fn(
             self.log_prob,
             bounds=plotting_bounds,
@@ -265,6 +270,9 @@ class BaseEnergyFunction(ABC):
             plot_kwargs=plot_prob_kwargs,
             colorbar=colorbar,
             quantity=quantity,
+            batch_size=self.plotting_batch_size,
+            device=self.plotting_device,
+            load_path=self.get_load_path(bounds=plotting_bounds, grid_width_n_points=200),
         )
 
         # plot dataset samples
@@ -283,6 +291,9 @@ class BaseEnergyFunction(ABC):
                 plot_kwargs=plot_prob_kwargs,
                 colorbar=colorbar,
                 quantity=quantity,
+                batch_size=self.plotting_batch_size,
+                device=self.plotting_device,
+                load_path=self.get_load_path(bounds=plotting_bounds, grid_width_n_points=200),
             )
             # plot generated samples
             plot_marginal_pair(
@@ -306,6 +317,9 @@ class BaseEnergyFunction(ABC):
         self.move_to_device(self.device)
 
         return fig_to_image(fig)
+    
+    def get_load_path(self, bounds, grid_width_n_points):
+        return f"dem_outputs/{self.name}/bounds_{bounds[0]:.2f}_{bounds[1]:.2f}_grid_{grid_width_n_points}"
 
     def get_single_dataset_fig(
         self,
@@ -344,7 +358,7 @@ class BaseEnergyFunction(ABC):
         else:
             fig = ax.get_figure()
 
-        self.move_to_device("cpu")
+        self.move_to_device(self.plotting_device)
         plot_fn(
             self.log_prob,
             bounds=plotting_bounds,
@@ -355,6 +369,9 @@ class BaseEnergyFunction(ABC):
             plot_kwargs=plot_prob_kwargs,
             colorbar=colorbar,
             quantity=quantity,
+            batch_size=self.plotting_batch_size,
+            device=self.plotting_device,
+            load_path=self.get_load_path(bounds=plotting_bounds, grid_width_n_points=grid_width_n_points),
         )
         if samples is not None:
             plot_marginal_pair(
@@ -712,8 +729,12 @@ class BaseEnergyFunction(ABC):
             # Handle single sample
             hessian = torch.func.hessian(self._energy)(x_points)
         else:
+            chunk_size = max(1, int(math.sqrt(self.plotting_batch_size))) if self.plotting_batch_size > 0 else None
             # Handle batched inputs using vmap
-            hessian = torch.vmap(torch.func.hessian(self._energy))(x_points)
+            hessian = torch.vmap(
+                torch.func.hessian(self._energy),
+                chunk_size=chunk_size,
+            )(x_points)
 
         # Compute eigenvalues
         batched_eigenvalues, batched_eigenvectors = torch.linalg.eigh(hessian)
@@ -932,7 +953,7 @@ class BaseEnergyFunction(ABC):
             )
             return
 
-        self.move_to_device("cpu")
+        self.move_to_device(self.plotting_device)
 
         # Create x points for the cross-section
         if plotting_bounds is None:
@@ -1020,7 +1041,7 @@ class BaseEnergyFunction(ABC):
         other_axis = 1 if axis == 0 else 0
         axissymbol = "x" if axis == 0 else "y"
 
-        self.move_to_device("cpu")
+        self.move_to_device(self.plotting_device)
 
         # Create x points for the cross-section
         if plotting_bounds is None:

@@ -6,7 +6,7 @@
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 defaults:
-  - override /energy: aldi_2d
+  - override /energy: aldi2d
   # - override /model/net: egnn 
   # - override /model/noise_schedule: geometric
 
@@ -52,9 +52,16 @@ model:
 
   diffusion_scale: 1.0
 
+  use_vmap: true
+  use_richardsons: True
+  num_samples_to_sample_from_buffer: 512
   num_estimator_mc_samples: 500
   num_samples_to_generate_per_epoch: 1000
 
   # this has to be max 1000 since test_set is 1000
   eval_batch_size: 1000
   scheduler: null
+
+energy:
+  use_vmap: ${model.use_vmap}
+  batch_size: ${model.num_samples_to_sample_from_buffer}

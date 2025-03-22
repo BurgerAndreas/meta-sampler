@@ -1,8 +1,9 @@
 import torch
 
+
 def manual_normalize(x, p=2, dim=1, eps=1e-12):
     # Compute p-norm using torch.sum
-    norm = torch.sum(x.abs()**p, dim=dim, keepdim=True) ** (1. / p)
+    norm = torch.sum(x.abs() ** p, dim=dim, keepdim=True) ** (1.0 / p)
     norm = norm.clamp(min=eps)  # Avoid division by zero
     return x / norm
 

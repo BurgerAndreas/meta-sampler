@@ -23,150 +23,48 @@ from openmm.unit import Quantity
 
 import torch_geometric as tg
 
-from alanine_dipeptide.mace_neighbourhood import update_neighborhood_graph_batched
+
+from alanine_dipeptide.mace_neighbourhood import (
+    update_neighborhood_graph_batched,
+    update_neighborhood_graph_torch,
+    update_neighborhood_graph_torch_batched,
+    get_neighborhood,
+)
+from alanine_dipeptide.dihedral import (
+    set_dihedral_torch,
+    set_dihedral_torch_vmap,
+    set_dihedral_torch_batched,
+    compute_dihedral_torch,
+    compute_dihedral_torch_batched,
+)
 from alanine_dipeptide.alanine_dipeptide_mace import (
     load_alanine_dipeptide_ase,
     repeated_atoms_to_batch,
     update_alanine_dipeptide_xyz_from_dihedrals_batched,
+    update_alanine_dipeptide_xyz_from_dihedrals_torch,
 )
 
+from dem.energies.base_energy_function import BasePseudoEnergyFunction
+from dem.energies.alanine_dipeptide_energy import MaceAlDiEnergy2D
 
-class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
+
+class MaceAlDiForcePseudoEnergy2D(MaceAlDiEnergy2D, BasePseudoEnergyFunction):
     """
     Pesudoenergy function for the aldanine dipeptide.
     Pseudonergy is defined as the absolute value of the force on the alanine dipeptide.
     Energy and forces are computed using MACE.
     """
 
-    def __init__(
-        self,
-        dimensionality=2,
-        device="cuda",
-        plotting_buffer_sample_size=512,
-        plot_samples_epoch_period=5,
-        should_unnormalize=False,
-        data_normalization_factor=2.0,  # ?
-        # loss weights
-        force_weight=1.0,
-        energy_weight=0.1,
-        # Mace
-        use_cueq=True,
-        dtypestr="float32",
-        use_vmap=True,
-        batch_size=1,
-        #
-        train_set_size=0,
-        test_set_size=2000,
-        val_set_size=2000,
-    ):
-        torch.manual_seed(0)
-        self.device = device
-        self.plotting_buffer_sample_size = plotting_buffer_sample_size
-        self.plot_samples_epoch_period = plot_samples_epoch_period
+    def __init__(self, *args, **kwargs):
+        # Initialize base class
+        print(f"Initializing MaceAlDiForcePseudoEnergy with kwargs: {kwargs}")
+        BasePseudoEnergyFunction.__init__(self, *args, **kwargs)
+        MaceAlDiEnergy2D.__init__(self, *copy.deepcopy(args), **copy.deepcopy(kwargs))
 
-        self.train_set_size = train_set_size
-        self.test_set_size = test_set_size
-        self.val_set_size = val_set_size
-
-        self.curr_epoch = 0
-        self.name = "aldanine_dipeptide_mace_pesudoenergy"
-
-        self.energy_weight = energy_weight
-        self.force_weight = force_weight
-        self.batch_size = batch_size
-        self.use_vmap = use_vmap
-
-        ######################################################
-        # Get MACE model
-        ######################################################
-        # mace_off or mace_anicc
-        device_str = "cuda" if torch.cuda.is_available() else "cpu"
-        calc = mace_off(
-            model="medium", device=device_str, dtype=dtypestr, enable_cueq=use_cueq
-        )
-        # calc = mace_anicc(device=device_str, dtype=dtypestr, enable_cueq=True)
-        device = calc.device
-
-        ######################################################
-        # get alanine dipeptide atoms
-        ######################################################
-        atoms = load_alanine_dipeptide_ase()
-        atoms.calc = calc
-        atoms_calc = atoms.calc
-
-        # ASE atoms -> torch batch
-        batch_base = atoms_calc._atoms_to_batch(copy.deepcopy(atoms))
-
-        if atoms_calc.model_type in ["MACE", "EnergyDipoleMACE"]:
-            batch = atoms_calc._clone_batch(batch_base)
-            node_heads = batch["head"][batch["batch"]]
-            num_atoms_arange = torch.arange(batch["positions"].shape[0])
-            node_e0 = atoms_calc.models[0].atomic_energies_fn(batch["node_attrs"])[
-                num_atoms_arange, node_heads
-            ]
-            compute_stress = not atoms_calc.use_compile
-        else:
-            compute_stress = False
-        self.batch_base = batch_base.to_dict()
-        self.model = atoms_calc.models[0]
-        self.atoms_calc = atoms_calc
-        self.atoms = atoms
-
-        # Make minibatch version of batch, that is just multiple copies of the same AlDi configuration
-        # but mimicks a batch from a typical torch_geometric dataloader
-        # and that we can then rotate to get different phi/psi values
-        if self.use_vmap:
-            # batch_size of one that is duplicated by vmap
-            self.minibatch = repeated_atoms_to_batch(
-                self.atoms_calc, copy.deepcopy(self.atoms), bs=1, repeats=1
-            )
-        else:
-            self.minibatch = repeated_atoms_to_batch(
-                self.atoms_calc,
-                copy.deepcopy(self.atoms),
-                bs=batch_size,
-                repeats=batch_size,
-            )
-
-        ######################################################
-        # Initialize BaseEnergyFunction
-        ######################################################
-        super().__init__(
-            dimensionality=2,
-            is_molecule=True,
-            # normalization for the force?
-            normalization_min=-4000,
-            normalization_max=-3000,  # TODO: change this
-        )
-
-    def setup_test_set(self):
-        """Returns a test set of 2D points (dihedral angles).
-        Is a 2d grid of points in the range [-pi, pi] x [-pi, pi].
-        """
-        raise NotImplementedError
-        samples = torch.linspace(-np.pi, np.pi, self.test_set_size, device=self.device)
-        samples = torch.cartesian_prod(samples, samples)
-        return samples
-
-    def setup_train_set(self):
-        """Returns a training set of 2D points (dihedral angles).
-        Is a random set of 2D points in the range [-pi, pi] x [-pi, pi].
-        """
-        raise NotImplementedError
-        samples = (
-            torch.rand(self.train_set_size, 2, device=self.device) * 2 * np.pi - np.pi
-        )
-        # samples = torch.cartesian_prod(samples, samples)
-        return samples
-
-    def setup_val_set(self):
-        """Returns a validation set of 2D points (dihedral angles).
-        Is a 2d grid of points in the range [-pi, pi] x [-pi, pi].
-        """
-        raise NotImplementedError
-        samples = torch.linspace(-np.pi, np.pi, self.val_set_size, device=self.device)
-        samples = torch.cartesian_prod(samples, samples)
-        return samples
+        # transition states of the true energy surface
+        self.boundary_points = None
+        self.transition_points = None
+        self.validation_results = None
 
     def __call__(
         self, samples: torch.Tensor, return_aux_output: bool = False
@@ -179,10 +77,53 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
         Returns:
             torch.Tensor: Energy values at input points
         """
+        raise NotImplementedError
         if self.use_vmap:
             return self._forward_vmap(samples)
         else:
             return self._forward_batched(samples)
+
+    def log_prob(
+        self,
+        samples: torch.Tensor,
+        temperature: Optional[float] = None,
+        return_aux_output: bool = False,
+    ) -> torch.Tensor:
+        """Compute unnormalized log-probability of GAD pseudo-energy.
+        Corresponds to GMMEnergy.log_prob.
+
+        E_GAD = -V(x) + 1/lambda_1 * (grad V(x) dot v_1)^2
+        where lambda_1 and v_1 are the smallest eigenvalue and it's corresponding eigenvector of the Hessian of V(x)
+
+        Args:
+            samples: Input positions tensor of shape (dimensionality,)
+                When used with vmap, this will be automatically vectorized
+            return_aux_output: Whether to return auxiliary outputs
+
+        Returns:
+            Negative of pseudo-energy value (scalar)
+        """
+        raise NotImplementedError
+        assert (
+            samples.shape[-1] == self._dimensionality
+        ), "`x` does not match `dimensionality`"
+
+        if len(samples.shape) == 1:
+            samples = samples.unsqueeze(0)
+
+        pseudo_energy, aux_output = self.compute_pseudo_potential(self._energy, samples)
+
+        if temperature is None:
+            temperature = self.temperature
+        pseudo_energy = pseudo_energy / temperature
+
+        # convention
+        # pseudo_log_prob = pseudo_energy
+        pseudo_log_prob = -pseudo_energy
+
+        if return_aux_output:
+            return pseudo_log_prob, aux_output
+        return pseudo_log_prob
 
     def _forward_vmap(self, samples: torch.Tensor) -> torch.Tensor:
         """Takes in a single sample and returns the pseudoenergy.
@@ -294,64 +235,3 @@ class MaceAlDiForcePseudoEnergy(BaseEnergyFunction):
             self.energy_weight * out["energy"] + self.force_weight * forces_norm
         )
         return pseudoenergy
-
-    def log_on_epoch_end(
-        self,
-        latest_samples: torch.Tensor,
-        latest_energies: torch.Tensor,
-        wandb_logger: WandbLogger,
-        unprioritized_buffer_samples=None,
-        cfm_samples=None,
-        replay_buffer=None,
-        prefix: str = "",
-    ) -> None:
-        if wandb_logger is None:
-            return
-
-        if len(prefix) > 0 and prefix[-1] != "/":
-            prefix += "/"
-
-        if self.curr_epoch % self.plot_samples_epoch_period == 0:
-            if latest_samples is not None:
-                samples_fig = self.get_dataset_fig(latest_samples)
-                wandb_logger.log_image(f"{prefix}generated_samples", [samples_fig])
-
-        self.curr_epoch += 1
-
-    def get_dataset_fig(self, samples):
-        fig, ax = plt.subplots(figsize=(10, 6))
-
-        # Plot the normalized energy function
-        x = torch.linspace(-np.pi, np.pi, 1000, device=self.device)  # phi
-        y = torch.linspace(-np.pi, np.pi, 1000, device=self.device)  # psi
-        x, y = torch.meshgrid(x, y, indexing="ij")
-        x = x.reshape(-1, 1)
-        y = y.reshape(-1, 1)
-        z = self(torch.cat([x, y], dim=-1))
-        z = z.reshape(x.shape[0], -1)
-
-        # Normalize using trapezoidal rule
-        dx = x[1] - x[0]
-        Z = torch.trapz(z, x)
-        z = z / Z
-
-        ax.plot(x.cpu(), z.cpu(), "b-", label="Target Distribution")
-
-        # Plot the histogram of samples
-        if samples is not None:
-            samples = samples.squeeze(-1)
-            ax.hist(
-                samples.cpu(),
-                bins=50,
-                density=True,
-                alpha=0.5,
-                color="r",
-                label="Samples",
-            )
-
-        ax.set_xlabel("phi")
-        ax.set_ylabel("psi")
-        ax.legend()
-        ax.grid(True)
-
-        return fig_to_image(fig)

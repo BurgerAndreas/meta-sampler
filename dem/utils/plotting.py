@@ -1,17 +1,19 @@
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 
+import os
+import pickle
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import torch
 import itertools
-
+from tqdm import tqdm
 from fab.types_ import LogProbFunc, Distribution
 
 
 # adjusted from fab.utils.plotting.plot_contours
 def plot_fn(
-    log_prob_func: LogProbFunc,
+    log_prob_func: Callable,
     ax: Optional[plt.Axes] = None,
     bounds: Tuple[float, float] = (-5.0, 5.0),
     grid_width_n_points: int = 20,
@@ -21,6 +23,9 @@ def plot_fn(
     plot_kwargs: dict = {},
     colorbar: bool = False,
     quantity: str = "log_prob",
+    batch_size: int = -1,
+    device: str = "cpu",
+    load_path: str = None,
 ):
     """Plot heatmap of log probability density.
 
@@ -37,12 +42,48 @@ def plot_fn(
     else:
         fig = ax.get_figure()
 
-    x_points_dim1 = torch.linspace(bounds[0], bounds[1], grid_width_n_points)
+    x_points_dim1 = torch.linspace(bounds[0], bounds[1], grid_width_n_points, device=device)
     x_points_dim2 = x_points_dim1
-    x_points = torch.tensor(list(itertools.product(x_points_dim1, x_points_dim2)))
+    x_points = torch.tensor(list(itertools.product(x_points_dim1, x_points_dim2)), device=device)
 
-    log_p_x = log_prob_func(x_points).detach()
+    recompute = True
+    if load_path is not None:
+        # Check if the file exists
+        if os.path.exists(f"{load_path}.pkl"):
+            print(f"Loading precomputed values from {load_path}.pkl")
+            with open(f"{load_path}.pkl", "rb") as f:
+                saved_data = pickle.load(f)
+                
+            # Verify the saved data matches our current parameters
+            if (saved_data["grid_width_n_points"] == grid_width_n_points and 
+                np.allclose(saved_data["bounds"], bounds)):
+                log_p_x = saved_data["log_p_x"]
+                recompute = False
+            else:
+                print(f"Saved data parameters don't match current parameters. Recomputing.")
+        else:
+            print(f"No precomputed values found at {load_path}.pkl. Computing from scratch.")
+            
+    if recompute:
+        with torch.no_grad():
+            if batch_size <= 0 or batch_size >= x_points.shape[0]:
+                log_p_x = log_prob_func(x_points).detach().cpu()
+            else:
+                log_p_x = []
+                so_far = 0
+                batches = x_points.shape[0] // batch_size + 1
+                print(f"Dividing {x_points.shape[0]} points into {batches} batches of {batch_size} points")
+                for i in tqdm(range(batches), desc="Plotting"):
+                    log_p_x.append(log_prob_func(x_points[so_far:so_far+batch_size]).detach().cpu())
+                    so_far += batch_size
+                log_p_x = torch.cat(log_p_x)
+        if load_path is not None:
+            os.makedirs(os.path.dirname(load_path), exist_ok=True)
+            with open(f"{load_path}.pkl", "wb") as f:
+                pickle.dump({"grid_width_n_points": grid_width_n_points, "bounds": bounds, "log_p_x": log_p_x}, f)
+            print(f"Saved precomputed values to {load_path}.pkl")
     log_p_x = torch.clamp_min(log_p_x, log_prob_min)
+    
     if quantity in ["prob", "p"]:
         log_p_x = torch.exp(log_p_x)
         label = "P = exp(-E)"
@@ -61,10 +102,10 @@ def plot_fn(
     log_p_x = log_p_x.reshape((grid_width_n_points, grid_width_n_points))
 
     x_points_dim1 = (
-        x_points[:, 0].reshape((grid_width_n_points, grid_width_n_points)).numpy()
+        x_points[:, 0].reshape((grid_width_n_points, grid_width_n_points)).cpu().numpy()
     )
     x_points_dim2 = (
-        x_points[:, 1].reshape((grid_width_n_points, grid_width_n_points)).numpy()
+        x_points[:, 1].reshape((grid_width_n_points, grid_width_n_points)).cpu().numpy()
     )
 
     # cmaps
@@ -146,24 +187,25 @@ def plot_contours(
     log_prob_min: float = -1000.0,
     plot_kwargs: dict = {},
     colorbar: bool = False,
+    device: str = "cpu",
 ):
     """Plot contours of a log_prob_func that is defined on 2D"""
     if ax is None:
         fig, ax = plt.subplots(1)
 
-    x_points_dim1 = torch.linspace(bounds[0], bounds[1], grid_width_n_points)
+    x_points_dim1 = torch.linspace(bounds[0], bounds[1], grid_width_n_points, device=device)
     x_points_dim2 = x_points_dim1
-    x_points = torch.tensor(list(itertools.product(x_points_dim1, x_points_dim2)))
+    x_points = torch.tensor(list(itertools.product(x_points_dim1, x_points_dim2)), device=device)
 
     log_p_x = log_prob_func(x_points).detach()
     log_p_x = torch.clamp_min(log_p_x, log_prob_min)
     log_p_x = log_p_x.reshape((grid_width_n_points, grid_width_n_points))
 
     x_points_dim1 = (
-        x_points[:, 0].reshape((grid_width_n_points, grid_width_n_points)).numpy()
+        x_points[:, 0].reshape((grid_width_n_points, grid_width_n_points)).cpu().numpy()
     )
     x_points_dim2 = (
-        x_points[:, 1].reshape((grid_width_n_points, grid_width_n_points)).numpy()
+        x_points[:, 1].reshape((grid_width_n_points, grid_width_n_points)).cpu().numpy()
     )
     #
     im = ax.contour(
