@@ -63,7 +63,7 @@ for config in configs:
         #     random_samples=False,
         #     # name=name,
         #     # plot_minima=False,
-        #     # grid_width_n_points=100,
+        #     # grid_width=200,
         #     # plot_style=plot_style,
         #     # plot_sample_kwargs={"color": "m", "marker": "."},
         #     # colorbar=True,
@@ -76,7 +76,7 @@ for config in configs:
             samples=None,
             name=name,
             # plot_minima=False,
-            grid_width_n_points=100,
+            grid_width=200,
             plot_style=plot_style,
             # plot_sample_kwargs={"color": "m", "marker": "."},
             colorbar=True,
@@ -90,7 +90,7 @@ for config in configs:
             samples=None,
             name=name,
             # plot_minima=False,
-            grid_width_n_points=100,
+            grid_width=200,
             plot_style=plot_style,
             # plot_sample_kwargs={"color": "m", "marker": "."},
             colorbar=True,
@@ -116,11 +116,11 @@ for config in configs:
         samples=samples,
         name=f"{name} with samples and critical points",
         plot_minima=True,
-        grid_width_n_points=100,
+        grid_width=200,
         plot_style="contours",
         # plot_sample_kwargs={"color": "m", "marker": ".", "alpha": 0.5, "s": 10},
         colorbar=True,
-        quantity="e",
+        quantity="loge",
         return_fig=False,
     )
     # Save the figure
@@ -128,7 +128,7 @@ for config in configs:
     plt.savefig(fig_name)
     print(f"Saved {fig_name}")
 
-    energy_function.plot_hessian_eigenvalues(name=name)
+    energy_function.plot_hessian_eigenvalues(name=name, grid_width=200)
     fig_name = f"plots/aldi2d_{plt_name}_hessian_eigenvalues.png"
     plt.savefig(fig_name)
     print(f"Saved {fig_name}")
@@ -156,7 +156,7 @@ for config in configs:
     # plt.savefig(fig_name)
     # print(f"Saved {fig_name}")
 
-    energy_function.plot_gradient(name=name)
+    energy_function.plot_gradient(name=name, grid_width=200)
     fig_name = f"plots/aldi2d_{plt_name}_gradient.png"
     plt.savefig(fig_name)
     print(f"Saved {fig_name}")

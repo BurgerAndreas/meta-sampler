@@ -41,6 +41,8 @@ log = RankedLogger(__name__, rank_zero_only=True)
 # Silence MACE cuequivariance_ops_torch warning
 import sys
 import os
+
+
 class StdoutFilter:
     def __init__(self, original_stdout, blacklist_terms):
         self.original_stdout = original_stdout
@@ -52,6 +54,7 @@ class StdoutFilter:
 
     def flush(self):
         self.original_stdout.flush()
+
 
 # Replace sys.stdout with the filter
 sys.stdout = StdoutFilter(sys.stdout, blacklist_terms=["There is a performance drop"])

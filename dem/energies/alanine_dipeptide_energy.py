@@ -11,11 +11,13 @@ from dem.utils.logging_utils import fig_to_image
 import copy
 import mace
 from mace.calculators import mace_off, mace_anicc
+
 # from mace.tools import torch_geometric, torch_tools, utils
 import mace.data
 import ase
 import ase.io
 import ase.build
+
 # from ase.calculators.calculator import Calculator, all_changes
 # import openmm
 # from openmm.unit import nanometer
@@ -23,6 +25,8 @@ import ase.build
 
 # import torch_geometric as tg
 from tqdm import tqdm
+import itertools
+import pickle
 
 from alanine_dipeptide.mace_neighbourhood import (
     update_neighborhood_graph_batched,
@@ -43,6 +47,28 @@ from alanine_dipeptide.alanine_dipeptide_mace import (
     update_alanine_dipeptide_xyz_from_dihedrals_batched,
     update_alanine_dipeptide_xyz_from_dihedrals_torch,
 )
+
+# Silence FutureWarning about torch.load weights_only parameter
+import warnings
+import re
+
+# Create a filter for the specific torch.load FutureWarning
+class TorchLoadWarningFilter(warnings.WarningMessage):
+    def __init__(self):
+        self.pattern = re.compile(r"You are using `torch\.load` with `weights_only=False`")
+    
+    def __eq__(self, other):
+        # Check if this is the torch.load warning we want to filter
+        return (isinstance(other, warnings.WarningMessage) and 
+                other.category == FutureWarning and 
+                self.pattern.search(str(other.message)))
+
+# Register the filter
+warnings.filterwarnings(
+    "ignore", category=FutureWarning, 
+    message="You are using `torch.load` with `weights_only=False`.*"
+)
+
 
 
 # MACE Hessians
@@ -307,7 +333,8 @@ class VectorizedMACE(torch.nn.Module):
             # "contributions": contributions,
             # "node_feats": node_feats_out,
         }
-        
+
+    # TODO: shape error? maceoff is ScaleShiftMACE?
     # @torch.jit.unused
     def forward_ScaleShiftMACE(
         self,
@@ -355,7 +382,7 @@ class VectorizedMACE(torch.nn.Module):
             )
         else:
             pair_node_energy = torch.zeros_like(node_e0)
-        
+
         # Interactions
         node_es_list = [pair_node_energy]
         node_feats_list = []
@@ -369,9 +396,7 @@ class VectorizedMACE(torch.nn.Module):
                 edge_feats=edge_feats,
                 edge_index=edge_index,
             )
-            node_feats = product(
-                node_feats=node_feats, sc=sc, node_attrs=node_attrs
-            )
+            node_feats = product(node_feats=node_feats, sc=sc, node_attrs=node_attrs)
             node_feats_list.append(node_feats)
             node_es_list.append(
                 readout(node_feats, node_heads)[num_atoms_arange, node_heads]
@@ -448,12 +473,11 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
         # Get MACE model
         ######################################################
         # mace_off or mace_anicc
-        device_str = "cuda" if torch.cuda.is_available() else "cpu"
+        # device_str = "cuda" if torch.cuda.is_available() else "cpu"
         calc = mace_off(
-            model="small", device=device_str, dtype=dtypestr, enable_cueq=use_cueq
+            model="small", device=device, dtype=dtypestr, enable_cueq=use_cueq
         )
         # calc = mace_anicc(device=device_str, dtype=dtypestr, enable_cueq=True)
-        device = calc.device
 
         ######################################################
         # get alanine dipeptide atoms
@@ -469,6 +493,7 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
         self.atoms_calc = atoms_calc
         self.atoms = atoms
         self.model = atoms_calc.models[0]
+        print(self.__class__.__name__, "model type:", self.model.__class__.__name__)
         self.vectorized_model = VectorizedMACE(self.model)
 
         # Make minibatch version of batch, that is just multiple copies of the same AlDi configuration
@@ -512,16 +537,17 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
             **kwargs,
         )
         # Change the name
-        self.name = self.__class__.__name__ 
+        self.name = self.__class__.__name__
         self.use_scale_shift = use_scale_shift
         if use_scale_shift:
             self.name = self.name + "_ScaleShift"
-    
+        self.move_to_device(self.device)
+
     def move_to_device(self, device):
         self.vectorized_model.to(device)
         self.model.to(device)
-    
-    def mace_forward(self, *args, **kwargs):
+
+    def vectorized_mace_forward(self, *args, **kwargs):
         if self.use_scale_shift:
             return self.vectorized_model.forward_ScaleShiftMACE(*args, **kwargs)
         else:
@@ -558,11 +584,12 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
             # )
 
             # Compute energies
-            result = self.mace_forward(
+            result = self.vectorized_mace_forward(
                 positions, node_attrs, edge_index, batch, head, shifts, ptr
             )
             return result["energy"]
 
+        # Get one copy of the minibatch on the same device as the samples
         positions = minibatch["positions"].to(samples.device)
         node_attrs = minibatch["node_attrs"].to(samples.device)
         edge_index = minibatch["edge_index"].to(samples.device)
@@ -572,6 +599,10 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
         ).to(samples.device)
         shifts = minibatch["shifts"].to(samples.device)
         ptr = minibatch["ptr"].to(samples.device)
+        
+        # If a single sample, add a batch dimension [2] -> [1, 2]
+        if len(samples.shape) == 1:
+            samples = samples.unsqueeze(0)
 
         # [B, 1]
         _dihedrals_to_energies_vmapped = torch.vmap(
@@ -629,8 +660,29 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
             return energy, aux_output
         return energy
 
+    def _energy(
+        self,
+        samples: torch.Tensor,
+        return_aux_output: bool = False,
+    ) -> torch.Tensor:
+        """Evaluates the pseudoenergy function at given samples.
+
+        Args:
+            samples (torch.Tensor): Input points (dihedral angles)
+
+        Returns:
+            torch.Tensor: Energy values at input points
+        """
+        if self.use_vmap:
+            return self._energy_vmap(samples, return_aux_output=return_aux_output)
+        else:
+            return self._energy_batched(samples, return_aux_output=return_aux_output)
+        
     def log_prob(
-        self, samples: torch.Tensor, temperature: float = None, return_aux_output: bool = False
+        self,
+        samples: torch.Tensor,
+        temperature: float = None,
+        return_aux_output: bool = False,
     ) -> torch.Tensor:
         """Evaluates the pseudoenergy function at given samples.
 
@@ -642,17 +694,18 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
         """
         if temperature is None:
             temperature = self.temperature
-        if self.use_vmap:
-            return -1 * self._energy_vmap(samples) / temperature
-        else:
-            return -1 * self._energy_batched(samples) / temperature
+        if return_aux_output:
+            aux_output = {}
+            log_prob, aux_output = self._energy(samples, return_aux_output=True)
+            return log_prob / temperature, aux_output
+        return -1 * self._energy(samples) / temperature
 
     #####################################################################################
     # helper functions
     #####################################################################################
 
     def _dataset_from_minima(self, size):
-        minima = self.get_energy_minima()
+        minima = self.get_minima()
         samples = minima
         if size > len(minima):
             # repeat the minima
@@ -676,7 +729,7 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
         """Returns a validation set of 2D points (dihedral angles).
         Is a 2d grid of points in the range [-pi, pi] x [-pi, pi].
         """
-        raise NotImplementedError
+        return self._dataset_from_minima(self.val_set_size)
 
     # def log_on_epoch_end(
     #     self,
@@ -809,29 +862,46 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
 
         return minima_coords
 
-    def get_energy_minima(
-        self,
-        num_samples=1000,
-        num_minima=10,
-        learning_rate=0.01,
-        optimization_steps=1000,
-    ):
+    def get_minima(self, grid_width=200, num_minima=5, device=None):
         """
-        Get energy minima, either by loading from a cache file or by finding them.
+        Get energy minima by finding the lowest energy points on a grid.
 
         Args:
-            num_samples (int): Number of random initial points to use
+            bounds (tuple): Bounds for the grid search as (min, max)
+            grid_width (int): Number of points in each dimension for grid
             num_minima (int): Maximum number of minima to return
-            learning_rate (float): Learning rate for optimization
-            optimization_steps (int): Number of optimization steps
-            cache_file (str, optional): Path to cache file. If provided and file exists,
-                                        minima will be loaded from this file.
-                                        If provided and file doesn't exist,
-                                        minima will be saved to this file after computation.
+            device (torch.device): Device to use for computation
 
         Returns:
             torch.Tensor: Tensor of shape (num_minima, 2) containing the phi/psi coordinates of the minima
         """
+        # bounds = self._plotting_bounds
+        # load_path = self.get_load_path(bounds=bounds, grid_width=grid_width)
+        # with open(f"{load_path}.pkl", "rb") as f:
+        #     saved_data = pickle.load(f)
+
+        # log_p_x = saved_data["log_p_x"]
+        # energies = -log_p_x
+
+        # x_points_dim1 = torch.linspace(bounds[0], bounds[1], grid_width, device=device)
+        # x_points_dim2 = x_points_dim1
+        # x_points = torch.tensor(list(itertools.product(x_points_dim1, x_points_dim2)), device=device)
+
+        # # Find the indices of the lowest energy points
+        # flat_indices = torch.argsort(energies)[:num_minima]
+
+        # # Get the corresponding coordinates
+        # minima_coords = x_points[flat_indices]
+
+        # # Get the energy values for these minima
+        # minima_energies = energies[flat_indices]
+
+        # print(f"Found {len(minima_coords)} minima")
+        # print(f"Minima coordinates: \n{minima_coords}")
+        # print(f"Minima energies: \n{minima_energies}")
+
+        # return minima_coords
+
         # Try to load from cache file if provided
         cache_file = "alanine_dipeptide_2d_minima.pt"
         try:
@@ -840,17 +910,9 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
             return minima_coords
         except (FileNotFoundError, IOError):
             print(f"Cache file {cache_file} not found or invalid. Computing minima...")
-
         # Compute minima
-        minima_coords = self.find_energy_minima(
-            num_samples=num_samples,
-            num_minima=num_minima,
-            learning_rate=learning_rate,
-            optimization_steps=optimization_steps,
-        )
-
+        minima_coords = self.find_energy_minima()
         # Save to cache file if provided
         torch.save(minima_coords, cache_file)
         print(f"Saved {len(minima_coords)} minima to {cache_file}")
-
         return minima_coords

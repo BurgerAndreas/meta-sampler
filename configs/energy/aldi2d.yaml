@@ -3,7 +3,7 @@ _target_: dem.energies.alanine_dipeptide_energy.MaceAlDiEnergy2D
 dimensionality: 2
 device: ${trainer.accelerator}
 
-use_scale_shift: false
+use_scale_shift: true
 plotting_batch_size: 400 # 512
 # plotting_bounds: [-np.pi, np.pi]
 

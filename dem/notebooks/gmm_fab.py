@@ -154,6 +154,6 @@ if __name__ == "__main__":
         target.log_prob,
         bounds=plotting_bounds,
         n_contour_levels=50,
-        grid_width_n_points=200,
+        grid_width=200,
     )
     plt.show()

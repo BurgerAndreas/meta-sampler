@@ -201,7 +201,7 @@ class GMMPseudoEnergy(GMMEnergy, BasePseudoEnergyFunction):
             ax=ax,
             plot_style="contours",
             n_contour_levels=50,
-            grid_width_n_points=200,
+            grid_width=200,
         )
 
         # Plot samples as scatter points

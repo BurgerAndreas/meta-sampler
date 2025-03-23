@@ -270,7 +270,6 @@ def _pseudoenergy_vmap(
     # Force magnitude [B]
     forces_norm = torch.linalg.norm(forces, dim=1)  # [B]
 
-    # TODO: Hessian causes issues
     # compute Hessian [B, 2, 2]
     # hessian = torch.func.hessian(_dihedrals_to_energies_vmapped, argnums=0)(samples, positions, node_attrs, edge_index, batch, head, shifts, ptr)
     hessian = torch.vmap(
@@ -296,7 +295,7 @@ def _pseudoenergy_vmap(
     return total_loss
 
 
-# Dummy that does not use input
+# TODO: Dummy that does not use input
 def _pseudoenergy_vmap_allatoms(
     samples: torch.Tensor, return_aux_output: bool = False
 ) -> torch.Tensor:

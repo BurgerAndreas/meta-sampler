@@ -296,7 +296,7 @@ if __name__ == "__main__":
     plot_contours(
         target.log_prob,
         bounds=(-4, 4),
-        grid_width_n_points=200,
+        grid_width=200,
         n_contour_levels=100,
         ax=ax,
     )

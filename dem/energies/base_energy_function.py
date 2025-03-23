@@ -20,7 +20,8 @@ import traceback
 import copy
 from tqdm import tqdm
 import itertools
-
+import os
+import pickle
 
 class BaseEnergyFunction(ABC):
     """Base class for energy functions used in DEM.
@@ -96,7 +97,7 @@ class BaseEnergyFunction(ABC):
         n_contour_levels: int = 50,
         plotting_bounds: Optional[tuple] = None,
         plot_minima: bool = True,
-        grid_width_n_points: int = 200,
+        grid_width: int = 200,
         prefix: str = "",
         return_fig: bool = False,
     ) -> None:
@@ -107,7 +108,7 @@ class BaseEnergyFunction(ABC):
             n_contour_levels (int, optional): Number of contour levels for plots. Defaults to 50.
             plotting_bounds (tuple, optional): Plot bounds. Defaults to None.
             plot_minima (bool, optional): Whether to plot minima. Defaults to True.
-            grid_width_n_points (int, optional): Grid width for plotting. Defaults to 200.
+            grid_width (int, optional): Grid width for plotting. Defaults to 200.
             prefix (str, optional): Prefix for logged metrics. Defaults to "".
         """
         if wandb_logger is None and not return_fig:
@@ -124,7 +125,7 @@ class BaseEnergyFunction(ABC):
                 n_contour_levels=n_contour_levels,
                 plotting_bounds=plotting_bounds,
                 plot_minima=plot_minima,
-                grid_width_n_points=grid_width_n_points,
+                grid_width=grid_width,
             )
             wandb_logger.log_image(f"{prefix}test_set", [test_fig])
 
@@ -136,7 +137,7 @@ class BaseEnergyFunction(ABC):
                 n_contour_levels=n_contour_levels,
                 plotting_bounds=plotting_bounds,
                 plot_minima=plot_minima,
-                grid_width_n_points=grid_width_n_points,
+                grid_width=grid_width,
             )
             wandb_logger.log_image(f"{prefix}val_set", [val_fig])
 
@@ -148,7 +149,7 @@ class BaseEnergyFunction(ABC):
                 n_contour_levels=n_contour_levels,
                 plotting_bounds=plotting_bounds,
                 plot_minima=plot_minima,
-                grid_width_n_points=grid_width_n_points,
+                grid_width=grid_width,
             )
             wandb_logger.log_image(f"{prefix}train_set", [train_fig])
         # if return_fig:
@@ -266,13 +267,15 @@ class BaseEnergyFunction(ABC):
             ax=axs[0],
             plot_style=plot_style,
             n_contour_levels=n_contour_levels,
-            grid_width_n_points=200,
+            grid_width=200,
             plot_kwargs=plot_prob_kwargs,
             colorbar=colorbar,
             quantity=quantity,
             batch_size=self.plotting_batch_size,
             device=self.plotting_device,
-            load_path=self.get_load_path(bounds=plotting_bounds, grid_width_n_points=200),
+            load_path=self.get_load_path(
+                bounds=plotting_bounds, grid_width=200
+            ),
         )
 
         # plot dataset samples
@@ -287,13 +290,15 @@ class BaseEnergyFunction(ABC):
                 ax=axs[1],
                 plot_style=plot_style,
                 n_contour_levels=50,
-                grid_width_n_points=200,
+                grid_width=200,
                 plot_kwargs=plot_prob_kwargs,
                 colorbar=colorbar,
                 quantity=quantity,
                 batch_size=self.plotting_batch_size,
                 device=self.plotting_device,
-                load_path=self.get_load_path(bounds=plotting_bounds, grid_width_n_points=200),
+                load_path=self.get_load_path(
+                    bounds=plotting_bounds, grid_width=200
+                ),
             )
             # plot generated samples
             plot_marginal_pair(
@@ -317,9 +322,9 @@ class BaseEnergyFunction(ABC):
         self.move_to_device(self.device)
 
         return fig_to_image(fig)
-    
-    def get_load_path(self, bounds, grid_width_n_points):
-        return f"dem_outputs/{self.name}/bounds_{bounds[0]:.2f}_{bounds[1]:.2f}_grid_{grid_width_n_points}"
+
+    def get_load_path(self, bounds, grid_width):
+        return f"dem_outputs/{self.name}/bounds_{bounds[0]:.2f}_{bounds[1]:.2f}_grid_{grid_width}"
 
     def get_single_dataset_fig(
         self,
@@ -329,7 +334,7 @@ class BaseEnergyFunction(ABC):
         plotting_bounds=None,
         plot_minima=False,
         plot_transition_states=False,
-        grid_width_n_points=200,
+        grid_width=200,
         plot_style="contours",
         with_legend=False,
         plot_prob_kwargs={},
@@ -365,13 +370,15 @@ class BaseEnergyFunction(ABC):
             ax=ax,
             plot_style=plot_style,
             n_contour_levels=n_contour_levels,
-            grid_width_n_points=grid_width_n_points,
+            grid_width=grid_width,
             plot_kwargs=plot_prob_kwargs,
             colorbar=colorbar,
             quantity=quantity,
             batch_size=self.plotting_batch_size,
             device=self.plotting_device,
-            load_path=self.get_load_path(bounds=plotting_bounds, grid_width_n_points=grid_width_n_points),
+            load_path=self.get_load_path(
+                bounds=plotting_bounds, grid_width=grid_width
+            ),
         )
         if samples is not None:
             plot_marginal_pair(
@@ -562,7 +569,8 @@ class BaseEnergyFunction(ABC):
         temperature: Optional[float] = None,
         return_aux_output: bool = False,
     ) -> torch.Tensor:
-        """Energy of the unnormalized (physical) potential. Used in GAD to compute forces/Hessian.
+        """Energy of the unnormalized (physical) potential. 
+        Used in Pseudo-energy to compute forces/Hessian.
 
         Args:
             samples (torch.Tensor): Input points
@@ -572,7 +580,7 @@ class BaseEnergyFunction(ABC):
             torch.Tensor: Energy values at input points
         """
         raise NotImplementedError(
-            f"GAD energy function {self.__class__.__name__} must implement `_energy()`"
+            f"{self.__class__.__name__} must implement `_energy()`"
         )
 
     def energy(
@@ -699,12 +707,12 @@ class BaseEnergyFunction(ABC):
         np.save(f"{dataset_name}_samples.npy", samples.cpu().numpy())
 
     def get_hessian_eigenvalues_on_grid(
-        self, grid_width_n_points=200, plotting_bounds=None
+        self, grid_width=200, plotting_bounds=None
     ):
         """Compute eigenvalues of the Hessian on a grid.
 
         Args:
-            grid_width_n_points (int): Number of points in each dimension for grid
+            grid_width (int): Number of points in each dimension for grid
             plotting_bounds (tuple, optional): Plot bounds as (min, max) tuple
 
         Returns:
@@ -714,63 +722,84 @@ class BaseEnergyFunction(ABC):
             plotting_bounds = self._plotting_bounds
 
         x_points_dim1 = torch.linspace(
-            plotting_bounds[0], plotting_bounds[1], grid_width_n_points
+            plotting_bounds[0], plotting_bounds[1], grid_width
         )
         x_points_dim2 = torch.linspace(
-            plotting_bounds[0], plotting_bounds[1], grid_width_n_points
+            plotting_bounds[0], plotting_bounds[1], grid_width
         )
         x_points = torch.tensor(list(itertools.product(x_points_dim1, x_points_dim2)))
 
         # Move to device
         x_points = x_points.to(self.device)
-
-        # Use functorch to compute Hessian directly
-        if len(x_points.shape) == 1:
-            # Handle single sample
-            hessian = torch.func.hessian(self._energy)(x_points)
+        
+        # attempt to load Hessian values
+        hessian_path = f"dem_outputs/{self.name}/hessian_bounds_{plotting_bounds[0]:.2f}_{plotting_bounds[1]:.2f}_grid_{grid_width}"
+        if os.path.exists(f"{hessian_path}.pkl"):
+            with open(f"{hessian_path}.pkl", "rb") as f:
+                saved_data = pickle.load(f)
+            eigenvalues_grid = saved_data["eigenvalues_grid"]
+            eigenvectors_grid = saved_data["eigenvectors_grid"]
         else:
-            chunk_size = max(1, int(math.sqrt(self.plotting_batch_size))) if self.plotting_batch_size > 0 else None
-            # Handle batched inputs using vmap
-            hessian = torch.vmap(
-                torch.func.hessian(self._energy),
-                chunk_size=chunk_size,
-            )(x_points)
+            # Use functorch to compute Hessian
+            # with torch.no_grad():
+            if True:
+                if len(x_points.shape) == 1:
+                    # Handle single sample
+                    hessian = torch.func.hessian(self._energy)(x_points)
+                else:
+                    chunk_size = (
+                        max(1, int(math.sqrt(self.plotting_batch_size)))
+                        if self.plotting_batch_size > 0
+                        else None
+                    )
+                    print(f"Computing Hessian with chunk_size: {chunk_size} for {x_points.shape[0]} points (This might take multiple minutes)")
+                    # Handle batched inputs using vmap
+                    hessian = torch.vmap(
+                        torch.func.hessian(self._energy),
+                        chunk_size=chunk_size,
+                    )(x_points)
 
-        # Compute eigenvalues
-        batched_eigenvalues, batched_eigenvectors = torch.linalg.eigh(hessian)
+                # Compute eigenvalues
+                batched_eigenvalues, batched_eigenvectors = torch.linalg.eigh(hessian)
 
-        # Sort eigenvalues
-        sorted_indices = torch.argsort(batched_eigenvalues, dim=-1)
-        batched_eigenvalues = torch.gather(batched_eigenvalues, -1, sorted_indices)
-        # Need to expand sorted_indices to match eigenvectors dimensions
-        # The error occurs because eigenvectors have shape [..., dim, dim] while indices are [..., dim]
-        expanded_indices = sorted_indices.unsqueeze(-1).expand(
-            *batched_eigenvalues.shape, self._dimensionality
-        )
-        batched_eigenvectors = torch.gather(batched_eigenvectors, -2, expanded_indices)
+            # Sort eigenvalues
+            sorted_indices = torch.argsort(batched_eigenvalues, dim=-1)
+            batched_eigenvalues = torch.gather(batched_eigenvalues, -1, sorted_indices)
+            # Need to expand sorted_indices to match eigenvectors dimensions
+            # The error occurs because eigenvectors have shape [..., dim, dim] while indices are [..., dim]
+            expanded_indices = sorted_indices.unsqueeze(-1).expand(
+                *batched_eigenvalues.shape, self._dimensionality
+            )
+            batched_eigenvectors = torch.gather(batched_eigenvectors, -2, expanded_indices)
 
-        # Reshape for plotting
-        eigenvalues_grid = batched_eigenvalues.reshape(
-            grid_width_n_points, grid_width_n_points, self._dimensionality
-        )
-        eigenvectors_grid = batched_eigenvectors.reshape(
-            grid_width_n_points,
-            grid_width_n_points,
-            self._dimensionality,
-            self._dimensionality,
-        )
-        x_grid = x_points_dim1.reshape(-1, 1).repeat(1, grid_width_n_points)
-        y_grid = x_points_dim2.reshape(1, -1).repeat(grid_width_n_points, 1)
+            # Reshape for plotting
+            eigenvalues_grid = batched_eigenvalues.reshape(
+                grid_width, grid_width, self._dimensionality
+            )
+            eigenvectors_grid = batched_eigenvectors.reshape(
+                grid_width,
+                grid_width,
+                self._dimensionality,
+                self._dimensionality,
+            )
+            os.makedirs(f"dem_outputs/{self.name}", exist_ok=True)
+            with open(f"{hessian_path}.pkl", "wb") as f:
+                pickle.dump(
+                    {"eigenvalues_grid": eigenvalues_grid, "eigenvectors_grid": eigenvectors_grid},
+                    f,
+                )
+        x_grid = x_points_dim1.reshape(-1, 1).repeat(1, grid_width)
+        y_grid = x_points_dim2.reshape(1, -1).repeat(grid_width, 1)
 
         return x_grid, y_grid, eigenvalues_grid, eigenvectors_grid
 
     def plot_hessian_eigenvalues(
-        self, grid_width_n_points=200, plotting_bounds=None, name=None, skip=10
+        self, grid_width=200, plotting_bounds=None, name=None, skip=10
     ):
         """Plot the first two eigenvalues of the Hessian on a grid.
 
         Args:
-            grid_width_n_points (int): Number of points in each dimension for grid
+            grid_width (int): Number of points in each dimension for grid
             plotting_bounds (tuple, optional): Plot bounds as (min, max) tuple
 
         Returns:
@@ -784,7 +813,7 @@ class BaseEnergyFunction(ABC):
 
         x_grid, y_grid, eigenvalues_grid, eigenvectors_grid = (
             self.get_hessian_eigenvalues_on_grid(
-                grid_width_n_points=grid_width_n_points, plotting_bounds=plotting_bounds
+                grid_width=grid_width, plotting_bounds=plotting_bounds
             )
         )
         eigenvalues_grid = eigenvalues_grid.cpu().numpy()
@@ -836,7 +865,7 @@ class BaseEnergyFunction(ABC):
 
     def plot_gradient(
         self,
-        grid_width_n_points=200,
+        grid_width=200,
         skip=10,
         plotting_bounds=None,
         name=None,
@@ -844,7 +873,7 @@ class BaseEnergyFunction(ABC):
         """Plot the gradient of the potential on a grid.
 
         Args:
-            grid_width_n_points (int): Number of points in each dimension for grid
+            grid_width (int): Number of points in each dimension for grid
             plotting_bounds (tuple, optional): Plot bounds as (min, max) tuple
             name (str, optional): Name to include in the plot title
             subsample_factor (int, optional): Factor to subsample the vector field for clarity
@@ -863,7 +892,7 @@ class BaseEnergyFunction(ABC):
         if plotting_bounds is None:
             plotting_bounds = self._plotting_bounds
 
-        N = grid_width_n_points
+        N = grid_width
         # Create a 2D grid
         xgrid, ygrid = torch.meshgrid(
             torch.linspace(plotting_bounds[0], plotting_bounds[1], N, device=device),
@@ -872,48 +901,68 @@ class BaseEnergyFunction(ABC):
         )
         grid_flat = torch.stack([xgrid.flatten(), ygrid.flatten()], axis=1)
 
-        def V(x):
-            return -self.log_prob(x).squeeze(0)
 
-        V_vmap = torch.vmap(V)
-        # V_vmap = torch.jit.script(V_vmap) # doesn't work with self.
-        # V = torch.jit.script(V)
+        # attempt to load gradient values
+        gradient_path = f"dem_outputs/{self.name}/gradient_bounds_{plotting_bounds[0]:.2f}_{plotting_bounds[1]:.2f}_grid_{grid_width}"
+        if os.path.exists(f"{gradient_path}.pkl"):
+            with open(f"{gradient_path}.pkl", "rb") as f:
+                saved_data = pickle.load(f)
+            energies = saved_data["energies"]
+            gradients = saved_data["gradients"]
+        else:
+            
+            # Calculate the potential values
+            def V(x):
+                return -self.log_prob(x).squeeze(0)
+            chunk_size = (
+                int(self.plotting_batch_size)
+                if self.plotting_batch_size > 0
+                else None
+            )
+            energies = torch.vmap(V, chunk_size=chunk_size)(grid_flat).reshape(N, N)
 
-        # Calculate gradient using JAX for a single point
-        def grad_V(x):
-            return -torch.func.grad(V)(x)
-
-        grad_V_vmap = torch.vmap(grad_V)
-        # grad_V_vmap = torch.jit.script(grad_V_vmap)
-
-        # Calculate the potential values
-        Z = V_vmap(grid_flat).reshape(N, N)
-
-        # Calculate gradients
-        V_grad = grad_V_vmap(grid_flat).reshape(N, N, 2)
+            # Calculate gradients
+            chunk_size = (
+                # max(1, int(math.sqrt(self.plotting_batch_size)))
+                max(1, int(self.plotting_batch_size / 2))
+                if self.plotting_batch_size > 0
+                else None
+            )
+            def grad_V(x):
+                return -torch.func.grad(V)(x)
+            print(f"Computing gradients with chunk_size: {chunk_size} for {grid_flat.shape[0]} points (This might take multiple minutes)")
+            gradients = torch.vmap(grad_V, chunk_size=chunk_size)(grid_flat).reshape(N, N, 2)
+            
+            # Save the computed values
+            os.makedirs(f"dem_outputs/{self.name}", exist_ok=True)
+            with open(f"{gradient_path}.pkl", "wb") as f:
+                pickle.dump(
+                    {"energies": energies, "gradients": gradients},
+                    f,
+                )
 
         # move tensors to cpu
         xgrid = xgrid.cpu().numpy()
         ygrid = ygrid.cpu().numpy()
-        Z = Z.cpu().numpy()
-        V_grad = V_grad.cpu().numpy()
+        energies = energies.cpu().numpy()
+        gradients = gradients.cpu().numpy()
 
         # Create the plot
         plt.close()
         plt.figure(figsize=(10, 8))
         # Create a contour plot
-        plt.contour(xgrid, ygrid, Z, levels=20)
+        plt.contour(xgrid, ygrid, energies, levels=20)
         plt.colorbar(label="Potential Energy")
 
         # Add filled contours for better visualization
-        plt.contourf(xgrid, ygrid, Z, levels=20, alpha=0.7)
+        plt.contourf(xgrid, ygrid, energies, levels=20, alpha=0.7)
 
         # Add gradient field (using fewer points for clarity)
         plt.quiver(
             xgrid[::skip, ::skip],
             ygrid[::skip, ::skip],
-            V_grad[::skip, ::skip, 0],
-            V_grad[::skip, ::skip, 1],
+            gradients[::skip, ::skip, 0],
+            gradients[::skip, ::skip, 1],
             color="white",
             alpha=0.8,
         )
@@ -953,20 +1002,22 @@ class BaseEnergyFunction(ABC):
             )
             return
 
-        self.move_to_device(self.plotting_device)
+        device = self.plotting_device
+        self.move_to_device(device)
 
         # Create x points for the cross-section
         if plotting_bounds is None:
             plotting_bounds = self._plotting_bounds
-        x_points = torch.linspace(plotting_bounds[0], plotting_bounds[1], n_points)
+        x_points = torch.linspace(plotting_bounds[0], plotting_bounds[1], n_points, device=device)
 
         # Create samples with fixed y value
-        samples = torch.zeros((n_points, 2))
+        samples = torch.zeros((n_points, 2), device=device)
         samples[:, 0] = x_points
         samples[:, 1] = y_value
 
         # Compute energy values
         energy_values = self.energy(samples).detach().cpu().numpy()
+        x_points = x_points.cpu().numpy()
 
         # Create figure
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -1041,21 +1092,23 @@ class BaseEnergyFunction(ABC):
         other_axis = 1 if axis == 0 else 0
         axissymbol = "x" if axis == 0 else "y"
 
-        self.move_to_device(self.plotting_device)
+        device = self.plotting_device
+        self.move_to_device(device)
 
         # Create x points for the cross-section
         if plotting_bounds is None:
             plotting_bounds = self._plotting_bounds
-        axis_points = torch.linspace(plotting_bounds[0], plotting_bounds[1], n_points)
+        axis_points = torch.linspace(plotting_bounds[0], plotting_bounds[1], n_points, device=device)
 
         # Create samples with fixed value
-        samples = torch.zeros((n_points, 2))
+        samples = torch.zeros((n_points, 2), device=device)
         samples[:, axis] = axis_value
         samples[:, other_axis] = axis_points
 
         # Compute energy values
         energy_values = self.energy(samples).detach().cpu().numpy()
-
+        axis_points = axis_points.cpu().numpy()
+        
         # Create figure
         fig, ax = plt.subplots(figsize=(10, 6))
 
@@ -1345,91 +1398,91 @@ class BasePseudoEnergyFunction:
             # - First eigenvalue should be negative (minimize positive values)
             # - Second eigenvalue should be positive (minimize negative values)
             if self.hessian_eigenvalue_penalty in [None, False]:
-                saddle_bias = smallest_eigenvalues[:, 0] * smallest_eigenvalues[:, 1]
+                eigvalterm = smallest_eigenvalues[:, 0] * smallest_eigenvalues[:, 1]
             elif self.hessian_eigenvalue_penalty == "softplus":
                 # Using softplus which is differentiable everywhere but still creates one-sided penalties
                 # if first eigenvalue > 0, increase energy
                 ev1_bias = torch.nn.functional.softplus(smallest_eigenvalues[:, 0])
                 # if second eigenvalue > 0, increase energy
                 ev2_bias = torch.nn.functional.softplus(-smallest_eigenvalues[:, 1])
-                saddle_bias = ev1_bias + ev2_bias
+                eigvalterm = ev1_bias + ev2_bias
             elif self.hessian_eigenvalue_penalty == "relu":
                 ev1_bias = torch.relu(smallest_eigenvalues[:, 0])
                 ev2_bias = torch.relu(-smallest_eigenvalues[:, 1])
-                saddle_bias = ev1_bias + ev2_bias
+                eigvalterm = ev1_bias + ev2_bias
             # elif self.hessian_eigenvalue_penalty == 'heaviside':
             #     # 1 if smallest_eigenvalues[0] > 0 else 0
             #     ev1_bias = torch.heaviside(smallest_eigenvalues[:, 0], torch.tensor(0.))
             #     # 1 if smallest_eigenvalues[1] < 0 else 0
             #     ev2_bias = torch.heaviside(-smallest_eigenvalues[:, 1], torch.tensor(0.))
-            #     saddle_bias = ev1_bias + ev2_bias
+            #     eigvalterm = ev1_bias + ev2_bias
             elif self.hessian_eigenvalue_penalty == "sigmoid_individual":
                 ev1_bias = torch.sigmoid(smallest_eigenvalues[:, 0])
                 ev2_bias = torch.sigmoid(-smallest_eigenvalues[:, 1])
-                saddle_bias = ev1_bias + ev2_bias
+                eigvalterm = ev1_bias + ev2_bias
             elif self.hessian_eigenvalue_penalty == "mult":
                 # Penalize if both eigenvalues are positive or negative
                 ev1_bias = smallest_eigenvalues[:, 0]
                 ev2_bias = smallest_eigenvalues[:, 1]
-                saddle_bias = ev1_bias * ev2_bias
+                eigvalterm = ev1_bias * ev2_bias
             elif self.hessian_eigenvalue_penalty == "sigmoid":
-                saddle_bias = torch.sigmoid(
+                eigvalterm = torch.sigmoid(
                     smallest_eigenvalues[:, 0]
                     * smallest_eigenvalues[:, 1]
                     * self.hessian_scale
                 )
             elif self.hessian_eigenvalue_penalty == "tanh":
-                saddle_bias = torch.tanh(
+                eigvalterm = torch.tanh(
                     smallest_eigenvalues[:, 0]
                     * smallest_eigenvalues[:, 1]
                     * self.hessian_scale
                 )
-                # saddle_bias = -torch.nn.functional.softplus(
-                #     -saddle_bias - 2.0
+                # eigvalterm = -torch.nn.functional.softplus(
+                #     -eigvalterm - 2.0
                 # )  # [0, 1]
-                saddle_bias = saddle_bias + 1.0  # [1, 2]
+                eigvalterm = eigvalterm + 1.0  # [1, 2]
             elif self.hessian_eigenvalue_penalty == "and":
-                saddle_bias = torch.nn.functional.softplus(
+                eigvalterm = torch.nn.functional.softplus(
                     smallest_eigenvalues[:, 0]
                     * smallest_eigenvalues[:, 1]
                     * self.hessian_scale
                 )  # [0, inf], 0 if good
-                saddle_bias = torch.tanh(saddle_bias)  # [0, 1]
-                # saddle_bias = 1 - saddle_bias # [0, 1] -> [1, 0] # 1 if good
+                eigvalterm = torch.tanh(eigvalterm)  # [0, 1]
+                # eigvalterm = 1 - eigvalterm # [0, 1] -> [1, 0] # 1 if good
             elif self.hessian_eigenvalue_penalty == "tanh_mult":
                 # Penalize if both eigenvalues are positive or negative
                 # tanh: ~ -1 for negative, 1 for positive
                 # both neg -> 1, both pos -> 1, one neg one pos -> 0
                 ev1_bias = torch.tanh(smallest_eigenvalues[:, 0])
                 ev2_bias = torch.tanh(smallest_eigenvalues[:, 1])
-                saddle_bias = ev1_bias * ev2_bias  # [-1, 1]
-                # saddle_bias += 1. # [0, 2]
-                # saddle_bias = -torch.nn.functional.softplus(-saddle_bias-2.) # [0, 1]
-                # saddle_bias += 1. # [1, 2]
+                eigvalterm = ev1_bias * ev2_bias  # [-1, 1]
+                # eigvalterm += 1. # [0, 2]
+                # eigvalterm = -torch.nn.functional.softplus(-eigvalterm-2.) # [0, 1]
+                # eigvalterm += 1. # [1, 2]
             else:
                 raise ValueError(
                     f"Invalid penalty function: {self.hessian_eigenvalue_penalty}"
                 )
         else:
             # No penalty
-            saddle_bias = torch.zeros_like(energy)
+            eigvalterm = torch.zeros_like(energy)
 
         # idx = torch.randperm(samples.shape[0])[:15]
         # for i in idx:
-        #     print(f"evs={smallest_eigenvalues[i].tolist()} -> {saddle_bias[i]:.2f}")
+        #     print(f"evs={smallest_eigenvalues[i].tolist()} -> {eigvalterm[i]:.2f}")
 
         # ensure we have one value per batch
         assert (
-            energy.shape == force_magnitude.shape == saddle_bias.shape
-        ), f"samples={samples.shape}, energy={energy.shape}, forces={force_magnitude.shape}, hessian={saddle_bias.shape}"
+            energy.shape == force_magnitude.shape == eigvalterm.shape
+        ), f"samples={samples.shape}, energy={energy.shape}, forces={force_magnitude.shape}, hessian={eigvalterm.shape}"
         assert (
             energy.shape[0] == samples.shape[0]
-        ), f"samples={samples.shape}, energy={energy.shape}, forces={force_magnitude.shape}, hessian={saddle_bias.shape}"
+        ), f"samples={samples.shape}, energy={energy.shape}, forces={force_magnitude.shape}, hessian={eigvalterm.shape}"
 
         # Combine loss terms
         energy_loss = self.energy_weight * energy
         force_loss = self.force_weight * force_magnitude
-        hessian_loss = self.hessian_weight * saddle_bias
+        hessian_loss = self.hessian_weight * eigvalterm
 
         if self.term_aggr == "sum":
             pseudo_energy = energy_loss + force_loss + hessian_loss
@@ -1457,7 +1510,7 @@ class BasePseudoEnergyFunction:
         elif self.term_aggr == "cond_force":
             pseudo_energy = torch.where(
                 # smallest_eigenvalue < 0,
-                saddle_bias < 0,
+                eigvalterm < 0,
                 input=torch.clip(
                     force_magnitude
                     # torch.einsum("bd,bd->b", forces, smallest_eigenvectors[..., 0]) ** 2
@@ -1465,12 +1518,12 @@ class BasePseudoEnergyFunction:
                     min=self.clamp_min,
                     max=self.clamp_max,
                 ),
-                other=saddle_bias,
+                other=eigvalterm,
             )
         elif self.term_aggr == "cond_force_proj":
             pseudo_energy = torch.where(
                 # smallest_eigenvalue < 0,
-                saddle_bias < 0,
+                eigvalterm < 0,
                 input=torch.clip(
                     # force_magnitude
                     torch.einsum("bd,bd->b", forces, smallest_eigenvectors[..., 0]) ** 2
@@ -1478,12 +1531,12 @@ class BasePseudoEnergyFunction:
                     min=self.clamp_min,
                     max=self.clamp_max,
                 ),
-                other=saddle_bias,
+                other=eigvalterm,
             )
         elif self.term_aggr == "cond_force_proj2":
             pseudo_energy = torch.where(
                 # smallest_eigenvalue < 0,
-                saddle_bias < 0,
+                eigvalterm < 0,
                 input=torch.clip(
                     # force_magnitude
                     torch.einsum("bd,bd->b", forces, smallest_eigenvectors[..., 1]) ** 2
@@ -1491,12 +1544,12 @@ class BasePseudoEnergyFunction:
                     min=self.clamp_min,
                     max=self.clamp_max,
                 ),
-                other=saddle_bias,
+                other=eigvalterm,
             )
         elif self.term_aggr == "cond_force_proj_both":
             pseudo_energy = torch.where(
                 # smallest_eigenvalue < 0,
-                saddle_bias < 0,
+                eigvalterm < 0,
                 input=torch.clip(
                     # force_magnitude
                     torch.einsum("bd,bd->b", forces, smallest_eigenvectors[..., 0]) ** 2
@@ -1506,7 +1559,7 @@ class BasePseudoEnergyFunction:
                     min=self.clamp_min,
                     max=self.clamp_max,
                 ),
-                other=saddle_bias,
+                other=eigvalterm,
             )
         else:
             raise ValueError(f"Invalid term_aggr: {self.term_aggr}")
