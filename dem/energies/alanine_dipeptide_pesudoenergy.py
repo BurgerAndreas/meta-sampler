@@ -74,7 +74,7 @@ warnings.filterwarnings(
 
 
 
-class MaceAlDiForcePseudoEnergy2D(MaceAlDiEnergy2D, BasePseudoEnergyFunction):
+class MaceAlDiPseudoEnergy2D(MaceAlDiEnergy2D, BasePseudoEnergyFunction):
     """
     Pesudoenergy function for the aldanine dipeptide.
     Pseudonergy is defined as the absolute value of the force on the alanine dipeptide.
@@ -84,7 +84,7 @@ class MaceAlDiForcePseudoEnergy2D(MaceAlDiEnergy2D, BasePseudoEnergyFunction):
     def __init__(self, *args, **kwargs):
         # Initialize base class
         print(f"Initializing MaceAlDiForcePseudoEnergy with kwargs: {kwargs}")
-        BasePseudoEnergyFunction.__init__(self, *args, **kwargs)
+        BasePseudoEnergyFunction.__init__(self, *copy.deepcopy(args), **copy.deepcopy(kwargs))
         MaceAlDiEnergy2D.__init__(self, *copy.deepcopy(args), **copy.deepcopy(kwargs))
 
         # transition states of the true energy surface
@@ -117,7 +117,7 @@ class MaceAlDiForcePseudoEnergy2D(MaceAlDiEnergy2D, BasePseudoEnergyFunction):
         if len(samples.shape) == 1:
             samples = samples.unsqueeze(0)
 
-        pseudo_energy, aux_output = self._pseudo_potential(samples, return_aux_output=return_aux_output)
+        pseudo_energy, aux_output = self._pseudo_potential(samples, return_aux_output=True)
 
         if temperature is None:
             temperature = self.temperature

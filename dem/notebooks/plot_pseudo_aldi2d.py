@@ -31,10 +31,10 @@ configs = [
     # [
     #     "Pseudopotential for DEM",
     # ],
-    # [
-    #     "|F| for DEM",
-    #     "experiment=aldi2d_idem_condforce",
-    # ],
+    [
+        "|F| for DEM",
+        "experiment=aldi2d_idem_condforce",
+    ],
 ]
 
 for config in configs:

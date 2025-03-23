@@ -59,6 +59,8 @@ class BaseEnergyFunction(ABC):
         temperature: float = 1.0,
         plotting_batch_size: int = -1,
         plotting_device: str = "cpu",
+        *args,
+        **kwargs,
     ):
         self._dimensionality = dimensionality
         self._plotting_bounds = plotting_bounds
@@ -741,7 +743,6 @@ class BaseEnergyFunction(ABC):
             eigenvectors_grid = saved_data["eigenvectors_grid"]
         else:
             # Use functorch to compute Hessian
-            # with torch.no_grad():
             if True:
                 if len(x_points.shape) == 1:
                     # Handle single sample
@@ -1008,16 +1009,36 @@ class BaseEnergyFunction(ABC):
         # Create x points for the cross-section
         if plotting_bounds is None:
             plotting_bounds = self._plotting_bounds
-        x_points = torch.linspace(plotting_bounds[0], plotting_bounds[1], n_points, device=device)
+            
+        # attempt to load x points
+        x_points_path = f"dem_outputs/{self.name}/xcrosssection_bounds_{plotting_bounds[0]:.2f}_{plotting_bounds[1]:.2f}_n_points_{n_points}_y_{y_value:.2f}"
+        if os.path.exists(f"{x_points_path}.pkl"):
+            with open(f"{x_points_path}.pkl", "rb") as f:
+                saved_data = pickle.load(f)
+                x_points = saved_data["x_points"]
+                energy_values = saved_data["energy_values"]
+        else:
+            x_points = torch.linspace(plotting_bounds[0], plotting_bounds[1], n_points, device=device)
+            
+            # Create samples with fixed y value
+            samples = torch.zeros((n_points, 2), device=device)
+            samples[:, 0] = x_points
+            samples[:, 1] = y_value
 
-        # Create samples with fixed y value
-        samples = torch.zeros((n_points, 2), device=device)
-        samples[:, 0] = x_points
-        samples[:, 1] = y_value
+            # Compute energy values
+            if self.plotting_batch_size > 0 and self.plotting_batch_size < n_points:
+                energy_values = torch.vmap(self.energy, chunk_size=self.plotting_batch_size)(samples).detach().cpu().numpy()
+            else:
+                energy_values = self.energy(samples).detach().cpu().numpy()
+            x_points = x_points.cpu().numpy()
+            
+            os.makedirs(f"dem_outputs/{self.name}", exist_ok=True)
+            with open(f"{x_points_path}.pkl", "wb") as f:
+                pickle.dump(
+                    {"x_points": x_points, "energy_values": energy_values},
+                    f,
+                )
 
-        # Compute energy values
-        energy_values = self.energy(samples).detach().cpu().numpy()
-        x_points = x_points.cpu().numpy()
 
         # Create figure
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -1098,17 +1119,35 @@ class BaseEnergyFunction(ABC):
         # Create x points for the cross-section
         if plotting_bounds is None:
             plotting_bounds = self._plotting_bounds
-        axis_points = torch.linspace(plotting_bounds[0], plotting_bounds[1], n_points, device=device)
+            
+            # attempt to load x points
+        axis_points_path = f"dem_outputs/{self.name}/crosssection_bounds_{plotting_bounds[0]:.2f}_{plotting_bounds[1]:.2f}_n_points_{n_points}_{axissymbol}_{axis_value:.2f}"
+        if os.path.exists(f"{axis_points_path}.pkl"):
+            with open(f"{axis_points_path}.pkl", "rb") as f:
+                saved_data = pickle.load(f)
+                axis_points = saved_data["axis_points"]
+        else:
+            axis_points = torch.linspace(plotting_bounds[0], plotting_bounds[1], n_points, device=device)
 
-        # Create samples with fixed value
-        samples = torch.zeros((n_points, 2), device=device)
-        samples[:, axis] = axis_value
-        samples[:, other_axis] = axis_points
+            # Create samples with fixed value
+            samples = torch.zeros((n_points, 2), device=device)
+            samples[:, axis] = axis_value
+            samples[:, other_axis] = axis_points
 
-        # Compute energy values
-        energy_values = self.energy(samples).detach().cpu().numpy()
-        axis_points = axis_points.cpu().numpy()
-        
+            # Compute energy values
+            if self.plotting_batch_size > 0 and self.plotting_batch_size < n_points:
+                energy_values = torch.vmap(self.energy, chunk_size=self.plotting_batch_size)(samples).detach().cpu().numpy()
+            else:
+                energy_values = self.energy(samples).detach().cpu().numpy()
+            axis_points = axis_points.cpu().numpy()
+            
+            os.makedirs(f"dem_outputs/{self.name}", exist_ok=True)
+            with open(f"{axis_points_path}.pkl", "wb") as f:
+                pickle.dump(
+                    {"axis_points": axis_points, "energy_values": energy_values},
+                    f,
+                )
+
         # Create figure
         fig, ax = plt.subplots(figsize=(10, 6))
 

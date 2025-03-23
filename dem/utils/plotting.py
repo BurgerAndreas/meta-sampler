@@ -75,27 +75,27 @@ def plot_fn(
             # )
 
     if recompute:
-        with torch.no_grad():
-            if batch_size <= 0 or batch_size >= x_points.shape[0]:
-                # Compute log_p_x for all points
-                log_p_x = log_prob_func(x_points).detach().cpu()
-            else:
-                # Compute log_p_x in batches
-                log_p_x = []
-                so_far = 0
-                nbatches = x_points.shape[0] // batch_size + 1
-                # print(
-                #     f"Dividing {x_points.shape[0]} points into {nbatches} batches of {batch_size} points"
-                # )
-                for i in tqdm(range(nbatches), desc="Plotting"):
-                    batch = x_points[so_far : so_far + batch_size]
-                    # Ensure the batch isn't empty
-                    if batch.shape[0] <= 0:
-                        break
-                    # Compute log_p_x for the batch
-                    log_p_x.append(log_prob_func(batch).detach().cpu())
-                    so_far += batch_size
-                log_p_x = torch.cat(log_p_x)
+        # with torch.no_grad():
+        if batch_size <= 0 or batch_size >= x_points.shape[0]:
+            # Compute log_p_x for all points
+            log_p_x = log_prob_func(x_points).detach().cpu()
+        else:
+            # Compute log_p_x in batches
+            log_p_x = []
+            so_far = 0
+            nbatches = x_points.shape[0] // batch_size + 1
+            # print(
+            #     f"Dividing {x_points.shape[0]} points into {nbatches} batches of {batch_size} points"
+            # )
+            for i in tqdm(range(nbatches), desc="Plotting"):
+                batch = x_points[so_far : so_far + batch_size]
+                # Ensure the batch isn't empty
+                if batch.shape[0] <= 0:
+                    break
+                # Compute log_p_x for the batch
+                log_p_x.append(log_prob_func(batch).detach().cpu())
+                so_far += batch_size
+            log_p_x = torch.cat(log_p_x)
         if load_path is not None:
             os.makedirs(os.path.dirname(load_path), exist_ok=True)
             with open(f"{load_path}.pkl", "wb") as f:

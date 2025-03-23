@@ -1,0 +1,24 @@
+defaults:
+  - pseudo_default
+  - _self_
+  
+_target_: dem.energies.alanine_dipeptide_pesudoenergy.MaceAlDiPseudoEnergy2D
+
+dimensionality: 2
+device: ${trainer.accelerator}
+
+use_scale_shift: true
+plotting_batch_size: 64 # 512
+# plotting_bounds: [-np.pi, np.pi]
+
+plot_samples_epoch_period: 1
+
+data_normalization_factor: 1.0
+should_unnormalize: false
+
+train_set_size: 0
+test_set_size: 2000
+val_set_size: 2000 
+
+use_cueq: false
+plotting_device: ${trainer.accelerator}

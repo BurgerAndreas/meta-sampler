@@ -6,12 +6,12 @@
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 defaults:
-  - override /energy: aldi2d
+  - override /energy: aldi2d_pseudo
   # - override /model/net: egnn 
   # - override /model/noise_schedule: geometric
 
 # alanine dipeptide 2d
-tags: ["AlDi", "iDEM"]
+tags: ["AlDi", "iDEM", "pseudo"]
 
 seed: 12345
 
@@ -54,26 +54,31 @@ model:
 
   use_vmap: true
   use_richardsons: True
-
-  # num_init_samples: 1024
-  # num_estimator_mc_samples: 100
-  # num_samples_to_generate_per_epoch: 1024
-  # num_samples_to_sample_from_buffer: 512
-  # eval_batch_size: 1024
-
-  
-  # memory cost ~ outer batch size * num_estimator_mc_samples
-  # outer batch sizes (number of samples)
-  num_samples_to_generate_per_epoch: 32
-  num_init_samples: 32
-  num_samples_to_sample_from_buffer: 16
-  # inner batch size (for each sample)
-  num_estimator_mc_samples: 4
+  num_samples_to_sample_from_buffer: 512
+  num_estimator_mc_samples: 500
+  num_samples_to_generate_per_epoch: 1000
 
   # this has to be max 1000 since test_set is 1000
-  eval_batch_size: 64
+  eval_batch_size: 1000
   scheduler: null
 
 energy:
   use_vmap: ${model.use_vmap}
   batch_size: ${model.num_samples_to_sample_from_buffer}
+
+  # Pseudo-energy specific parameters
+  energy_weight: 0.0
+  force_weight: 1.0
+  forces_norm: null # None=2, 1, or inf
+  force_exponent: 1
+  force_exponent_eps: 0
+  force_activation: null
+  force_scale: 1.0
+  hessian_weight: 1.0
+  hessian_eigenvalue_penalty: null
+  hessian_scale: 10.0
+  term_aggr: 'cond_force'
+  temperature: 1.0
+  gad_offset: -10.0
+  clamp_min: -100000.0
+  clamp_max: null
