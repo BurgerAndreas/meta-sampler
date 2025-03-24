@@ -29,6 +29,15 @@ model:
 
   buffer:
     prioritize: false
+    # if you reduce num_init_samples, you need to reduce min_length
+    min_sample_length: 16
+    # max_length: 10000
+    # _target_: dem.models.components.prioritised_replay_buffer.SimpleBuffer
+    # dim: ${energy.dimensionality}
+    # initial_sampler: null
+    # device: ${trainer.accelerator}
+    # sample_with_replacement: True
+    # fill_buffer_during_init: False
 
   partial_prior:
     _target_: dem.energies.base_prior.Prior
@@ -66,14 +75,26 @@ model:
   # outer batch sizes (number of samples)
   num_samples_to_generate_per_epoch: 32
   num_init_samples: 32
-  num_samples_to_sample_from_buffer: 16
+  num_samples_to_sample_from_buffer: 32
+  nll_batch_size: 16
   # inner batch size (for each sample)
   num_estimator_mc_samples: 4
 
   # this has to be max 1000 since test_set is 1000
-  eval_batch_size: 64
+  eval_batch_size: 32
   scheduler: null
+
 
 energy:
   use_vmap: ${model.use_vmap}
   batch_size: ${model.num_samples_to_sample_from_buffer}
+
+trainer:
+  max_epochs: 100
+
+callbacks:
+  rich_progress_bar:
+    _target_: lightning.pytorch.callbacks.RichProgressBar
+    refresh_rate: 1
+
+matmul_precision: medium

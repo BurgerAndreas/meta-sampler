@@ -69,7 +69,7 @@ class PrioritisedReplayBuffer:
         sampling batch size, then we may overfit to the first batch of data, as we would update
         on it many times during the start of training.
         """
-        assert min_sample_length < max_length
+        assert min_sample_length < max_length, f"min_sample_length={min_sample_length} must be less than max_length={max_length}"
         self.dim = dim
         self.max_length = max_length
         self.min_sample_length = min_sample_length
@@ -130,7 +130,7 @@ class PrioritisedReplayBuffer:
         a leading axis of length batch_size, otherwise the default self.batch_size will be used.
         """
         if not self.can_sample:
-            raise Exception("Buffer must be at minimum length before calling sample")
+            raise Exception(f"Buffer must be at minimum length before calling sample, current length: {self.current_index}. min_sample_length: {self.min_sample_length}")
 
         if prioritize is None:
             prioritize = self.prioritize

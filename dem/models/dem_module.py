@@ -384,7 +384,7 @@ class DEMLitModule(LightningModule):
         self.num_negative_time_steps = num_negative_time_steps
         self.use_vmap = use_vmap
 
-        self.streaming_batch_size = streaming_batch_size
+        self.streaming_batch_size = streaming_batch_size # TODO: not implemented
 
         self.generate_constrained_samples = generate_constrained_samples
         self.constrained_score_norm_target = constrained_score_norm_target
@@ -1330,7 +1330,7 @@ class DEMLitModule(LightningModule):
             self._cfm_test_epoch_end()
             return
 
-        batch_size = 1000
+        batch_size = self.energy_function.plotting_batch_size
         final_samples = []
         n_batches = self.num_samples_to_save // batch_size
         test_set = self.energy_function.sample_test_set(-1, full=True)

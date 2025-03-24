@@ -58,3 +58,5 @@ data:
 wandb_noinfo: true
 wandb_silent: true
 verbose_val: false
+
+matmul_precision: null
