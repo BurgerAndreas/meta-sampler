@@ -53,7 +53,7 @@ seed: null
 use_vmap: true  # Set to false to disable vmap
 
 data:
-  num_workers: 15
+  num_workers: 8
 
 wandb_noinfo: true
 wandb_silent: true
