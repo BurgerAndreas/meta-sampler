@@ -31,7 +31,7 @@ echo "Inside slurm_launcher.slrm ($0). received arguments: $@"
 
 HOME_DIR=/u/andreasb
 
-export SCRIPTDIR=${HOME_DIR}/meta-sampler/scripts
+export SCRIPTDIR=${HOME_DIR}/meta-sampler/dem
 
 # hand over all arguments to the script
 echo "Submitting ${SCRIPTDIR}/$@"

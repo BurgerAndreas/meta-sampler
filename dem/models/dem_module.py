@@ -1305,7 +1305,7 @@ class DEMLitModule(LightningModule):
         self.compute_log_z(self.cfm_cnf, self.cfm_prior, final_samples, "test", "")
 
         output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
-        path = f"{output_dir}/samples_{self.num_samples_to_save}.pt"
+        path = f"{output_dir}/finalsamples_{self.num_samples_to_save}.pt"
         torch.save(final_samples, path)
         print(f"Saving samples to {path}")
 

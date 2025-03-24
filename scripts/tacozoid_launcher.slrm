@@ -20,7 +20,7 @@ HOME_DIR=/home/andreasburger
 export HSA_OVERRIDE_GFX_VERSION=9.0.8
 export WANDB_MODE=online
 
-export SCRIPTDIR=${HOME_DIR}/meta-sampler/scripts
+export SCRIPTDIR=${HOME_DIR}/meta-sampler/dem
 
 # hand over all arguments to the script
 echo "Submitting ${SCRIPTDIR}/$@"
