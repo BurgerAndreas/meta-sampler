@@ -48,8 +48,9 @@ Get your favourite package manager (I like mamba)
 wget "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
 bash Miniforge3-$(uname)-$(uname -m).sh
 
-mamba create -n sampler python=3.13
+mamba create -n sampler python=3.11
 mamba activate sampler
+pip install --upgrade pip setuptools wheel
 
 pip install numpy==1.24.4 scikit-learn plotly kaleido imageio scipy matplotlib seaborn black tqdm joblib einops ipykernel toml omegaconf nbformat openmm nglview py3Dmol hydra-core==1.*
 ```
@@ -77,9 +78,9 @@ pip install torch-geometric
 pip uninstall mace-torch -y
 # mace==0.3.10 was designed to work with cuequivariance==0.1.0
 pip install cuequivariance==0.1.0 cuequivariance-torch cuequivariance-ops-torch-cu12
-cd ..
-git clone https://github.com/ACEsuit/mace
-pip install mace/.
+# git clone https://github.com/ACEsuit/mace
+git clone https://github.com/BurgerAndreas/vectorizable-mace.git
+pip install vectorizable-mace/.
 cd meta-sampler
 ```
 
@@ -98,24 +99,19 @@ cd meta-sampler
 
 Install DEM sampler
 ```bash
+pip install -u numpy==1.24.4
+pip install setuptools==59.8.0
 pip install lightning==2.* torchmetrics==0.* hydra-core==1.* rich==13.* pre-commit==3.* pytest==7.* wandb hydra-optuna-sweeper hydra-colorlog rootutils normflows nflows einops torchsde torchdiffeq torchcfm 
-pip install git+https://github.com/VincentStimper/resampled-base-flows.git git+https://github.com/jarridrb/fab-torch.git 
+pip install git+https://github.com/VincentStimper/resampled-base-flows.git git+https://github.com/jarridrb/fab-torch.git git+https://github.com/atong01/bgflow.git
 
-cd ..
-git clone https://github.com/atong01/bgflow.git
-cd bgflow
-# Fix the SafeConfigParser issue
-sed -i 's/configparser.SafeConfigParser()/configparser.ConfigParser()/g' versioneer.py
-# Fix the readfp issue
-sed -i 's/parser.readfp(f)/parser.read_file(f)/g' versioneer.py
-pip install -e .
-cd ..
-
-cd DEM
 pip install -e .
 ```
 
-Modify Mace and e3nn library according to `mace.md`
+~~Modify Mace and e3nn library according to `mace.md`~~
+
+```bash
+pip install git+https://github.com/BurgerAndreas/vectorizable-e3nn.git
+```
 
 
 ---
