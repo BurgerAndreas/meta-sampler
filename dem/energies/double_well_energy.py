@@ -7,7 +7,7 @@ import itertools
 from typing import Optional, Dict, Any, Tuple
 from dem.utils.plotting import plot_contours, plot_marginal_pair
 
-# https://github.com/lollcat/fab-torch/blob/master/fab/target_distributions/double_well.py
+# adapted from https://github.com/lollcat/fab-torch/blob/master/fab/target_distributions/double_well.py
 
 
 def rejection_sampling(
