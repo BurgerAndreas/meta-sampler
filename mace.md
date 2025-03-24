@@ -1,5 +1,5 @@
 
-change these functions to be able to use torch.vmap
+Change these functions to be able to use torch.vmap
 
 
 mace/tools/scatter.py
