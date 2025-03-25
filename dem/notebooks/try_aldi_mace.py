@@ -47,7 +47,7 @@ from alanine_dipeptide.alanine_dipeptide_mace import (
 
 from dem.models.components.score_estimator import estimate_grad_Rt
 
-from dem.energies.alanine_dipeptide_energy import (
+from dem.energies.alanine_dipeptide_dihedral_energy import (
     VectorizedMACE,
     compute_hessians_vmap,
     tensor_like,

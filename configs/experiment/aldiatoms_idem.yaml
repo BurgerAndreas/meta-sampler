@@ -1,0 +1,85 @@
+# @package _global_
+
+# to execute this experiment run:
+# python train.py experiment=example
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+tags: ["AlDiAllAtoms", "iDEM"]
+
+seed: 12345
+
+logger:
+  wandb:
+    tags: ${tags}
+    group: "aldiatoms"
+
+defaults:
+  - override /energy: aldiatoms
+  - override /model/net: egnn
+
+data:
+  n_val_batches_per_epoch: 4
+
+trainer:
+  check_val_every_n_epoch: 5
+  max_epochs: 2000
+
+model:
+  net:
+    n_particles: 22
+    n_layers: 5
+    hidden_nf: 128
+
+  noise_schedule:
+    _target_: dem.models.components.noise_schedules.GeometricNoiseSchedule
+    sigma_min: 0.5
+    sigma_max: 4
+
+  partial_prior:
+    _target_: dem.energies.base_prior.MeanFreePrior
+    _partial_: true
+    n_particles: 22
+    spatial_dim: 3
+
+  lambda_weighter:
+    _target_: dem.models.components.lambda_weighter.NoLambdaWeighter
+    _partial_: true
+
+  clipper:
+    _target_: dem.models.components.clipper.Clipper
+    should_clip_scores: True
+    should_clip_log_rewards: False
+    max_score_norm: 20
+    min_log_reward: null
+
+  diffusion_scale: 0.5
+
+  buffer:
+    # if you reduce num_init_samples, you need to reduce min_length
+    min_sample_length: 16
+
+  num_init_samples: 16
+  num_samples_to_generate_per_epoch: 16
+  num_samples_to_sample_from_buffer: 16
+  eval_batch_size: 16
+  num_estimator_mc_samples: 4
+  nll_batch_size: 8
+  use_richardsons: True
+
+  init_from_prior: true
+  num_samples_to_save: 10000
+
+  nll_integration_method: dopri5
+
+  negative_time: True
+  num_negative_time_steps: 10
+
+callbacks:
+  model_checkpoint:
+    monitor: "val/gen_samples_energy"
+    save_top_k: -1
+
+
+

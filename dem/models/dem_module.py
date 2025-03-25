@@ -991,12 +991,13 @@ class DEMLitModule(LightningModule):
         return forwards_samples
 
     def eval_step(self, prefix: str, batch: torch.Tensor, batch_idx: int) -> None:
-        """Perform a single eval step on a batch of data from the validation set.
+        """Perform a single eval step on a batch of generated data or from the test/validation set.
 
         :param batch: A batch of data (a tuple) containing the input tensor of images and target
             labels.
         :param batch_idx: The index of the current batch.
         """
+        # get reference metrics from the test / val set
         if prefix == "test":
             # If we're doing CFM eval none of the actual useful stuff is done in here
             # so just skip it (since NLL eval takes a while)
@@ -1027,7 +1028,7 @@ class DEMLitModule(LightningModule):
             backwards_samples = backwards_samples[indices]
 
         if batch is None:
-            print("Warning batch is None skipping eval")
+            print(f"Warning batch is None skipping eval for {prefix}")
             self.eval_step_outputs.append({"gen_0": backwards_samples})
             return
 
@@ -1269,7 +1270,22 @@ class DEMLitModule(LightningModule):
         self.eval_step_outputs.clear()
 
     def _cfm_test_epoch_end(self) -> None:
+        """
+        Performs end-of-test-epoch operations for the Continuous Flow Matching (CFM) model.
+        
+        This method:
+        1. Computes negative log-likelihood (NLL) on the full test set
+        2. Generates samples from the CFM model
+        3. Computes log partition function (log Z) and effective sample size (ESS)
+        4. Logs visualizations of the generated samples
+        5. Saves the generated samples to disk in two locations:
+           - The Hydra output directory
+           - A directory named after the energy function
+        """
         test_set = self.energy_function.sample_test_set(-1, full=True)
+        if test_set is None:
+            print("Warning: test_set is None, skipping CFM test epoch end")
+            return
 
         forwards_samples = self.compute_and_log_nll(
             self.cfm_cnf, self.cfm_prior, test_set, "test", ""
@@ -1333,7 +1349,6 @@ class DEMLitModule(LightningModule):
         batch_size = self.energy_function.plotting_batch_size
         final_samples = []
         n_batches = self.num_samples_to_save // batch_size
-        test_set = self.energy_function.sample_test_set(-1, full=True)
         for i in range(n_batches):
             samples = self.generate_samples(
                 num_samples=batch_size,
@@ -1354,33 +1369,51 @@ class DEMLitModule(LightningModule):
 
         final_samples = torch.cat(final_samples, dim=0)
 
-        print("Computing large batch distribution distances")
-        names, dists = compute_full_dataset_distribution_distances(
-            self.energy_function.unnormalize(final_samples)[:, None],
-            test_set[:, None],
-            self.energy_function,
-        )
-        names = [f"test/full_batch/{name}" for name in names]
-        d = dict(zip(names, dists))
-
-        if self.energy_function.is_molecule:
-            d["test/full_batch/dist_total_var"] = self._compute_total_var(
-                self.energy_function.unnormalize(final_samples), test_set
+        # TODO: 
+        if self.energy_function.test_set is not None:
+            print("one_test_epoch_end: Computing large batch distribution distances")
+            test_set = self.energy_function.sample_test_set(-1, full=True)
+            names, dists = compute_full_dataset_distribution_distances(
+                self.energy_function.unnormalize(final_samples)[:, None],
+                test_set[:, None],
+                self.energy_function,
             )
+            names = [f"test/full_batch/{name}" for name in names]
+            d = dict(zip(names, dists))
+
+            if self.energy_function.is_molecule:
+                d["test/full_batch/dist_total_var"] = self._compute_total_var(
+                    self.energy_function.unnormalize(final_samples), test_set
+                )
+            print(f"one_test_epoch_end: Done computing large batch distribution distances. W2 = {dists[1]}")
+        else:
+            print("Warning: No test set provided. Skipping distribution distances.")
+            d = {}
+            # raise NotImplementedError("No test set provided")
+        
+        try:
+            assessments = self.energy_function.assess_samples(final_samples)
+            if assessments is not None:
+                for key, value in assessments.items():
+                    d[f"test/{key}"] = value
+        except Exception as e:
+            print(f"Error assessing samples: \n---\n{e}\n---\n")
+            # raise e
 
         self.log_dict(d, sync_dist=True)
-        print(f"Done computing large batch distribution distances. W2 = {dists[1]}")
 
         output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+        # insert dem_outputs at the second to last position (should better be done in the config)
+        # output_dir = output_dir.split("/")[:-2] + ["dem_outputs"] + output_dir.split("/")[-2:]
+        # output_dir = "/".join(output_dir)
         path = f"{output_dir}/samples_{self.num_samples_to_save}.pt"
         torch.save(final_samples, path)
-        print(f"Saving samples to {path}")
-        import os
+        print(f"one_test_epoch_end: Saving samples to {path}")
 
-        os.makedirs(self.energy_function.name, exist_ok=True)
-        path2 = f"{self.energy_function.name}/samples_{self.hparams.version}_{self.num_samples_to_save}.pt"
+        path2 = f"dem_outputs/{self.energy_function.name}/samples_{self.hparams.version}_{self.num_samples_to_save}.pt"
+        os.makedirs(os.path.dirname(path2), exist_ok=True)
         torch.save(final_samples, path2)
-        print(f"Saving samples to {path2}")
+        print(f"one_test_epoch_end: Saving samples to {path2}")
 
     def on_fit_start(self):
         """Called at the beginning of training after sanity check."""

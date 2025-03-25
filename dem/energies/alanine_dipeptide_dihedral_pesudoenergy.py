@@ -49,7 +49,7 @@ from alanine_dipeptide.alanine_dipeptide_mace import (
 )
 
 from dem.energies.base_energy_function import BasePseudoEnergyFunction
-from dem.energies.alanine_dipeptide_energy import MaceAlDiEnergy2D, compute_hessians_vmap, tensor_like
+from dem.energies.alanine_dipeptide_dihedral_energy import MaceAlDiEnergy2D, compute_hessians_vmap, tensor_like
 
 # Silence FutureWarning about torch.load weights_only parameter
 import warnings

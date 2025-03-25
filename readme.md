@@ -99,11 +99,12 @@ cd meta-sampler
 
 Install DEM sampler
 ```bash
-pip install -u numpy==1.24.4
+pip install -U numpy==1.24.4
 pip install setuptools==59.8.0
 pip install lightning==2.* torchmetrics==0.* hydra-core==1.* rich==13.* pre-commit==3.* pytest==7.* wandb hydra-optuna-sweeper hydra-colorlog rootutils normflows nflows einops torchsde torchdiffeq torchcfm 
 pip install git+https://github.com/jarridrb/fab-torch.git
 pip install git+https://github.com/VincentStimper/resampled-base-flows.git git+https://github.com/jarridrb/fab-torch.git git+https://github.com/atong01/bgflow.git  
+pip install -U numpy==1.24.4
 
 pip install -e .
 
@@ -113,6 +114,7 @@ export WANDB_ENTITY=<...>
 ~~Modify Mace and e3nn library according to `mace.md`~~
 
 ```bash
+pip uninstall e3nn -y
 pip install git+https://github.com/BurgerAndreas/vectorizable-e3nn.git
 ```
 

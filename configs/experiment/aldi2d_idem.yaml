@@ -70,7 +70,6 @@ model:
   # num_samples_to_sample_from_buffer: 512
   # eval_batch_size: 1024
 
-  
   # memory cost ~ outer batch size * num_estimator_mc_samples
   # outer batch sizes (number of samples)
   num_samples_to_generate_per_epoch: 32

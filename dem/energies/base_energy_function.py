@@ -324,7 +324,19 @@ class BaseEnergyFunction(ABC):
         self.move_to_device(self.device)
 
         return fig_to_image(fig)
-
+    
+    def assess_samples(self, samples):
+        """Assesses the quality of generated samples.
+        
+        Args:
+            samples (torch.Tensor): Generated samples
+            
+        Returns:
+            dict: Assessment results
+        """
+        # raise NotImplementedError(f"Assess samples not implemented for {self.__class__.__name__}")
+        return None
+    
     def get_load_path(self, bounds, grid_width):
         return f"dem_outputs/{self.name}/bounds_{bounds[0]:.2f}_{bounds[1]:.2f}_grid_{grid_width}"
 

@@ -430,7 +430,7 @@ class VectorizedMACE(torch.nn.Module):
 
 class MaceAlDiEnergy2D(BaseEnergyFunction):
     """
-    Energy function for the alanine dipeptide.
+    Energy function for alanine dipeptide using dihedral angles as collective variables.
     """
 
     def __init__(
@@ -673,6 +673,8 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
         Returns:
             torch.Tensor: Energy values at input points
         """
+        # project dihedral angles to be within [-pi, pi]
+        samples = self.project_dihedral_angles(samples)
         if self.use_vmap:
             return self._energy_vmap(samples, return_aux_output=return_aux_output)
         else:
@@ -700,6 +702,31 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
             return log_prob / temperature, aux_output
         return -1 * self._energy(samples) / temperature
 
+    def project_dihedral_angles(self, samples):
+        # Project dihedral angles to be within [-pi, pi]
+        # Handle different input shapes
+        if len(samples.shape) == 1:  # Single sample [2]
+            if list(self._plotting_bounds) == [-np.pi, np.pi]:
+                samples = torch.remainder(samples + torch.pi, 2 * torch.pi) - torch.pi
+            elif list(self._plotting_bounds) == [0, 2 * np.pi]:
+                samples = torch.remainder(samples, 2 * torch.pi)
+            else:
+                raise ValueError(f"Unexpected plotting bounds: {self._plotting_bounds}")
+        elif len(samples.shape) == 2:  # Batch of samples [B, 2]
+            if list(self._plotting_bounds) == [-np.pi, np.pi]:
+                samples = torch.remainder(samples + torch.pi, 2 * torch.pi) - torch.pi
+            elif list(self._plotting_bounds) == [0, 2 * np.pi]:
+                samples = torch.remainder(samples, 2 * torch.pi)
+            else:
+                raise ValueError(f"Unexpected plotting bounds: {self._plotting_bounds}")
+        else:
+            raise ValueError(f"Unexpected shape for samples: {samples.shape}")
+        
+        # # Ensure all values are within the expected range (not vmap-able)
+        # assert torch.all(samples >= -torch.pi) and torch.all(samples <= torch.pi), \
+        #     f"Samples out of range: min={samples.min()}, max={samples.max()}"
+        return samples
+            
     #####################################################################################
     # helper functions
     #####################################################################################
@@ -730,6 +757,16 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
         Is a 2d grid of points in the range [-pi, pi] x [-pi, pi].
         """
         return self._dataset_from_minima(self.val_set_size)
+    
+    def assess_samples(self, samples):
+        """Assesses the quality of generated samples.
+        
+        Args:
+            samples (torch.Tensor): Generated samples
+        """
+        energies = torch.vmap(self._energy, chunk_size=self.plotting_batch_size)(samples)
+        energy = torch.mean(energies)
+        return {"energy": energy}
 
     # def log_on_epoch_end(
     #     self,
