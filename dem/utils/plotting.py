@@ -42,9 +42,7 @@ def plot_fn(
     else:
         fig = ax.get_figure()
 
-    x_points_dim1 = torch.linspace(
-        bounds[0], bounds[1], grid_width, device=device
-    )
+    x_points_dim1 = torch.linspace(bounds[0], bounds[1], grid_width, device=device)
     x_points_dim2 = x_points_dim1
     x_points = torch.tensor(
         list(itertools.product(x_points_dim1, x_points_dim2)), device=device
@@ -119,7 +117,9 @@ def plot_fn(
     elif quantity in ["loge", "log"]:
         log_p_x = -log_p_x
         if log_p_x.min() <= 0:
-            print(f"Warning: plot_fn: shifting log_p_x by {log_p_x.min()} to avoid log(0)")
+            print(
+                f"Warning: plot_fn: shifting log_p_x by {log_p_x.min()} to avoid log(0)"
+            )
             log_p_x += torch.abs(log_p_x.min()) + 1e-1
         log_p_x = torch.log(log_p_x)
         label = "log(E)"
@@ -127,12 +127,8 @@ def plot_fn(
         label = "Log(P) = -E"
     log_p_x = log_p_x.reshape((grid_width, grid_width))
 
-    x_points_dim1 = (
-        x_points[:, 0].reshape((grid_width, grid_width)).cpu().numpy()
-    )
-    x_points_dim2 = (
-        x_points[:, 1].reshape((grid_width, grid_width)).cpu().numpy()
-    )
+    x_points_dim1 = x_points[:, 0].reshape((grid_width, grid_width)).cpu().numpy()
+    x_points_dim2 = x_points[:, 1].reshape((grid_width, grid_width)).cpu().numpy()
 
     # cmaps
     # ['Greys', 'Purples', 'Blues', 'Greens', 'Oranges', 'Reds',
@@ -219,9 +215,7 @@ def plot_contours(
     if ax is None:
         fig, ax = plt.subplots(1)
 
-    x_points_dim1 = torch.linspace(
-        bounds[0], bounds[1], grid_width, device=device
-    )
+    x_points_dim1 = torch.linspace(bounds[0], bounds[1], grid_width, device=device)
     x_points_dim2 = x_points_dim1
     x_points = torch.tensor(
         list(itertools.product(x_points_dim1, x_points_dim2)), device=device
@@ -231,12 +225,8 @@ def plot_contours(
     log_p_x = torch.clamp_min(log_p_x, log_prob_min)
     log_p_x = log_p_x.reshape((grid_width, grid_width))
 
-    x_points_dim1 = (
-        x_points[:, 0].reshape((grid_width, grid_width)).cpu().numpy()
-    )
-    x_points_dim2 = (
-        x_points[:, 1].reshape((grid_width, grid_width)).cpu().numpy()
-    )
+    x_points_dim1 = x_points[:, 0].reshape((grid_width, grid_width)).cpu().numpy()
+    x_points_dim2 = x_points[:, 1].reshape((grid_width, grid_width)).cpu().numpy()
     #
     im = ax.contour(
         x_points_dim1,

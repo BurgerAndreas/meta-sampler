@@ -23,6 +23,7 @@ import itertools
 import os
 import pickle
 
+
 class BaseEnergyFunction(ABC):
     """Base class for energy functions used in DEM.
 
@@ -277,9 +278,7 @@ class BaseEnergyFunction(ABC):
             quantity=quantity,
             batch_size=self.plotting_batch_size,
             device=self.plotting_device,
-            load_path=self.get_load_path(
-                bounds=plotting_bounds, grid_width=200
-            ),
+            load_path=self.get_load_path(bounds=plotting_bounds, grid_width=200),
         )
 
         # plot dataset samples
@@ -300,9 +299,7 @@ class BaseEnergyFunction(ABC):
                 quantity=quantity,
                 batch_size=self.plotting_batch_size,
                 device=self.plotting_device,
-                load_path=self.get_load_path(
-                    bounds=plotting_bounds, grid_width=200
-                ),
+                load_path=self.get_load_path(bounds=plotting_bounds, grid_width=200),
             )
             # plot generated samples
             plot_marginal_pair(
@@ -326,19 +323,19 @@ class BaseEnergyFunction(ABC):
         self.move_to_device(self.device)
 
         return fig_to_image(fig)
-    
+
     def assess_samples(self, samples):
         """Assesses the quality of generated samples.
-        
+
         Args:
             samples (torch.Tensor): Generated samples
-            
+
         Returns:
             dict: Assessment results
         """
         # raise NotImplementedError(f"Assess samples not implemented for {self.__class__.__name__}")
         return None
-    
+
     def get_load_path(self, bounds, grid_width):
         return f"dem_outputs/{self.name}/bounds_{bounds[0]:.2f}_{bounds[1]:.2f}_grid_{grid_width}"
 
@@ -392,9 +389,7 @@ class BaseEnergyFunction(ABC):
             quantity=quantity,
             batch_size=self.plotting_batch_size,
             device=self.plotting_device,
-            load_path=self.get_load_path(
-                bounds=plotting_bounds, grid_width=grid_width
-            ),
+            load_path=self.get_load_path(bounds=plotting_bounds, grid_width=grid_width),
         )
         if samples is not None:
             plot_marginal_pair(
@@ -585,7 +580,7 @@ class BaseEnergyFunction(ABC):
         temperature: Optional[float] = None,
         return_aux_output: bool = False,
     ) -> torch.Tensor:
-        """Energy of the unnormalized (physical) potential. 
+        """Energy of the unnormalized (physical) potential.
         Used in Pseudo-energy to compute forces/Hessian.
 
         Args:
@@ -722,9 +717,7 @@ class BaseEnergyFunction(ABC):
         """
         np.save(f"{dataset_name}_samples.npy", samples.cpu().numpy())
 
-    def get_hessian_eigenvalues_on_grid(
-        self, grid_width=200, plotting_bounds=None
-    ):
+    def get_hessian_eigenvalues_on_grid(self, grid_width=200, plotting_bounds=None):
         """Compute eigenvalues of the Hessian on a grid.
 
         Args:
@@ -747,7 +740,7 @@ class BaseEnergyFunction(ABC):
 
         # Move to device
         x_points = x_points.to(self.device)
-        
+
         # attempt to load Hessian values
         hessian_path = f"dem_outputs/{self.name}/hessian_bounds_{plotting_bounds[0]:.2f}_{plotting_bounds[1]:.2f}_grid_{grid_width}"
         if os.path.exists(f"{hessian_path}.pkl"):
@@ -767,7 +760,9 @@ class BaseEnergyFunction(ABC):
                         if self.plotting_batch_size > 0
                         else None
                     )
-                    print(f"Computing Hessian with chunk_size: {chunk_size} for {x_points.shape[0]} points (This might take multiple minutes)")
+                    print(
+                        f"Computing Hessian with chunk_size: {chunk_size} for {x_points.shape[0]} points (This might take multiple minutes)"
+                    )
                     # Handle batched inputs using vmap
                     hessian = torch.vmap(
                         torch.func.hessian(self._energy),
@@ -785,7 +780,9 @@ class BaseEnergyFunction(ABC):
             expanded_indices = sorted_indices.unsqueeze(-1).expand(
                 *batched_eigenvalues.shape, self._dimensionality
             )
-            batched_eigenvectors = torch.gather(batched_eigenvectors, -2, expanded_indices)
+            batched_eigenvectors = torch.gather(
+                batched_eigenvectors, -2, expanded_indices
+            )
 
             # Reshape for plotting
             eigenvalues_grid = batched_eigenvalues.reshape(
@@ -800,7 +797,10 @@ class BaseEnergyFunction(ABC):
             os.makedirs(f"dem_outputs/{self.name}", exist_ok=True)
             with open(f"{hessian_path}.pkl", "wb") as f:
                 pickle.dump(
-                    {"eigenvalues_grid": eigenvalues_grid, "eigenvectors_grid": eigenvectors_grid},
+                    {
+                        "eigenvalues_grid": eigenvalues_grid,
+                        "eigenvectors_grid": eigenvectors_grid,
+                    },
                     f,
                 )
         x_grid = x_points_dim1.reshape(-1, 1).repeat(1, grid_width)
@@ -916,7 +916,6 @@ class BaseEnergyFunction(ABC):
         )
         grid_flat = torch.stack([xgrid.flatten(), ygrid.flatten()], axis=1)
 
-
         # attempt to load gradient values
         gradient_path = f"dem_outputs/{self.name}/gradient_bounds_{plotting_bounds[0]:.2f}_{plotting_bounds[1]:.2f}_grid_{grid_width}"
         if os.path.exists(f"{gradient_path}.pkl"):
@@ -925,14 +924,13 @@ class BaseEnergyFunction(ABC):
             energies = saved_data["energies"]
             gradients = saved_data["gradients"]
         else:
-            
+
             # Calculate the potential values
             def V(x):
                 return -self.log_prob(x).squeeze(0)
+
             chunk_size = (
-                int(self.plotting_batch_size)
-                if self.plotting_batch_size > 0
-                else None
+                int(self.plotting_batch_size) if self.plotting_batch_size > 0 else None
             )
             energies = torch.vmap(V, chunk_size=chunk_size)(grid_flat).reshape(N, N)
 
@@ -943,11 +941,17 @@ class BaseEnergyFunction(ABC):
                 if self.plotting_batch_size > 0
                 else None
             )
+
             def grad_V(x):
                 return -torch.func.grad(V)(x)
-            print(f"Computing gradients with chunk_size: {chunk_size} for {grid_flat.shape[0]} points (This might take multiple minutes)")
-            gradients = torch.vmap(grad_V, chunk_size=chunk_size)(grid_flat).reshape(N, N, 2)
-            
+
+            print(
+                f"Computing gradients with chunk_size: {chunk_size} for {grid_flat.shape[0]} points (This might take multiple minutes)"
+            )
+            gradients = torch.vmap(grad_V, chunk_size=chunk_size)(grid_flat).reshape(
+                N, N, 2
+            )
+
             # Save the computed values
             os.makedirs(f"dem_outputs/{self.name}", exist_ok=True)
             with open(f"{gradient_path}.pkl", "wb") as f:
@@ -1023,7 +1027,7 @@ class BaseEnergyFunction(ABC):
         # Create x points for the cross-section
         if plotting_bounds is None:
             plotting_bounds = self._plotting_bounds
-            
+
         # attempt to load x points
         x_points_path = f"dem_outputs/{self.name}/xcrosssection_bounds_{plotting_bounds[0]:.2f}_{plotting_bounds[1]:.2f}_n_points_{n_points}_y_{y_value:.2f}"
         if os.path.exists(f"{x_points_path}.pkl"):
@@ -1032,8 +1036,10 @@ class BaseEnergyFunction(ABC):
                 x_points = saved_data["x_points"]
                 energy_values = saved_data["energy_values"]
         else:
-            x_points = torch.linspace(plotting_bounds[0], plotting_bounds[1], n_points, device=device)
-            
+            x_points = torch.linspace(
+                plotting_bounds[0], plotting_bounds[1], n_points, device=device
+            )
+
             # Create samples with fixed y value
             samples = torch.zeros((n_points, 2), device=device)
             samples[:, 0] = x_points
@@ -1041,18 +1047,24 @@ class BaseEnergyFunction(ABC):
 
             # Compute energy values
             if self.plotting_batch_size > 0 and self.plotting_batch_size < n_points:
-                energy_values = torch.vmap(self.energy, chunk_size=self.plotting_batch_size)(samples).detach().cpu().numpy()
+                energy_values = (
+                    torch.vmap(self.energy, chunk_size=self.plotting_batch_size)(
+                        samples
+                    )
+                    .detach()
+                    .cpu()
+                    .numpy()
+                )
             else:
                 energy_values = self.energy(samples).detach().cpu().numpy()
             x_points = x_points.cpu().numpy()
-            
+
             os.makedirs(f"dem_outputs/{self.name}", exist_ok=True)
             with open(f"{x_points_path}.pkl", "wb") as f:
                 pickle.dump(
                     {"x_points": x_points, "energy_values": energy_values},
                     f,
                 )
-
 
         # Create figure
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -1133,7 +1145,7 @@ class BaseEnergyFunction(ABC):
         # Create x points for the cross-section
         if plotting_bounds is None:
             plotting_bounds = self._plotting_bounds
-            
+
             # attempt to load x points
         axis_points_path = f"dem_outputs/{self.name}/crosssection_bounds_{plotting_bounds[0]:.2f}_{plotting_bounds[1]:.2f}_n_points_{n_points}_{axissymbol}_{axis_value:.2f}"
         if os.path.exists(f"{axis_points_path}.pkl"):
@@ -1141,7 +1153,9 @@ class BaseEnergyFunction(ABC):
                 saved_data = pickle.load(f)
                 axis_points = saved_data["axis_points"]
         else:
-            axis_points = torch.linspace(plotting_bounds[0], plotting_bounds[1], n_points, device=device)
+            axis_points = torch.linspace(
+                plotting_bounds[0], plotting_bounds[1], n_points, device=device
+            )
 
             # Create samples with fixed value
             samples = torch.zeros((n_points, 2), device=device)
@@ -1150,11 +1164,18 @@ class BaseEnergyFunction(ABC):
 
             # Compute energy values
             if self.plotting_batch_size > 0 and self.plotting_batch_size < n_points:
-                energy_values = torch.vmap(self.energy, chunk_size=self.plotting_batch_size)(samples).detach().cpu().numpy()
+                energy_values = (
+                    torch.vmap(self.energy, chunk_size=self.plotting_batch_size)(
+                        samples
+                    )
+                    .detach()
+                    .cpu()
+                    .numpy()
+                )
             else:
                 energy_values = self.energy(samples).detach().cpu().numpy()
             axis_points = axis_points.cpu().numpy()
-            
+
             os.makedirs(f"dem_outputs/{self.name}", exist_ok=True)
             with open(f"{axis_points_path}.pkl", "wb") as f:
                 pickle.dump(

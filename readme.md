@@ -64,13 +64,8 @@ pip install --upgrade pip setuptools wheel
 
 Install dependencies
 ```bash
-# if you are on a cluster like Compute Canada, but don't want pre-compiled packages, use 
-# PIP_CONFIG_FILE=/dev/null pip install --isolated --no-cache-dir --find-links https://pypi.org/simple
-pip uninstall numpy scikit-learn plotly kaleido imageio scipy matplotlib seaborn black tqdm joblib einops ipykernel toml omegaconf nbformat openmm nglview py3Dmol hydra-core -y
-
 pip install setuptools==59.2.0 numpy==1.24.4 scikit-learn plotly kaleido imageio scipy matplotlib seaborn black tqdm joblib einops ipykernel toml omegaconf nbformat nglview py3Dmol hydra-core==1.*
-pip install openmm==8.2.0 
-# mamba install openmm==8.2.0 -y # for compute canada
+mamba install openmm==8.2.0 -y
 ```
 
 Install PyTorch and PyTorch Geometric (adjust to your CUDA version)
@@ -81,16 +76,7 @@ pip uninstall torch torch-scatter torch-sparse torch-cluster torch-spline-conv t
 # Install PyTorch for CUDA 12.6
 pip install --no-index torch torchvision --index-url https://download.pytorch.org/whl/cu121
 pip install --no-index pyg-lib torch-scatter torch-sparse torch-cluster torch-spline-conv -f https://data.pyg.org/whl/torch-2.5.1+cu121.html
-
-# pip install torch==2.1.0 --index-url https://download.pytorch.org/whl/cu121
-# pip install pyg-lib torch-scatter torch-sparse torch-cluster torch-spline-conv -f https://data.pyg.org/whl/torch-2.5.1+cu121.html
-
-# Finally install torch-geometric
 pip install torch-geometric
-
-# alternative
-# mamba install pytorch pytorch-cuda=12.6 -c pytorch -c nvidia
-# mamba install pyg -c pyg
 ```
 
 Install MACE
@@ -98,12 +84,13 @@ Install MACE
 # for fast mace (5-9x speedup)
 pip uninstall mace-torch -y
 # mace==0.3.10 was designed to work with cuequivariance==0.1.0
+cd ..
 pip install cuequivariance==0.1.0 cuequivariance-torch cuequivariance-ops-torch-cu12
 # git clone https://github.com/ACEsuit/mace
 git clone https://github.com/BurgerAndreas/vectorizable-mace.git
 pip install vectorizable-mace/.
 cd meta-sampler
-```
+``` 
 
 Install Boltzmann Generator Utils
 ```bash

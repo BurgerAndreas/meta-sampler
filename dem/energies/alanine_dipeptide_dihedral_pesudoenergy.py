@@ -49,29 +49,39 @@ from alanine_dipeptide.alanine_dipeptide_mace import (
 )
 
 from dem.energies.base_energy_function import BasePseudoEnergyFunction
-from dem.energies.alanine_dipeptide_dihedral_energy import MaceAlDiEnergy2D, compute_hessians_vmap, tensor_like
+from dem.energies.alanine_dipeptide_dihedral_energy import (
+    MaceAlDiEnergy2D,
+    compute_hessians_vmap,
+    tensor_like,
+)
 
 # Silence FutureWarning about torch.load weights_only parameter
 import warnings
 import re
 
+
 # Create a filter for the specific torch.load FutureWarning
 class TorchLoadWarningFilter(warnings.WarningMessage):
     def __init__(self):
-        self.pattern = re.compile(r"You are using `torch\.load` with `weights_only=False`")
-    
+        self.pattern = re.compile(
+            r"You are using `torch\.load` with `weights_only=False`"
+        )
+
     def __eq__(self, other):
         # Check if this is the torch.load warning we want to filter
-        return (isinstance(other, warnings.WarningMessage) and 
-                other.category == FutureWarning and 
-                self.pattern.search(str(other.message)))
+        return (
+            isinstance(other, warnings.WarningMessage)
+            and other.category == FutureWarning
+            and self.pattern.search(str(other.message))
+        )
+
 
 # Register the filter
 warnings.filterwarnings(
-    "ignore", category=FutureWarning, 
-    message="You are using `torch.load` with `weights_only=False`.*"
+    "ignore",
+    category=FutureWarning,
+    message="You are using `torch.load` with `weights_only=False`.*",
 )
-
 
 
 class MaceAlDiPseudoEnergy2D(MaceAlDiEnergy2D, BasePseudoEnergyFunction):
@@ -84,15 +94,15 @@ class MaceAlDiPseudoEnergy2D(MaceAlDiEnergy2D, BasePseudoEnergyFunction):
     def __init__(self, *args, **kwargs):
         # Initialize base class
         print(f"Initializing MaceAlDiForcePseudoEnergy with kwargs: {kwargs}")
-        BasePseudoEnergyFunction.__init__(self, *copy.deepcopy(args), **copy.deepcopy(kwargs))
+        BasePseudoEnergyFunction.__init__(
+            self, *copy.deepcopy(args), **copy.deepcopy(kwargs)
+        )
         MaceAlDiEnergy2D.__init__(self, *copy.deepcopy(args), **copy.deepcopy(kwargs))
 
         # transition states of the true energy surface
         self.boundary_points = None
         self.transition_points = None
         self.validation_results = None
-
-    
 
     def log_prob(
         self,
@@ -117,7 +127,9 @@ class MaceAlDiPseudoEnergy2D(MaceAlDiEnergy2D, BasePseudoEnergyFunction):
         if len(samples.shape) == 1:
             samples = samples.unsqueeze(0)
 
-        pseudo_energy, aux_output = self._pseudo_potential(samples, return_aux_output=True)
+        pseudo_energy, aux_output = self._pseudo_potential(
+            samples, return_aux_output=True
+        )
 
         if temperature is None:
             temperature = self.temperature
@@ -132,19 +144,18 @@ class MaceAlDiPseudoEnergy2D(MaceAlDiEnergy2D, BasePseudoEnergyFunction):
         return pseudo_log_prob
 
     def _pseudo_potential(
-        self,
-        samples: torch.Tensor,
-        return_aux_output: bool = False
+        self, samples: torch.Tensor, return_aux_output: bool = False
     ) -> torch.Tensor:
         """Compute pseudo-energy for a batch of samples."""
         if self.use_vmap:
             return self._pseudoenergy_vmap(samples, return_aux_output=return_aux_output)
         else:
-            return self._pseudoenergy_batched_loop(samples, return_aux_output=return_aux_output)
+            return self._pseudoenergy_batched_loop(
+                samples, return_aux_output=return_aux_output
+            )
 
     def _pseudoenergy_vmap(
-        self,
-        samples: torch.Tensor, return_aux_output: bool = False
+        self, samples: torch.Tensor, return_aux_output: bool = False
     ) -> torch.Tensor:
         """Takes in samples of phi/psi values and returns the pseudoenergy.
         Args:
@@ -159,7 +170,9 @@ class MaceAlDiPseudoEnergy2D(MaceAlDiEnergy2D, BasePseudoEnergyFunction):
             _phi_psi, positions, node_attrs, edge_index, batch, head, shifts, ptr
         ):
             # Update xyz positions of atoms based on phi/psi values
-            positions1 = set_dihedral_torch_vmap(positions, "phi", _phi_psi[0], "phi", "bg")
+            positions1 = set_dihedral_torch_vmap(
+                positions, "phi", _phi_psi[0], "phi", "bg"
+            )
             positions2 = set_dihedral_torch_vmap(
                 positions1, "psi", _phi_psi[1], "psi", "bg"
             )
@@ -181,13 +194,16 @@ class MaceAlDiPseudoEnergy2D(MaceAlDiEnergy2D, BasePseudoEnergyFunction):
         node_attrs = minibatch["node_attrs"]
         edge_index = minibatch["edge_index"]
         batch = minibatch["batch"]
-        head = minibatch["head"][batch] if "head" in minibatch else torch.zeros_like(batch)
+        head = (
+            minibatch["head"][batch] if "head" in minibatch else torch.zeros_like(batch)
+        )
         shifts = minibatch["shifts"]
         ptr = minibatch["ptr"]
 
         # [B]
         _dihedrals_to_energies_vmapped = torch.vmap(
-            _dihedrals_to_energies, in_dims=(0, None, None, None, None, None, None, None)
+            _dihedrals_to_energies,
+            in_dims=(0, None, None, None, None, None, None, None),
         )
         energies = _dihedrals_to_energies_vmapped(
             samples, positions, node_attrs, edge_index, batch, head, shifts, ptr
@@ -200,7 +216,6 @@ class MaceAlDiPseudoEnergy2D(MaceAlDiEnergy2D, BasePseudoEnergyFunction):
             in_dims=(0, None, None, None, None, None, None, None),
         )(samples, positions, node_attrs, edge_index, batch, head, shifts, ptr)
 
-
         # compute Hessian [B, 2, 2]
         # hessian = torch.func.hessian(_dihedrals_to_energies_vmapped, argnums=0)(samples, positions, node_attrs, edge_index, batch, head, shifts, ptr)
         hessian = torch.vmap(
@@ -211,51 +226,45 @@ class MaceAlDiPseudoEnergy2D(MaceAlDiEnergy2D, BasePseudoEnergyFunction):
         # [B, D], [B, D, D]
         eigenvalues, eigenvectors = torch.linalg.eigh(hessian)
 
-
         # Force magnitude [B]
         force_magnitude = torch.linalg.norm(forces, ord=self.forces_norm, dim=-1)
-        
+
         # Hessian eigenvalues and eigenvectors
         # Sort eigenvalues in ascending order and get corresponding indices
         sorted_indices = torch.argsort(eigenvalues, dim=-1)
         # Get sorted eigenvalues
-        eigenvalues = torch.gather(
-            eigenvalues, -1, sorted_indices
-        )
+        eigenvalues = torch.gather(eigenvalues, -1, sorted_indices)
         # Get 2 smallest eigenvalues for each sample
         smallest_eigenvalues = eigenvalues[..., :2]  # [B, 2]
         # Get eigenvectors corresponding to eigenvalues
         smallest_eigenvectors = torch.gather(
             eigenvectors,
             -1,
-            sorted_indices[..., 0:1]
-            .unsqueeze(-1)
-            .expand(eigenvectors.shape),
+            sorted_indices[..., 0:1].unsqueeze(-1).expand(eigenvectors.shape),
         )
         eigvalterm = smallest_eigenvalues[:, 0] * smallest_eigenvalues[:, 1]
-        
+
         # Pseudoenergy [B]
         pseudo_energy = torch.where(
-                # smallest_eigenvalue < 0,
-                eigvalterm < 0,
-                input=torch.clip(
-                    force_magnitude
-                    # torch.einsum("bd,bd->b", forces, smallest_eigenvectors[..., 0]) ** 2
-                    + self.gad_offset,
-                    min=self.clamp_min,
-                    max=self.clamp_max,
-                ),
-                other=eigvalterm,
-            )
+            # smallest_eigenvalue < 0,
+            eigvalterm < 0,
+            input=torch.clip(
+                force_magnitude
+                # torch.einsum("bd,bd->b", forces, smallest_eigenvectors[..., 0]) ** 2
+                + self.gad_offset,
+                min=self.clamp_min,
+                max=self.clamp_max,
+            ),
+            other=eigvalterm,
+        )
 
         if return_aux_output:
             aux_output = {}
             return pseudo_energy, aux_output
         return pseudo_energy
-    
+
     def _pseudoenergy_batched_loop(
-        self,
-        samples: torch.Tensor, return_aux_output: bool = False
+        self, samples: torch.Tensor, return_aux_output: bool = False
     ) -> torch.Tensor:
         """
         Compute pseudoenergy for a batch of dihedral angles
@@ -288,7 +297,9 @@ class MaceAlDiPseudoEnergy2D(MaceAlDiEnergy2D, BasePseudoEnergyFunction):
             )
             minibatch["edge_index"] = tensor_like(edge_index, minibatch["edge_index"])
             minibatch["shifts"] = tensor_like(shifts, minibatch["shifts"])
-            minibatch["unit_shifts"] = tensor_like(unit_shifts, minibatch["unit_shifts"])
+            minibatch["unit_shifts"] = tensor_like(
+                unit_shifts, minibatch["unit_shifts"]
+            )
             minibatch["cell"] = tensor_like(cell, minibatch["cell"])
 
             # Compute energies
@@ -312,11 +323,13 @@ class MaceAlDiPseudoEnergy2D(MaceAlDiEnergy2D, BasePseudoEnergyFunction):
             smallest_eigenvectors = eigenvectors[:, :2]
             eigval_product = smallest_eigenvalues[0] * smallest_eigenvalues[1]
 
-            pseudoenergy = 1.0 * out["energy"] + 1.0 * forces_norm + 1.0 * eigval_product
+            pseudoenergy = (
+                1.0 * out["energy"] + 1.0 * forces_norm + 1.0 * eigval_product
+            )
             pseudoenergies.append(pseudoenergy)
 
         pseudoenergies = torch.stack(pseudoenergies, dim=0).squeeze(1)
-        
+
         if return_aux_output:
             aux_output = {}
             return pseudoenergies, aux_output

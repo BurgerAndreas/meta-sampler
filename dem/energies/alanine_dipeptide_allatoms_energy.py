@@ -50,14 +50,16 @@ from alanine_dipeptide.alanine_dipeptide_mace import (
 
 from dem.energies.alanine_dipeptide_dihedral_energy import VectorizedMACE
 
+
 # TODO: look at lennard jones energy function for all atoms
 class MaceAlDiEnergy2D(BaseEnergyFunction):
     """
     Energy function for the alanine dipeptide.
     """
+
     def __init__(
         self,
-        dimensionality=22*3,
+        dimensionality=22 * 3,
         device="cuda",
         plotting_buffer_sample_size=512,
         plot_samples_epoch_period=5,
@@ -211,7 +213,7 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
         ).to(samples.device)
         shifts = minibatch["shifts"].to(samples.device)
         ptr = minibatch["ptr"].to(samples.device)
-        
+
         # If a single sample, add a batch dimension [2] -> [1, 2]
         if len(samples.shape) == 1:
             samples = samples.unsqueeze(0)
@@ -289,7 +291,7 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
             return self._energy_vmap(samples, return_aux_output=return_aux_output)
         else:
             return self._energy_batched(samples, return_aux_output=return_aux_output)
-        
+
     def log_prob(
         self,
         samples: torch.Tensor,
@@ -311,26 +313,28 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
             log_prob, aux_output = self._energy(samples, return_aux_output=True)
             return log_prob / temperature, aux_output
         return -1 * self._energy(samples) / temperature
-    
+
     #####################################################################################
-    
+
     def assess_samples(self, samples):
         """Assesses the quality of generated samples.
-        
+
         Args:
             samples (torch.Tensor): Generated samples
         """
-        energies = torch.vmap(self._energy, chunk_size=self.plotting_batch_size)(samples)
+        energies = torch.vmap(self._energy, chunk_size=self.plotting_batch_size)(
+            samples
+        )
         energy = torch.mean(energies)
         return {"energy": energy}
-    
+
     def sample_test_set(self, batch_size: int, full: bool = False) -> torch.Tensor:
         """
         Sample a batch of test set data.
         """
         # return super().sample_test_set(batch_size, full)
         return None
-    
+
     def sample_val_set(self, batch_size: int, full: bool = False) -> torch.Tensor:
         """
         Sample a batch of validation set data.
@@ -340,12 +344,12 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
 
     def sample_train_set(self, batch_size: int, full: bool = False) -> torch.Tensor:
         return None
-    
+
     def setup_train_set(self):
         return None
-    
+
     def setup_val_set(self):
         return None
-    
+
     def setup_test_set(self):
         return None

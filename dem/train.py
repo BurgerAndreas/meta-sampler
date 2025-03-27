@@ -84,7 +84,7 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
         wandb_logger = logging.getLogger("wandb")
         wandb_logger.setLevel(logging.ERROR)
-    
+
     # highest, high, medium
     if cfg["matmul_precision"] is not None:
         torch.set_float32_matmul_precision(cfg["matmul_precision"])

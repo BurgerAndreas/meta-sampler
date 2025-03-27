@@ -52,23 +52,29 @@ from alanine_dipeptide.alanine_dipeptide_mace import (
 import warnings
 import re
 
+
 # Create a filter for the specific torch.load FutureWarning
 class TorchLoadWarningFilter(warnings.WarningMessage):
     def __init__(self):
-        self.pattern = re.compile(r"You are using `torch\.load` with `weights_only=False`")
-    
+        self.pattern = re.compile(
+            r"You are using `torch\.load` with `weights_only=False`"
+        )
+
     def __eq__(self, other):
         # Check if this is the torch.load warning we want to filter
-        return (isinstance(other, warnings.WarningMessage) and 
-                other.category == FutureWarning and 
-                self.pattern.search(str(other.message)))
+        return (
+            isinstance(other, warnings.WarningMessage)
+            and other.category == FutureWarning
+            and self.pattern.search(str(other.message))
+        )
+
 
 # Register the filter
 warnings.filterwarnings(
-    "ignore", category=FutureWarning, 
-    message="You are using `torch.load` with `weights_only=False`.*"
+    "ignore",
+    category=FutureWarning,
+    message="You are using `torch.load` with `weights_only=False`.*",
 )
-
 
 
 # MACE Hessians
@@ -599,7 +605,7 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
         ).to(samples.device)
         shifts = minibatch["shifts"].to(samples.device)
         ptr = minibatch["ptr"].to(samples.device)
-        
+
         # If a single sample, add a batch dimension [2] -> [1, 2]
         if len(samples.shape) == 1:
             samples = samples.unsqueeze(0)
@@ -679,7 +685,7 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
             return self._energy_vmap(samples, return_aux_output=return_aux_output)
         else:
             return self._energy_batched(samples, return_aux_output=return_aux_output)
-        
+
     def log_prob(
         self,
         samples: torch.Tensor,
@@ -721,12 +727,12 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
                 raise ValueError(f"Unexpected plotting bounds: {self._plotting_bounds}")
         else:
             raise ValueError(f"Unexpected shape for samples: {samples.shape}")
-        
+
         # # Ensure all values are within the expected range (not vmap-able)
         # assert torch.all(samples >= -torch.pi) and torch.all(samples <= torch.pi), \
         #     f"Samples out of range: min={samples.min()}, max={samples.max()}"
         return samples
-            
+
     #####################################################################################
     # helper functions
     #####################################################################################
@@ -757,14 +763,16 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
         Is a 2d grid of points in the range [-pi, pi] x [-pi, pi].
         """
         return self._dataset_from_minima(self.val_set_size)
-    
+
     def assess_samples(self, samples):
         """Assesses the quality of generated samples.
-        
+
         Args:
             samples (torch.Tensor): Generated samples
         """
-        energies = torch.vmap(self._energy, chunk_size=self.plotting_batch_size)(samples)
+        energies = torch.vmap(self._energy, chunk_size=self.plotting_batch_size)(
+            samples
+        )
         energy = torch.mean(energies)
         return {"energy": energy}
 

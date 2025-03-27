@@ -384,7 +384,7 @@ class DEMLitModule(LightningModule):
         self.num_negative_time_steps = num_negative_time_steps
         self.use_vmap = use_vmap
 
-        self.streaming_batch_size = streaming_batch_size # TODO: not implemented
+        self.streaming_batch_size = streaming_batch_size  # TODO: not implemented
 
         self.generate_constrained_samples = generate_constrained_samples
         self.constrained_score_norm_target = constrained_score_norm_target
@@ -1104,7 +1104,9 @@ class DEMLitModule(LightningModule):
             )
 
         # Add custom validation for convergence to transition states
-        if self.energy_function.is_transition_sampler and hasattr(self.energy_function, "get_true_transition_states"):
+        if self.energy_function.is_transition_sampler and hasattr(
+            self.energy_function, "get_true_transition_states"
+        ):
             # Get ground truth transition states
             true_transition_states = self.energy_function.get_true_transition_states()
 
@@ -1267,8 +1269,10 @@ class DEMLitModule(LightningModule):
             d = dict(zip(names, dists))
             self.log_dict(d, sync_dist=True)
         else:
-            print(f"Warning: No data_0 in outputs for {prefix}. Skipping distribution distances.")
-            
+            print(
+                f"Warning: No data_0 in outputs for {prefix}. Skipping distribution distances."
+            )
+
         # Compute energy of samples
         try:
             assessments = self.energy_function.assess_samples(samples)
@@ -1285,7 +1289,7 @@ class DEMLitModule(LightningModule):
     def _cfm_test_epoch_end(self) -> None:
         """
         Performs end-of-test-epoch operations for the Continuous Flow Matching (CFM) model.
-        
+
         This method:
         1. Computes negative log-likelihood (NLL) on the full test set
         2. Generates samples from the CFM model
@@ -1402,12 +1406,14 @@ class DEMLitModule(LightningModule):
                 d["test/full_batch/dist_total_var"] = self._compute_total_var(
                     self.energy_function.unnormalize(final_samples), test_set
                 )
-            print(f"one_test_epoch_end: Done computing large batch distribution distances. W2 = {dists[1]}")
+            print(
+                f"one_test_epoch_end: Done computing large batch distribution distances. W2 = {dists[1]}"
+            )
         else:
             print("Warning: No test set provided. Skipping distribution distances.")
             d = {}
             # raise NotImplementedError("No test set provided")
-        
+
         try:
             assessments = self.energy_function.assess_samples(final_samples)
             if assessments is not None:
