@@ -59,6 +59,7 @@ class BaseEnergyFunction(ABC):
         temperature: float = 1.0,
         plotting_batch_size: int = -1,
         plotting_device: str = "cpu",
+        is_transition_sampler: bool = False,
         *args,
         **kwargs,
     ):
@@ -71,6 +72,7 @@ class BaseEnergyFunction(ABC):
         self.normalization_max = normalization_max
 
         self._is_molecule = is_molecule
+        self.is_transition_sampler = is_transition_sampler
         self.curr_epoch = 0
         self.plotting_buffer_sample_size = plotting_buffer_sample_size
         self.plot_samples_epoch_period = plot_samples_epoch_period
@@ -1237,6 +1239,7 @@ class BasePseudoEnergyFunction:
         stitching=True,
         stop_grad_ev=False,
         div_epsilon=1e-12,
+        is_transition_sampler: bool = True,
         *args,
         **kwargs,
     ):
@@ -1256,6 +1259,7 @@ class BasePseudoEnergyFunction:
         self.clamp_min = float(clamp_min) if clamp_min is not None else None
         self.clamp_max = float(clamp_max) if clamp_max is not None else None
         self.dataset_noise_scale = dataset_noise_scale
+        self.is_transition_sampler = is_transition_sampler
         # GAD parameters
         self.clip_energy = clip_energy
         self.stitching = stitching

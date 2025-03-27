@@ -1104,7 +1104,7 @@ class DEMLitModule(LightningModule):
             )
 
         # Add custom validation for convergence to transition states
-        if hasattr(self.energy_function, "get_true_transition_states"):
+        if self.energy_function.is_transition_sampler and hasattr(self.energy_function, "get_true_transition_states"):
             # Get ground truth transition states
             true_transition_states = self.energy_function.get_true_transition_states()
 
@@ -1162,7 +1162,7 @@ class DEMLitModule(LightningModule):
             metrics = {
                 # Coverage metrics
                 f"{prefix}/transition_states_covered": transition_states_covered,
-                f"{prefix}/coverage_radius": coverage_radius,
+                f"{prefix}/transition_coverage_radius": coverage_radius,
                 # Precision metrics
                 f"{prefix}/samples_near_transition": samples_near_transition,
                 f"{prefix}/average_force_magnitude": avg_force,
@@ -1266,6 +1266,19 @@ class DEMLitModule(LightningModule):
             names = [f"{prefix}/{name}" for name in names]
             d = dict(zip(names, dists))
             self.log_dict(d, sync_dist=True)
+        else:
+            print(f"Warning: No data_0 in outputs for {prefix}. Skipping distribution distances.")
+            
+        # Compute energy of samples
+        try:
+            assessments = self.energy_function.assess_samples(samples)
+            if assessments is not None:
+                d = {}
+                for key, value in assessments.items():
+                    d[f"test/{key}"] = value
+                self.log_dict(d, sync_dist=True)
+        except Exception as e:
+            print(f"Error assessing samples: \n---\n{e}\n---\n")
 
         self.eval_step_outputs.clear()
 
@@ -1346,9 +1359,14 @@ class DEMLitModule(LightningModule):
             self._cfm_test_epoch_end()
             return
 
-        batch_size = self.energy_function.plotting_batch_size
         final_samples = []
-        n_batches = self.num_samples_to_save // batch_size
+        if self.energy_function.plotting_batch_size > 0:
+            batch_size = self.energy_function.plotting_batch_size
+            n_batches = self.num_samples_to_save // batch_size
+        else:
+            batch_size = self.num_samples_to_save
+            n_batches = 1
+        n_batches = max(n_batches, 1)
         for i in range(n_batches):
             samples = self.generate_samples(
                 num_samples=batch_size,
@@ -1369,7 +1387,6 @@ class DEMLitModule(LightningModule):
 
         final_samples = torch.cat(final_samples, dim=0)
 
-        # TODO: 
         if self.energy_function.test_set is not None:
             print("one_test_epoch_end: Computing large batch distribution distances")
             test_set = self.energy_function.sample_test_set(-1, full=True)

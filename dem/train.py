@@ -39,30 +39,6 @@ from dem.utils import (
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
-# Silence MACE cuequivariance_ops_torch warning
-import sys
-import os
-
-
-class StdoutFilter:
-    def __init__(self, original_stdout, blacklist_terms):
-        self.original_stdout = original_stdout
-        self.blacklist_terms = blacklist_terms
-
-    def write(self, message):
-        if not any(term in message for term in self.blacklist_terms):
-            self.original_stdout.write(message)
-
-    def flush(self):
-        self.original_stdout.flush()
-
-
-# Replace sys.stdout with the filter
-sys.stdout = StdoutFilter(sys.stdout, blacklist_terms=["There is a performance drop"])
-sys.stderr = StdoutFilter(sys.stderr, blacklist_terms=["There is a performance drop"])
-os.environ["TORCH_CPP_LOG_LEVEL"] = "ERROR"
-os.environ["TORCH_LOGS"] = "ERROR"
-
 
 @task_wrapper
 def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:

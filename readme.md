@@ -35,11 +35,20 @@ python dem/train.py experiment=fw_idem_condforce
 python dem/train.py experiment=aldi2d_idem
 ```
 
-### N^3d Alanine Dipeptide (all atom)
-WIP
+Run on the cluster
+```bash
+ssh ...@comps0.cs.toronto.edu
 
-### Surface + single atom adsorbant
+mamba activate sampler
+sbatch scripts/cslab_launcher.slrm train.py experiment=aldi2d_idem energy.temperature=3000 +addon=mem2
+```
+
+N^3d Alanine Dipeptide (all atom)
+WIP by Andreas
+
+Surface + single atom adsorbant
 WIP by Nikolaj
+
 
 ## Installation
 

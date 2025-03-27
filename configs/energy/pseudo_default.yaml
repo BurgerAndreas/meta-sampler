@@ -1,3 +1,4 @@
+is_transition_sampler: true
 
 # Pseudo-energy specific parameters
 energy_weight: 0.0
