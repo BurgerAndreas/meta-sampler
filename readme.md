@@ -60,8 +60,17 @@ bash Miniforge3-$(uname)-$(uname -m).sh
 mamba create -n sampler python=3.11
 mamba activate sampler
 pip install --upgrade pip setuptools wheel
+```
 
-pip install numpy==1.24.4 scikit-learn plotly kaleido imageio scipy matplotlib seaborn black tqdm joblib einops ipykernel toml omegaconf nbformat openmm nglview py3Dmol hydra-core==1.*
+Install dependencies
+```bash
+# if you are on a cluster like Compute Canada, but don't want pre-compiled packages, use 
+# PIP_CONFIG_FILE=/dev/null pip install --isolated --no-cache-dir --find-links https://pypi.org/simple
+pip uninstall numpy scikit-learn plotly kaleido imageio scipy matplotlib seaborn black tqdm joblib einops ipykernel toml omegaconf nbformat openmm nglview py3Dmol hydra-core -y
+
+pip install setuptools==59.2.0 numpy==1.24.4 scikit-learn plotly kaleido imageio scipy matplotlib seaborn black tqdm joblib einops ipykernel toml omegaconf nbformat nglview py3Dmol hydra-core==1.*
+pip install openmm==8.2.0 
+# mamba install openmm==8.2.0 -y # for compute canada
 ```
 
 Install PyTorch and PyTorch Geometric (adjust to your CUDA version)
@@ -70,8 +79,8 @@ Install PyTorch and PyTorch Geometric (adjust to your CUDA version)
 pip uninstall torch torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric -y
 
 # Install PyTorch for CUDA 12.6
-pip install -U torch torchvision --index-url https://download.pytorch.org/whl/cu121
-pip install -U pyg-lib torch-scatter torch-sparse torch-cluster torch-spline-conv -f https://data.pyg.org/whl/torch-2.5.1+cu121.html
+pip install --no-index torch torchvision --index-url https://download.pytorch.org/whl/cu121
+pip install --no-index pyg-lib torch-scatter torch-sparse torch-cluster torch-spline-conv -f https://data.pyg.org/whl/torch-2.5.1+cu121.html
 
 # pip install torch==2.1.0 --index-url https://download.pytorch.org/whl/cu121
 # pip install pyg-lib torch-scatter torch-sparse torch-cluster torch-spline-conv -f https://data.pyg.org/whl/torch-2.5.1+cu121.html
@@ -82,7 +91,10 @@ pip install torch-geometric
 # alternative
 # mamba install pytorch pytorch-cuda=12.6 -c pytorch -c nvidia
 # mamba install pyg -c pyg
+```
 
+Install MACE
+```bash
 # for fast mace (5-9x speedup)
 pip uninstall mace-torch -y
 # mace==0.3.10 was designed to work with cuequivariance==0.1.0
@@ -109,7 +121,6 @@ cd meta-sampler
 Install DEM sampler
 ```bash
 pip install -U numpy==1.24.4
-pip install setuptools==59.8.0
 pip install lightning==2.* torchmetrics==0.* hydra-core==1.* rich==13.* pre-commit==3.* pytest==7.* wandb hydra-optuna-sweeper hydra-colorlog rootutils normflows nflows einops torchsde torchdiffeq torchcfm 
 pip install git+https://github.com/jarridrb/fab-torch.git
 pip install git+https://github.com/VincentStimper/resampled-base-flows.git git+https://github.com/jarridrb/fab-torch.git git+https://github.com/atong01/bgflow.git  
@@ -129,6 +140,9 @@ pip install git+https://github.com/BurgerAndreas/vectorizable-e3nn.git
 
 
 ---
+---
+---
+
 
 <div align="center">
 
@@ -171,7 +185,6 @@ micromamba activate dem
 
 # install requirements
 pip install -r requirements.txt
-
 ```
 
 Note that the hydra configs interpolate using some environment variables set in the file `.env`. We provide
