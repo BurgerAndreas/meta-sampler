@@ -59,6 +59,18 @@ model:
   optimizer:
     lr: 5e-4
 
+  net:
+    # _target_: dem.models.components.mlp.MyMLP
+    # _partial_: true
+    # hidden_size: 128
+    # hidden_layers: 3
+    # emb_size: 128
+    # input_dim: ${energy.dimensionality}
+    # out_dim: ${energy.dimensionality}
+    # time_emb: "sinusoidal"
+    input_emb: "periodic_angle" # sinusoidal -> periodic_angle, periodic_learnable
+    periodic_output: "atan2" # atan2, tanh
+
   diffusion_scale: 1.0
 
   use_vmap: true

@@ -16,6 +16,8 @@ class SinusoidalEmbedding(nn.Module):
 
     def forward(self, x: torch.Tensor):
         x = x * self.scale
+        # sinusoidal functions using frequencies spaced logarithmically
+        # a 10000^(2i/embedding_dim) scale
         half_size = self.size // 2
         emb = torch.log(torch.Tensor([10000.0]).to(x.device)) / (half_size - 1)
         emb = torch.exp(-emb * torch.arange(half_size).to(x.device))
@@ -23,6 +25,135 @@ class SinusoidalEmbedding(nn.Module):
         emb = torch.cat((torch.sin(emb), torch.cos(emb)), dim=-1)
         return emb
 
+    def __len__(self):
+        return self.size
+
+class PeriodicAngleEmbedding(nn.Module):
+    def __init__(self, size: int, scale: float = 1.0):
+        """
+        Embedding for periodic angles in the range [-π, π].
+        
+        Args:
+            size: The output embedding size (must be even)
+            scale: Optional scaling factor for the input angles
+        """
+        super().__init__()
+        assert size % 2 == 0, "Embedding size must be even"
+        self.size = size
+        self.scale = scale
+        
+    def forward(self, x: torch.Tensor):
+        """
+        Embeds periodic angles using sin and cos components.
+        
+        Args:
+            x: Tensor of angles in radians, expected to be in range [-π, π]
+        
+        Returns:
+            Embedded representation of the angles
+        """
+        # Scale the input if needed
+        x = x * self.scale
+        
+        # Convert angles to sin/cos representation to handle periodicity
+        sin_x = torch.sin(x)
+        cos_x = torch.cos(x)
+        
+        # For larger embeddings, add higher frequency components
+        # higher frequency components still respect the [-π, π] periodicity.
+        # When using sin(n*θ) and cos(n*θ) where n is a frequency multiplier,
+        # these functions remain periodic with respect to θ.
+        # The period becomes 2π/n, which is still also 2π periodic
+        # any input angle θ and θ+2π will produce identical embeddings for any frequency multiplier
+        if self.size > 2:
+            half_size = self.size // 2
+            # Create frequency multipliers (1, 2, 3, ..., half_size)
+            freqs = torch.arange(1, half_size + 1).to(x.device).float()
+            
+            # Expand dimensions for broadcasting
+            angles = x.unsqueeze(-1)  # [batch, 1]
+            freqs = freqs.unsqueeze(0)  # [1, half_size]
+            
+            # Compute sin and cos at different frequencies
+            angles_mul = angles * freqs  # [batch, half_size]
+            sin_components = torch.sin(angles_mul)  # [batch, half_size]
+            cos_components = torch.cos(angles_mul)  # [batch, half_size]
+            
+            # Interleave sin and cos components
+            embedded = torch.stack((sin_components, cos_components), dim=-1)
+            embedded = embedded.flatten(start_dim=-2)  # [batch, size]
+            return embedded
+        else:
+            # Simple case: just return sin and cos of the angle
+            return torch.cat((sin_x.unsqueeze(-1), cos_x.unsqueeze(-1)), dim=-1)
+    
+    def __len__(self):
+        return self.size
+
+class PeriodicLearnableEmbedding(nn.Module):
+    def __init__(self, size: int, scale: float = 1.0):
+        """
+        Learnable embedding for periodic angles in the range [-π, π].
+        
+        Args:
+            size: The output embedding size (must be even)
+            scale: Optional scaling factor for the input angles
+        """
+        super().__init__()
+        assert size % 2 == 0, "Embedding size must be even"
+        self.size = size
+        self.scale = scale
+        
+        # Learnable parameters for transforming the sin/cos components
+        half_size = size // 2
+        self.sin_transform = nn.Linear(half_size, half_size)
+        self.cos_transform = nn.Linear(half_size, half_size)
+        
+    def forward(self, x: torch.Tensor):
+        """
+        Embeds periodic angles using learnable transformations of sin and cos components.
+        
+        Args:
+            x: Tensor of angles in radians, expected to be in range [-π, π]
+        
+        Returns:
+            Embedded representation of the angles
+        """
+        # Scale the input if needed
+        x = x * self.scale
+        
+        if self.size > 2:
+            half_size = self.size // 2
+            # Create frequency multipliers (1, 2, 3, ..., half_size)
+            freqs = torch.arange(1, half_size + 1).to(x.device).float()
+            
+            # Expand dimensions for broadcasting
+            angles = x.unsqueeze(-1)  # [batch, 1]
+            freqs = freqs.unsqueeze(0)  # [1, half_size]
+            
+            # Compute sin and cos at different frequencies
+            angles_mul = angles * freqs  # [batch, half_size]
+            sin_components = torch.sin(angles_mul)  # [batch, half_size]
+            cos_components = torch.cos(angles_mul)  # [batch, half_size]
+            
+            # Apply learnable transformations
+            sin_transformed = self.sin_transform(sin_components)
+            cos_transformed = self.cos_transform(cos_components)
+            
+            # Interleave sin and cos components
+            embedded = torch.stack((sin_transformed, cos_transformed), dim=-1)
+            embedded = embedded.flatten(start_dim=-2)  # [batch, size]
+            return embedded
+        else:
+            # Simple case: just return sin and cos of the angle with learnable transformation
+            sin_x = torch.sin(x).unsqueeze(-1)  # [batch, 1]
+            cos_x = torch.cos(x).unsqueeze(-1)  # [batch, 1]
+            
+            sin_transformed = self.sin_transform(sin_x)
+            cos_transformed = self.cos_transform(cos_x)
+            
+            return torch.cat((sin_transformed, cos_transformed), dim=-1)
+    
     def __len__(self):
         return self.size
 
@@ -90,8 +221,12 @@ class PositionalEmbedding(nn.Module):
             self.layer = ZeroEmbedding()
         elif type == "identity":
             self.layer = IdentityEmbedding()
+        elif type == "periodic_angle":
+            self.layer = PeriodicAngleEmbedding(size, **kwargs)
+        elif type == "periodic_learnable":
+            self.layer = PeriodicLearnableEmbedding(size, **kwargs)
         else:
-            raise ValueError(f"Unknown positional embedding type: {type}")
+            raise ValueError(f"Unknown positional embedding type: {type}.")
 
     def forward(self, x: torch.Tensor):
         return self.layer(x)
@@ -206,6 +341,29 @@ class TimeConder(nn.Module):
 
 
 class MyMLP(nn.Module):
+    """
+    A Multi-Layer Perceptron (MLP) with time and position embeddings.
+    
+    This MLP is designed to process both spatial coordinates and time information,
+    with options for different embedding strategies and network architectures.
+    
+    Args:
+        hidden_size (int): Size of the hidden layers. Default: 128.
+        hidden_layers (int): Number of hidden layers. Default: 3.
+        emb_size (int): Size of the embedding vectors. Default: 128.
+        out_dim (int): Dimension of the output. Default: 2.
+        time_emb (str): Type of time embedding ('sinusoidal', etc.). Default: 'sinusoidal'.
+        input_emb (str): Type of input embedding ('sinusoidal', etc.). Default: 'sinusoidal'.
+        add_t_emb (bool): Whether to add time embeddings to hidden representations. Default: False.
+        concat_t_emb (bool): Whether to concatenate time embeddings before final layer. Default: False.
+        input_dim (int): Dimension of the input coordinates. Default: 2.
+        energy_function: Optional energy function for conditioning. Default: None.
+        periodic_output (str, optional): Method to bound output to [-π, π] range. Options:
+            'atan2' - Apply atan2 to pairs of outputs
+            'sin_cos' - Predict sin/cos pairs and convert to angles
+            'tanh' - Apply tanh and scale by π
+            None - Unbounded output (default)
+    """
     def __init__(
         self,
         hidden_size: int = 128,
@@ -218,11 +376,17 @@ class MyMLP(nn.Module):
         concat_t_emb: bool = False,
         input_dim: int = 2,
         energy_function=None,
+        periodic_output: str = None,
     ):
         super().__init__()
+        
+        # assert hidden_size == emb_size, \
+        #     f"hidden_size {hidden_size} must be equal to emb_size {emb_size}"
 
         self.add_t_emb = add_t_emb
         self.concat_t_emb = concat_t_emb
+        self.periodic_output = periodic_output
+        self.out_dim = out_dim
 
         self.time_mlp = PositionalEmbedding(emb_size, time_emb)
 
@@ -241,9 +405,11 @@ class MyMLP(nn.Module):
         )
 
         layers = [nn.Linear(concat_size, hidden_size)]
+        # middle layers
         for _ in range(hidden_layers):
             layers.append(Block(hidden_size, emb_size, add_t_emb, concat_t_emb))
 
+        # final layer
         in_size = emb_size + hidden_size if concat_t_emb else emb_size
         layers.append(nn.Linear(in_size, out_dim))
 
@@ -251,27 +417,71 @@ class MyMLP(nn.Module):
         self.joint_mlp = nn.Sequential(*layers)
 
     def forward(self, t, x, x_self_cond=False):
+        """
+        Forward pass through the MLP.
+        
+        Args:
+            t (torch.Tensor): Time tensor of shape (batch_size, 1).
+            x (torch.Tensor): Input coordinates of shape (batch_size, input_dim).
+            x_self_cond (bool or torch.Tensor): Self-conditioning input (not used in current implementation).
+                Default: False.
+                
+        Returns:
+            torch.Tensor: Output tensor of shape (batch_size, out_dim).
+        """
+        # Create embeddings for each input dimension using the corresponding positional embedding layer
         positional_embs = [
             self.get_submodule(f"input_mlp{i}")(x[:, i]) for i in range(x.shape[-1])
         ]
 
+        # Create time embedding
         t_emb = self.time_mlp(t.squeeze())
+        
+        # Concatenate all positional embeddings with time embedding
         x = torch.cat((*positional_embs, t_emb), dim=-1)
 
+        # Process through network layers
         for i, layer in enumerate(self.layers):
             if i == 0:
+                # First layer: apply linear transformation followed by GELU activation
                 x = nn.GELU()(layer(x))
+                # Optionally add time embedding (residual connection)
                 if self.add_t_emb:
                     x = x + t_emb
 
             elif i == len(self.layers) - 1:
+                # Final layer: optionally concatenate time embedding before final projection
                 if self.concat_t_emb:
                     x = torch.cat([x, t_emb], dim=-1)
 
+                # Apply final linear layer to get output
                 x = layer(x)
 
             else:
+                # Middle layers: apply Block which handles time embedding internally
                 x = layer(x, t_emb)
+
+        # x is same shape as input x [B, D]
+        
+        # Apply periodic output transformation if specified
+        if self.periodic_output == 'atan2':
+            x = torch.atan2(x, torch.ones_like(x) * torch.pi) * 2
+        
+        # elif self.periodic_output == 'sin_cos':
+        #     # Split output into sin and cos components
+        #     sin_out, cos_out = x.chunk(2, dim=-1)
+            
+        #     # Normalize to ensure unit circle
+        #     norm = torch.sqrt(sin_out**2 + cos_out**2 + 1e-8)
+        #     sin_out = sin_out / norm
+        #     cos_out = cos_out / norm
+            
+        #     # Convert to angles
+        #     x = torch.atan2(sin_out, cos_out)
+        
+        elif self.periodic_output == 'tanh':
+            # Scale tanh output to [-π, π] range
+            x = torch.pi * torch.tanh(x)
 
         return x
 
