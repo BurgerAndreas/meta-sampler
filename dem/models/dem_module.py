@@ -1194,7 +1194,10 @@ class DEMLitModule(LightningModule):
     def eval_epoch_end(self, prefix: str):
         wandb_logger = get_wandb_logger(self.loggers)
         # convert to dict of tensors assumes [batch, ...]
+        print("-" * 100)
+        print(f"eval_epoch_end: {prefix}")
         if len(self.eval_step_outputs) == 0:
+            print(f"Warning: No eval step outputs for {prefix}")
             return
 
         outputs = {
@@ -1275,14 +1278,17 @@ class DEMLitModule(LightningModule):
 
         # Compute energy of samples
         try:
+            print("=" * 10)
+            print(f"assessing samples for {prefix}")
             assessments = self.energy_function.assess_samples(samples)
             if assessments is not None:
                 d = {}
                 for key, value in assessments.items():
-                    d[f"test/{key}"] = value
+                    d[f"{prefix}/{key}"] = value
                 self.log_dict(d, sync_dist=True)
         except Exception as e:
             print(f"Error assessing samples: \n---\n{e}\n---\n")
+            print("=" * 10)
 
         self.eval_step_outputs.clear()
 

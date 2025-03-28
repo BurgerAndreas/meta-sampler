@@ -35,7 +35,7 @@ pwd
 # source /home/${USER}/.bashrc
 # eval "$(conda shell.bash hook)"
 # mamba activate sampler
-source /home/aburger/miniforge3/envs/sampler/bin/activate
+source ${HOME_DIR}/miniforge3/envs/sampler/bin/activate
 
 module load cuda/12.6 gcc/12.3
 
