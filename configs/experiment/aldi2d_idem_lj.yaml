@@ -1,15 +1,5 @@
 # @package _global_
 
-# to execute this experiment run:
-# python train.py experiment=example
-
-# all parameters below will be merged with parameters from default configurations set above
-# this allows you to overwrite only specified parameters
-defaults:
-  - override /energy: aldi2d
-  # - override /model/net: egnn 
-  # - override /model/noise_schedule: geometric
-
 # alanine dipeptide 2d
 tags: ["AlDi", "iDEM"]
 
@@ -20,13 +10,38 @@ logger:
     tags: ${tags}
     group: "aldi2d"
 
+defaults:
+  - override /energy: aldi2d
+  # - override /model/net: egnn 
+  - override /model/noise_schedule: geometric
 
 model:
+  # from LJ13
   noise_schedule:
     _target_: dem.models.components.noise_schedules.GeometricNoiseSchedule
-    sigma_min: 0.00001
-    sigma_max: 1.0
+    sigma_min: 0.01
+    sigma_max: 2
 
+  lambda_weighter:
+    _target_: dem.models.components.lambda_weighter.NoLambdaWeighter
+    _partial_: true
+
+  clipper:
+    _target_: dem.models.components.clipper.Clipper
+    should_clip_scores: True
+    should_clip_log_rewards: False
+    max_score_norm: 20
+    min_log_reward: null
+
+  diffusion_scale: 0.9
+
+  init_from_prior: true
+
+  cfm_prior_std: 2
+
+  nll_integration_method: dopri5
+
+  # from dw
   buffer:
     prioritize: false
     min_sample_length: 16
@@ -35,21 +50,6 @@ model:
     _target_: dem.energies.base_prior.Prior
     _partial_: true
     dim: 2
-
-  clipper:
-    _target_: dem.models.components.clipper.Clipper
-    should_clip_scores: True
-    should_clip_log_rewards: False
-    max_score_norm: 70
-    min_log_reward: null
-
-  lambda_weighter:
-    _target_: dem.models.components.lambda_weighter.BasicLambdaWeighter
-    _partial_: true
-    epsilon: 1e-3
-
-  optimizer:
-    lr: 5e-4
 
   net:
     # _target_: dem.models.components.mlp.MyMLP
@@ -62,8 +62,6 @@ model:
     # time_emb: "sinusoidal"
     input_emb: "periodic_angle" # sinusoidal -> periodic_angle, periodic_learnable
     periodic_output: "atan2" # atan2, tanh
-
-  diffusion_scale: 1.0
 
   use_vmap: true
   use_richardsons: True
@@ -85,7 +83,6 @@ model:
 
   # this has to be max 1000 since test_set is 1000
   eval_batch_size: 32
-  scheduler: null
 
 
 energy:
@@ -100,4 +97,4 @@ callbacks:
     _target_: lightning.pytorch.callbacks.RichProgressBar
     refresh_rate: 1
 
-matmul_precision: medium
+# matmul_precision: medium

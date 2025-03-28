@@ -30,11 +30,12 @@ HOME_DIR=/home/aburger
 export SCRIPTDIR=${HOME_DIR}/meta-sampler
 
 echo " "
+pwd
 
 # source /home/${USER}/.bashrc
 # eval "$(conda shell.bash hook)"
-# mamba activate deq
-source /home/aburger/miniforge3/envs/meta-sampler/bin/activate
+# mamba activate sampler
+source /home/aburger/miniforge3/envs/sampler/bin/activate
 
 module load cuda/12.6 gcc/12.3
 
@@ -48,4 +49,4 @@ echo " "
 echo "Submitting ${SCRIPTDIR}/$@"
 
 # export WANDB_MODE=online
-${HOME_DIR}/miniforge3/envs/meta-sampler/bin/python ${SCRIPTDIR}/"$@"
+${HOME_DIR}/miniforge3/envs/sampler/bin/python ${SCRIPTDIR}/"$@"

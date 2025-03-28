@@ -48,34 +48,6 @@ from alanine_dipeptide.alanine_dipeptide_mace import (
     update_alanine_dipeptide_xyz_from_dihedrals_torch,
 )
 
-# Silence FutureWarning about torch.load weights_only parameter
-import warnings
-import re
-
-
-# Create a filter for the specific torch.load FutureWarning
-class TorchLoadWarningFilter(warnings.WarningMessage):
-    def __init__(self):
-        self.pattern = re.compile(
-            r"You are using `torch\.load` with `weights_only=False`"
-        )
-
-    def __eq__(self, other):
-        # Check if this is the torch.load warning we want to filter
-        return (
-            isinstance(other, warnings.WarningMessage)
-            and other.category == FutureWarning
-            and self.pattern.search(str(other.message))
-        )
-
-
-# Register the filter
-warnings.filterwarnings(
-    "ignore",
-    category=FutureWarning,
-    message="You are using `torch.load` with `weights_only=False`.*",
-)
-
 
 # MACE Hessians
 # https://github.com/ACEsuit/mace/blob/1d5b6a0bdfdc7258e0bb711eda1c998a4aa77976/mace/modules/utils.py#L112
@@ -742,7 +714,9 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
         samples = minima
         if size > len(minima):
             # repeat the minima
-            samples = torch.cat([minima] * (size // len(minima)), dim=0)
+            samples = torch.cat([minima] * ((size // len(minima)) + 1), dim=0)
+        # add random noise to the samples
+        samples = samples + torch.randn_like(samples) * 0.01
         samples = samples[:size]
         return samples
 
