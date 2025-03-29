@@ -23,7 +23,7 @@ from openmm.unit import Quantity
 
 import time
 
-import torch_geometric as tg
+# import torch_geometric as tg
 
 from alanine_dipeptide.mace_neighbourhood import (
     update_neighborhood_graph_batched,

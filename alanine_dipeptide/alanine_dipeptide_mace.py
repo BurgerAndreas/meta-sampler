@@ -25,7 +25,10 @@ from alanine_dipeptide.dihedral import (
     compute_dihedral_torch_batched,
 )
 
-import torch_geometric as tg
+try:
+    import torch_geometric as tg
+except ImportError:
+    print("\nWarning: torch_geometric not found.\n")
 
 """Alanine dipeptide with using dihedral angles as reaction coordinates.
 
