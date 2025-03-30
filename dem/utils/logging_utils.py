@@ -6,6 +6,7 @@ from lightning_utilities.core.rank_zero import rank_zero_only
 from omegaconf import OmegaConf, DictConfig
 import yaml
 import numpy as np
+import os
 
 from dem.utils import pylogger
 

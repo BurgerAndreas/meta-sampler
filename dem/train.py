@@ -72,8 +72,6 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     callbacks: List[Callback] = instantiate_callbacks(cfg.get("callbacks"))
 
     if cfg["wandb_silent"]:
-        import os
-
         os.environ["WANDB_SILENT"] = "True"
 
     log.info("Instantiating loggers...")
