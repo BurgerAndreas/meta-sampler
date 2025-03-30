@@ -60,3 +60,6 @@ wandb_silent: false
 verbose_val: false
 
 matmul_precision: null
+
+# Stores the command line arguments overrides
+override_dirname: ${hydra:job.override_dirname}

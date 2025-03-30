@@ -5,6 +5,7 @@ import PIL
 from lightning_utilities.core.rank_zero import rank_zero_only
 from omegaconf import OmegaConf, DictConfig
 import yaml
+import numpy as np
 
 from dem.utils import pylogger
 
@@ -77,8 +78,16 @@ def fig_to_image(fig):
         )
 
 
-def get_name_from_config(cfg: DictConfig) -> str:
-    """Human-readable name for wandb. Pretty janky."""
+IGNORE_OVERRIDES = [
+]
+IGNORE_OVERRIDES_CHECKPOINT = [
+]
+
+def get_name_from_config(cfg: DictConfig, is_checkpoint_name: bool = False) -> str:
+    """Human-readable name for wandb. Pretty janky.
+    is_checkpoint_name: if True, the name will be used as the checkpoint name. 
+    This means we don't want to include certain overrides in the name.
+    """
     name = ""
     energy = cfg["energy"]["_target_"].split(".")[-1]
     if "DoubleWell" in energy:
@@ -101,4 +110,24 @@ def get_name_from_config(cfg: DictConfig) -> str:
             name += f"({cfg['energy']['force_activation']}{cfg['energy']['force_scale']} {cfg['energy']['hessian_eigenvalue_penalty']}{cfg['energy']['hessian_scale']} {cfg['energy']['term_aggr']})"
     if "temperature" in cfg["energy"] and cfg["energy"]["temperature"] != 1.0:
         name += f"T{cfg['energy']['temperature']}"
+        
+    # get all the overrides
+    override_names = ""
+    # print(f'Overrides: {args.override_dirname}')
+    if cfg.override_dirname:
+        for arg in cfg.override_dirname.split(","):
+            # make sure we ignore some overrides
+            if np.any([ignore in arg for ignore in IGNORE_OVERRIDES]):
+                continue
+            if is_checkpoint_name:
+                if np.any(
+                    [ignore in arg for ignore in IGNORE_OVERRIDES_CHECKPOINT]
+                ):
+                    continue
+            override = arg.replace("+", "")
+            # override = override.replace("_", "")
+            # override = override.replace("=", "-")
+            # override = override.replace(".", "")
+            override_names += " " + override
+    name += override_names
     return name
