@@ -75,8 +75,11 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         os.environ["WANDB_SILENT"] = "True"
 
     log.info("Instantiating loggers...")
-    # TODO: create wandb name from config
+    # Create wandb name from config
     cfg["logger"]["wandb"]["name"] = get_name_from_config(cfg)
+    # get SLURM_JOB_ID
+    if "SLURM_JOB_ID" in os.environ:
+        cfg["slurm_job_id"] = os.environ["SLURM_JOB_ID"]
     logger: List[Logger] = instantiate_loggers(cfg.get("logger"))
 
     if cfg["wandb_noinfo"]:

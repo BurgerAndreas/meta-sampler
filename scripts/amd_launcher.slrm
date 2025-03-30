@@ -22,4 +22,5 @@ export SCRIPTDIR=${HOME_DIR}/meta-sampler/dem
 # hand over all arguments to the script
 echo "Submitting ${SCRIPTDIR}/$@"
 
+# HIP_LAUNCH_BLOCKING=1 AMD_SERIALIZE_KERNEL=3 TORCH_USE_HIP_DSA=1 HYDRA_FULL_ERROR=1 
 ${HOME_DIR}/miniforge3/envs/sampler/bin/python ${SCRIPTDIR}/"$@"

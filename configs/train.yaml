@@ -61,5 +61,7 @@ verbose_val: false
 
 matmul_precision: null
 
+slurm_job_id: null
+
 # Stores the command line arguments overrides
 override_dirname: ${hydra:job.override_dirname}
