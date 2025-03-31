@@ -88,6 +88,7 @@ REPLACE = {
     "temperature_schedule": "T",
     "num_estimator_mc_samples": "Bmc",
     "model." : "",
+    "+" : "",
 }
 
 def get_name_from_config(cfg: DictConfig, is_checkpoint_name: bool = False) -> str:
@@ -131,10 +132,9 @@ def get_name_from_config(cfg: DictConfig, is_checkpoint_name: bool = False) -> s
                     [ignore in arg for ignore in IGNORE_OVERRIDES_CHECKPOINT]
                 ):
                     continue
-            override = arg.replace("+", "")
-            # override = override.replace("_", "")
-            # override = override.replace("=", "-")
-            # override = override.replace(".", "")
+            override = arg
+            for key, value in REPLACE.items():
+                override = override.replace(key, value)
             override_names += " " + override
     name += override_names
     return name
