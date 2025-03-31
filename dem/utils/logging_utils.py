@@ -83,6 +83,12 @@ IGNORE_OVERRIDES = [
 ]
 IGNORE_OVERRIDES_CHECKPOINT = [
 ]
+REPLACE = {
+    "experiment=": "",
+    "temperature_schedule": "T",
+    "num_estimator_mc_samples": "Bmc",
+    "model." : "",
+}
 
 def get_name_from_config(cfg: DictConfig, is_checkpoint_name: bool = False) -> str:
     """Human-readable name for wandb. Pretty janky.

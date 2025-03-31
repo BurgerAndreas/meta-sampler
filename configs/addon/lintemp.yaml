@@ -1,0 +1,9 @@
+# @package _global_
+
+model:
+  temperature_schedule:
+    _target_: dem.models.components.temperature_schedule.LinearTemperatureSchedule
+    start_step: 0
+    end_step: 5000
+    start_temp: 3000.0
+    end_temp: 1.0

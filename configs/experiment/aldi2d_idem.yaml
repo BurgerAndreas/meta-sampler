@@ -79,7 +79,7 @@ model:
   num_samples_to_generate_per_epoch: 32
   num_init_samples: 32
   num_samples_to_sample_from_buffer: 32
-  nll_batch_size: 16
+  nll_batch_size: 32
   # inner batch size (for each sample)
   num_estimator_mc_samples: 4
 

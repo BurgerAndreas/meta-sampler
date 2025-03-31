@@ -24,3 +24,4 @@ gradient_clip_val: 0.5
 # gradient_clip_algorithm: "norm"
 
 inference_mode: false
+accumulate_grad_batches: 1
