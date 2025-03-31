@@ -11,37 +11,15 @@ from tqdm import tqdm
 from fab.types_ import LogProbFunc, Distribution
 
 
-# adjusted from fab.utils.plotting.plot_contours
-def plot_fn(
+def get_logp_on_grid(
     log_prob_func: Callable,
-    ax: Optional[plt.Axes] = None,
-    bounds: Tuple[float, float] = (-5.0, 5.0),
-    grid_width: int = 20,
-    n_contour_levels: Optional[int] = None,
-    log_prob_min: float = -1000.0,
-    plot_style: str = "imshow",
-    plot_kwargs: dict = {},
-    colorbar: bool = False,
-    quantity: str = "log_prob",
+    bounds: Tuple[float, float],
+    grid_width: int,
+    device: str,
+    load_path: str,
+    temperature: float,
     batch_size: int = -1,
-    device: str = "cpu",
-    load_path: str = None,
 ):
-    """Plot heatmap of log probability density.
-
-    Args:
-        samples: Samples to plot on top of heatmap
-        name: Title for plot
-        n_contour_levels: Not used for imshow
-        bounds: Plot bounds as (min, max) tuple
-        grid_width: Number of points in each dimension for grid
-        log_prob_min: Minimum log probability to show
-    """
-    if ax is None:
-        fig, ax = plt.subplots(1)
-    else:
-        fig = ax.get_figure()
-
     x_points_dim1 = torch.linspace(bounds[0], bounds[1], grid_width, device=device)
     x_points_dim2 = x_points_dim1
     x_points = torch.tensor(
@@ -52,7 +30,7 @@ def plot_fn(
     if load_path is not None:
         # Check if the file exists
         if os.path.exists(f"{load_path}.pkl"):
-            print(f"plot_fn: Loading precomputed values from {load_path}.pkl")
+            # print(f"Info: plot_fn is loading precomputed values from {load_path}.pkl")
             with open(f"{load_path}.pkl", "rb") as f:
                 saved_data = pickle.load(f)
 
@@ -76,7 +54,7 @@ def plot_fn(
         # with torch.no_grad():
         if batch_size <= 0 or batch_size >= x_points.shape[0]:
             # Compute log_p_x for all points
-            log_p_x = log_prob_func(x_points).detach().cpu()
+            log_p_x = log_prob_func(x_points, temperature=temperature).detach().cpu()
         else:
             # Compute log_p_x in batches
             log_p_x = []
@@ -91,7 +69,9 @@ def plot_fn(
                 if batch.shape[0] <= 0:
                     break
                 # Compute log_p_x for the batch
-                log_p_x.append(log_prob_func(batch).detach().cpu())
+                log_p_x.append(
+                    log_prob_func(batch, temperature=temperature).detach().cpu()
+                )
                 so_far += batch_size
             log_p_x = torch.cat(log_p_x)
         # save log_p_x
@@ -107,6 +87,53 @@ def plot_fn(
                     f,
                 )
             # print(f"plot_fn: Saved precomputed values to {load_path}.pkl")
+
+    return x_points.detach(), log_p_x.detach()
+
+
+# adjusted from fab.utils.plotting.plot_contours
+def plot_fn(
+    log_prob_func: Callable,
+    ax: Optional[plt.Axes] = None,
+    bounds: Tuple[float, float] = (-5.0, 5.0),
+    grid_width: int = 20,
+    n_contour_levels: Optional[int] = None,
+    log_prob_min: float = -1000.0,
+    plot_style: str = "imshow",
+    plot_kwargs: dict = {},
+    colorbar: bool = False,
+    quantity: str = "log_prob",
+    batch_size: int = -1,
+    device: str = "cpu",
+    load_path: str = None,
+    temperature: float = 1.0,
+    return_data: bool = False,
+):
+    """Plot heatmap of log probability density.
+
+    Args:
+        samples: Samples to plot on top of heatmap
+        name: Title for plot
+        n_contour_levels: Not used for imshow
+        bounds: Plot bounds as (min, max) tuple
+        grid_width: Number of points in each dimension for grid
+        log_prob_min: Minimum log probability to show
+    """
+    if ax is None:
+        fig, ax = plt.subplots(1)
+    else:
+        fig = ax.get_figure()
+
+    # --- Get log_p_x ---
+    x_points, log_p_x = get_logp_on_grid(
+        log_prob_func=log_prob_func,
+        bounds=bounds,
+        grid_width=grid_width,
+        device=device,
+        load_path=load_path,
+        temperature=temperature,
+        batch_size=batch_size,
+    )
     log_p_x = torch.clamp_min(log_p_x, log_prob_min)
 
     if quantity in ["prob", "p"]:
@@ -118,10 +145,14 @@ def plot_fn(
     elif quantity in ["loge", "log"]:
         log_p_x = -log_p_x
         if log_p_x.min() <= 0:
-            print(
-                f"Warning: plot_fn: shifting log_p_x by {log_p_x.min()} to avoid log(0)"
-            )
-            log_p_x += torch.abs(log_p_x.min()) + 1e-1
+            smallest_log_p_x = torch.sort(log_p_x)[0][:2]
+            delta = torch.abs(smallest_log_p_x[0] - smallest_log_p_x[1])
+            delta = delta + torch.abs(log_p_x.min())
+            # print(
+            #     f"Info: plot_fn: shifting log_p_x by {delta:.3f} to avoid log(0)."
+            #     f"New range of log_p_x: {log_p_x.min():.3f} to {log_p_x.max():.3f}"
+            # )
+            log_p_x += delta
         log_p_x = torch.log(log_p_x)
         label = "log(E)"
     else:
@@ -131,6 +162,7 @@ def plot_fn(
     x_points_dim1 = x_points[:, 0].reshape((grid_width, grid_width)).cpu().numpy()
     x_points_dim2 = x_points[:, 1].reshape((grid_width, grid_width)).cpu().numpy()
 
+    # --- Plotting ---
     # cmaps
     # ['Greys', 'Purples', 'Blues', 'Greens', 'Oranges', 'Reds',
     # 'YlOrBr', 'YlOrRd', 'OrRd', 'PuRd', 'RdPu', 'BuPu',

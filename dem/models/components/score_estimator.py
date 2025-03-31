@@ -24,7 +24,13 @@ def wrap_for_richardsons(score_estimator):
         )
 
         smaller_samples = score_estimator(
-            t, x, energy_function, noise_schedule, int(num_mc_samples / 2), *args, **kwargs
+            t,
+            x,
+            energy_function,
+            noise_schedule,
+            int(num_mc_samples / 2),
+            *args,
+            **kwargs,
         )
 
         return (2 * bigger_samples) - smaller_samples
@@ -99,7 +105,9 @@ def log_expectation_reward_vmap(
 
     # Compute log rewards per MC sample [S]
     if return_aux_output:
-        log_rewards, aux_output = energy_function(samples, temperature=temperature, return_aux_output=True)
+        log_rewards, aux_output = energy_function(
+            samples, temperature=temperature, return_aux_output=True
+        )
     else:
         log_rewards = energy_function(samples, temperature=temperature)
 
@@ -152,7 +160,9 @@ def log_expectation_reward_batched(
     # Compute log rewards per MC sample [B, S]
     samples = samples.view(-1, samples.shape[-1])  # [B * S, D]
     if return_aux_output:
-        log_rewards, aux_output = energy_function(samples, temperature=temperature, return_aux_output=True)
+        log_rewards, aux_output = energy_function(
+            samples, temperature=temperature, return_aux_output=True
+        )
     else:
         log_rewards = energy_function(samples, temperature=temperature)
     log_rewards = log_rewards.view(t.shape[0], -1)  # [B*S] -> [B, S]

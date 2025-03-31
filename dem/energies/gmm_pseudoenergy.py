@@ -83,7 +83,7 @@ class GMMPseudoEnergy(GMMEnergy, BasePseudoEnergyFunction):
         pseudo_energy, aux_output = self.compute_pseudo_potential(self._energy, samples)
 
         if temperature is None:
-            temperature = self.temperature
+            temperature = 1.0
         pseudo_energy = pseudo_energy / temperature
 
         # convention

@@ -126,7 +126,7 @@ class GMMEnergy(BaseEnergyFunction):
         log_prob = self.gmm.log_prob(samples)
 
         if temperature is None:
-            temperature = self.temperature
+            temperature = 1.0
         log_prob = log_prob / temperature
 
         if return_aux_output:

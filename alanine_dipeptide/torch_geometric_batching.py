@@ -5,15 +5,16 @@ from torch import Tensor
 
 # excerpts from torch geometric
 
-WITH_PT20 = int(torch.__version__.split('.')[0]) >= 2
-WITH_PT21 = WITH_PT20 and int(torch.__version__.split('.')[1]) >= 1
-WITH_PT22 = WITH_PT20 and int(torch.__version__.split('.')[1]) >= 2
-WITH_PT23 = WITH_PT20 and int(torch.__version__.split('.')[1]) >= 3
-WITH_PT24 = WITH_PT20 and int(torch.__version__.split('.')[1]) >= 4
-WITH_PT25 = WITH_PT20 and int(torch.__version__.split('.')[1]) >= 5
-WITH_PT111 = WITH_PT20 or int(torch.__version__.split('.')[1]) >= 11
-WITH_PT112 = WITH_PT20 or int(torch.__version__.split('.')[1]) >= 12
-WITH_PT113 = WITH_PT20 or int(torch.__version__.split('.')[1]) >= 13
+WITH_PT20 = int(torch.__version__.split(".")[0]) >= 2
+WITH_PT21 = WITH_PT20 and int(torch.__version__.split(".")[1]) >= 1
+WITH_PT22 = WITH_PT20 and int(torch.__version__.split(".")[1]) >= 2
+WITH_PT23 = WITH_PT20 and int(torch.__version__.split(".")[1]) >= 3
+WITH_PT24 = WITH_PT20 and int(torch.__version__.split(".")[1]) >= 4
+WITH_PT25 = WITH_PT20 and int(torch.__version__.split(".")[1]) >= 5
+WITH_PT111 = WITH_PT20 or int(torch.__version__.split(".")[1]) >= 11
+WITH_PT112 = WITH_PT20 or int(torch.__version__.split(".")[1]) >= 12
+WITH_PT113 = WITH_PT20 or int(torch.__version__.split(".")[1]) >= 13
+
 
 def is_torch_sparse_tensor(src: Any) -> bool:
     r"""Returns :obj:`True` if the input :obj:`src` is a
@@ -27,10 +28,10 @@ def is_torch_sparse_tensor(src: Any) -> bool:
             return True
         if src.layout == torch.sparse_csr:
             return True
-        if (WITH_PT112
-                and src.layout == torch.sparse_csc):
+        if WITH_PT112 and src.layout == torch.sparse_csc:
             return True
     return False
+
 
 def maybe_num_nodes(
     edge_index: Union[Tensor, Tuple[Tensor, Tensor]],
@@ -46,10 +47,9 @@ def maybe_num_nodes(
 
         if torch.jit.is_tracing():
             # Avoid non-traceable if-check for empty `edge_index` tensor:
-            tmp = torch.concat([
-                edge_index.view(-1),
-                edge_index.new_full((1, ), fill_value=-1)
-            ])
+            tmp = torch.concat(
+                [edge_index.view(-1), edge_index.new_full((1,), fill_value=-1)]
+            )
             return tmp.max() + 1  # type: ignore
 
         return int(edge_index.max()) + 1 if edge_index.numel() > 0 else 0
@@ -61,6 +61,7 @@ def maybe_num_nodes(
     # elif isinstance(edge_index, SparseTensor):
     #     return max(edge_index.size(0), edge_index.size(1))
     raise NotImplementedError
+
 
 def cumsum(x: Tensor, dim: int = 0) -> Tensor:
     r"""Returns the cumulative sum of elements of :obj:`x`.
@@ -77,7 +78,7 @@ def cumsum(x: Tensor, dim: int = 0) -> Tensor:
         tensor([0, 2, 6, 7])
 
     """
-    size = x.size()[:dim] + (x.size(dim) + 1, ) + x.size()[dim + 1:]
+    size = x.size()[:dim] + (x.size(dim) + 1,) + x.size()[dim + 1 :]
     out = x.new_empty(size)
 
     out.narrow(dim, 0, 1).zero_()
@@ -85,8 +86,10 @@ def cumsum(x: Tensor, dim: int = 0) -> Tensor:
 
     return out
 
-def degree(index: Tensor, num_nodes: Optional[int] = None,
-           dtype: Optional[torch.dtype] = None) -> Tensor:
+
+def degree(
+    index: Tensor, num_nodes: Optional[int] = None, dtype: Optional[torch.dtype] = None
+) -> Tensor:
     r"""Computes the (unweighted) degree of a given one-dimensional index
     tensor.
 
@@ -105,9 +108,10 @@ def degree(index: Tensor, num_nodes: Optional[int] = None,
         tensor([3, 1, 1])
     """
     N = maybe_num_nodes(index, num_nodes)
-    out = torch.zeros((N, ), dtype=dtype, device=index.device)
-    one = torch.ones((index.size(0), ), dtype=out.dtype, device=out.device)
+    out = torch.zeros((N,), dtype=dtype, device=index.device)
+    one = torch.ones((index.size(0),), dtype=out.dtype, device=out.device)
     return out.scatter_add_(0, index, one)
+
 
 def unbatch(
     src: Tensor,

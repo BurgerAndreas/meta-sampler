@@ -29,6 +29,9 @@ import itertools
 import pickle
 import os
 
+
+from dem.utils.plotting import get_logp_on_grid
+
 from alanine_dipeptide.mace_neighbourhood import (
     update_neighborhood_graph_batched,
     update_neighborhood_graph_torch,
@@ -431,6 +434,8 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
         dtypestr="float32",
         batch_size=1,
         use_scale_shift=True,
+        # ensures that energies are positive and start from zero
+        shift_energy=13494.408,  # 13494.406879236485
         #
         *args,
         **kwargs,
@@ -440,8 +445,9 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
         self.plotting_buffer_sample_size = plotting_buffer_sample_size
         self.plot_samples_epoch_period = plot_samples_epoch_period
 
+        self.shift_energy = shift_energy
+
         self.curr_epoch = 0
-        self.name = "alanine_dipeptide_mace_pesudoenergy"
 
         # self.energy_weight = energy_weight
         # self.force_weight = force_weight
@@ -534,7 +540,10 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
 
     @torch.jit.unused
     def _energy_vmap(
-        self, samples: torch.Tensor, return_aux_output: bool = False
+        self,
+        samples: torch.Tensor,
+        return_aux_output: bool = False,
+        temperature: float = 1.0,
     ) -> torch.Tensor:
         """Takes in a samples of phi/psi values and returns the energies."""
         minibatch = self.atoms_calc._clone_batch(self.singlebatch_base)
@@ -593,13 +602,19 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
         )
         energies = energies.squeeze(-1)
 
+        energies = energies + self.shift_energy
+        energies = energies / temperature
+
         if return_aux_output:
             aux_output = {}
             return energies, aux_output
         return energies
 
     def _energy_batched(
-        self, samples: torch.Tensor, return_aux_output: bool = False
+        self,
+        samples: torch.Tensor,
+        return_aux_output: bool = False,
+        temperature: float = 1.0,
     ) -> torch.Tensor:
         """Takes in a single sample and returns the energy.
         No batch dimension
@@ -634,6 +649,9 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
         result = self.model(minibatch, training=True)
         energy = result["energy"]
 
+        energy = energy + self.shift_energy
+        energy = energy / temperature
+
         if return_aux_output:
             aux_output = {}
             return energy, aux_output
@@ -642,6 +660,7 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
     def _energy(
         self,
         samples: torch.Tensor,
+        temperature: float = None,
         return_aux_output: bool = False,
     ) -> torch.Tensor:
         """Evaluates the pseudoenergy function at given samples.
@@ -655,9 +674,13 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
         # project dihedral angles to be within [-pi, pi]
         samples = self.project_dihedral_angles(samples)
         if self.use_vmap:
-            return self._energy_vmap(samples, return_aux_output=return_aux_output)
+            return self._energy_vmap(
+                samples, return_aux_output=return_aux_output, temperature=temperature
+            )
         else:
-            return self._energy_batched(samples, return_aux_output=return_aux_output)
+            return self._energy_batched(
+                samples, return_aux_output=return_aux_output, temperature=temperature
+            )
 
     def log_prob(
         self,
@@ -673,13 +696,13 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
         Returns:
             torch.Tensor: Energy values at input points
         """
-        if temperature is None:
-            temperature = self.temperature
         if return_aux_output:
             aux_output = {}
-            log_prob, aux_output = self._energy(samples, return_aux_output=True)
-            return log_prob / temperature, aux_output
-        return -1 * self._energy(samples) / temperature
+            energy, aux_output = self._energy(
+                samples, return_aux_output=True, temperature=temperature
+            )
+            return -energy, aux_output
+        return -self._energy(samples, temperature=temperature)
 
     def project_dihedral_angles(self, samples):
         # Project dihedral angles to be within [-pi, pi]
@@ -725,19 +748,34 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
         """Returns a test set of 2D points (dihedral angles).
         Is a 2d grid of points in the range [-pi, pi] x [-pi, pi].
         """
-        return self._dataset_from_minima(self.test_set_size)
+        # return self._dataset_from_minima(self.test_set_size)
+        boltzmann_samples, energies = self.sample_boltzmann_distribution(
+            num_samples=self.test_set_size,
+            temperature=0.01,
+        )
+        return boltzmann_samples
 
     def setup_train_set(self):
         """Returns a training set of 2D points (dihedral angles).
         Is a random set of 2D points in the range [-pi, pi] x [-pi, pi].
         """
-        return self._dataset_from_minima(self.train_set_size)
+        # return self._dataset_from_minima(self.train_set_size)
+        boltzmann_samples, energies = self.sample_boltzmann_distribution(
+            num_samples=self.train_set_size,
+            temperature=0.01,
+        )
+        return boltzmann_samples
 
     def setup_val_set(self):
         """Returns a validation set of 2D points (dihedral angles).
         Is a 2d grid of points in the range [-pi, pi] x [-pi, pi].
         """
-        return self._dataset_from_minima(self.val_set_size)
+        # return self._dataset_from_minima(self.val_set_size)
+        boltzmann_samples, energies = self.sample_boltzmann_distribution(
+            num_samples=self.val_set_size,
+            temperature=0.01,
+        )
+        return boltzmann_samples
 
     def assess_samples(self, samples):
         """Assesses the quality of generated samples.
@@ -926,15 +964,17 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
         # Try to load from cache file if provided
         cache_file = f"dem_outputs/{self.name}/alanine_dipeptide_2d_minima.pt"
         try:
-            minima_coords = torch.load(cache_file)
-            print(f"Loaded {len(minima_coords)} minima from {cache_file}")
+            minima_coords = torch.load(cache_file, weights_only=True)
+            # print(f"Info: Loaded {len(minima_coords)} minima from {cache_file}")
             return minima_coords
         except (FileNotFoundError, IOError):
-            print(f"Cache file {cache_file} not found or invalid. Computing minima...")
+            print(
+                f"Info: Cache file {cache_file} not found or invalid. Computing minima..."
+            )
         # Compute minima
         minima_coords = self.find_energy_minima()
         # Save to cache file if provided
         os.makedirs(os.path.dirname(cache_file), exist_ok=True)
         torch.save(minima_coords, cache_file)
-        print(f"Saved {len(minima_coords)} minima to {cache_file}")
+        # print(f"Saved {len(minima_coords)} minima to {cache_file}")
         return minima_coords

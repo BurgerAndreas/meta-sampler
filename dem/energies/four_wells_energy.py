@@ -55,7 +55,6 @@ class FourWellsEnergy(BaseEnergyFunction):
         test_set_size=2000,
         val_set_size=2000,
         data_path_train=None,
-        temperature=1.0,
         *args,
         **kwargs
     ):
@@ -78,7 +77,6 @@ class FourWellsEnergy(BaseEnergyFunction):
         else:
             raise NotImplementedError
 
-        self.temperature = temperature  # necessary to call log_prob and energy
         self.component_mix = self.compute_mc_component_mix()
 
         # this will setup test, train, val sets
@@ -123,7 +121,7 @@ class FourWellsEnergy(BaseEnergyFunction):
         ), "`x` does not match `dimensionality`"
         log_prob = torch.squeeze(-self._energy(samples))
         if temperature is None:
-            temperature = self.temperature
+            temperature = 1.0
         log_prob = log_prob / temperature
         if return_aux_output:
             return log_prob, {}

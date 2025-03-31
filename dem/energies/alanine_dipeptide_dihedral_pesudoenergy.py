@@ -132,7 +132,7 @@ class MaceAlDiPseudoEnergy2D(MaceAlDiEnergy2D, BasePseudoEnergyFunction):
         )
 
         if temperature is None:
-            temperature = self.temperature
+            temperature = 1.0
         pseudo_energy = pseudo_energy / temperature
 
         # convention

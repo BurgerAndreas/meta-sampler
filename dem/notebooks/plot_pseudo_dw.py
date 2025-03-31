@@ -179,6 +179,19 @@ for config in configs:
         img2.save(fig_name)
         print(f"Saved {fig_name}")
 
+        samples, energies = energy_function.sample_boltzmann_distribution(
+            num_samples=1000
+        )
+        img = energy_function.get_single_dataset_fig(
+            samples=samples,
+            name=name,
+            grid_width=200,
+            plot_style=plot_style,
+        )
+        fig_name = f"plots/dw_{plt_name}_boltzmann_{plot_style}.png"
+        img.save(fig_name)
+        print(f"Saved {fig_name}")
+
     def U(x):
         return energy_function.energy(
             torch.tensor([x], device=energy_function.device, dtype=torch.float32)

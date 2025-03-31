@@ -135,7 +135,7 @@ class FourWellsEnergy:
         ), "`x` does not match `dimensionality`"
         log_prob = torch.squeeze(-self._energy(samples))
         if temperature is None:
-            temperature = self.temperature
+            temperature = 1.0
         log_prob = log_prob / temperature
         if return_aux_output:
             return log_prob, {}

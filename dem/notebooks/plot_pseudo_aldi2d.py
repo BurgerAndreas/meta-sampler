@@ -31,10 +31,10 @@ configs = [
     # [
     #     "Pseudopotential for DEM",
     # ],
-    [
-        "|F| for DEM",
-        "experiment=aldi2d_idem_condforce",
-    ],
+    # [
+    #     "|F| for DEM",
+    #     "experiment=aldi2d_idem_condforce",
+    # ],
 ]
 
 for config in configs:
@@ -98,6 +98,20 @@ for config in configs:
         )
         fig_name = f"plots/aldi2d_{plt_name}_log_{plot_style}.png"
         img2.save(fig_name)
+        print(f"Saved {fig_name}")
+
+        samples, energies = energy_function.sample_boltzmann_distribution(
+            num_samples=1000,
+            temperature=0.01,
+        )
+        img = energy_function.get_single_dataset_fig(
+            samples=samples,
+            grid_width=200,
+            plot_style=plot_style,
+            name=f"{name} Boltzmann Samples at T=0.01",
+        )
+        fig_name = f"plots/aldi2d_{plt_name}_boltzmann_{plot_style}.png"
+        img.save(fig_name)
         print(f"Saved {fig_name}")
 
     def U(x):

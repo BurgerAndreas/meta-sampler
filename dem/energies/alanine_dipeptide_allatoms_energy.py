@@ -307,7 +307,7 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
             torch.Tensor: Energy values at input points
         """
         if temperature is None:
-            temperature = self.temperature
+            temperature = 1.0
         if return_aux_output:
             aux_output = {}
             log_prob, aux_output = self._energy(samples, return_aux_output=True)

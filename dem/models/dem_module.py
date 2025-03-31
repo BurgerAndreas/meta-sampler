@@ -389,9 +389,13 @@ class DEMLitModule(LightningModule):
         self.negative_time = negative_time
         self.num_negative_time_steps = num_negative_time_steps
         self.use_vmap = use_vmap
-        assert isinstance(buffer_temperature, float) or buffer_temperature == "same", f"buffer_temperature must be a float or 'same', got {buffer_temperature}"
+        assert (
+            isinstance(buffer_temperature, float) or buffer_temperature == "same"
+        ), f"buffer_temperature must be a float or 'same', got {buffer_temperature}"
         self.buffer_temperature = buffer_temperature
-        assert isinstance(val_temperature, float) or val_temperature == "same", f"val_temperature must be a float or 'same', got {val_temperature}"
+        assert (
+            isinstance(val_temperature, float) or val_temperature == "same"
+        ), f"val_temperature must be a float or 'same', got {val_temperature}"
         self.val_temperature = val_temperature
 
         self.streaming_batch_size = streaming_batch_size  # TODO: not implemented
@@ -543,7 +547,9 @@ class DEMLitModule(LightningModule):
                 #     times, noised_samples, return_aux_output=True
                 # )
                 dem_loss, aux_output = self.energy_function(
-                    noised_samples, return_aux_output=True, temperature=self.temperature_schedule(self.global_step)
+                    noised_samples,
+                    return_aux_output=True,
+                    temperature=self.temperature_schedule(self.global_step),
                 )
                 nan_indices = (~torch.isfinite(dem_loss)).nonzero()
                 print("-" * 80)
@@ -688,7 +694,7 @@ class DEMLitModule(LightningModule):
         constrained_score_norm_target=0.0,
         temperature=None,
     ) -> torch.Tensor:
-        
+
         if reverse_sde is None:
             if projection_mask is not None:
                 # Wrap the model's vector field with projection
@@ -788,12 +794,15 @@ class DEMLitModule(LightningModule):
                 self.clipper_gen.wrap_grad_fxn(self.net), self.noise_schedule
             )
             self.last_samples = self.generate_samples(
-                reverse_sde=reverse_sde, diffusion_scale=self.diffusion_scale, temperature=temperature,
+                reverse_sde=reverse_sde,
+                diffusion_scale=self.diffusion_scale,
+                temperature=temperature,
             )
             self.last_energies = self.energy_function(self.last_samples)
         else:
             self.last_samples = self.generate_samples(
-                diffusion_scale=self.diffusion_scale, temperature=temperature,
+                diffusion_scale=self.diffusion_scale,
+                temperature=temperature,
             )
             self.last_energies = self.energy_function(self.last_samples)
 
@@ -1543,7 +1552,10 @@ class DEMLitModule(LightningModule):
             init_states = self.prior.sample(self.num_init_samples)
         else:
             init_states = self.generate_samples(
-                reverse_sde, self.num_init_samples, diffusion_scale=self.diffusion_scale, temperature=temperature
+                reverse_sde,
+                self.num_init_samples,
+                diffusion_scale=self.diffusion_scale,
+                temperature=temperature,
             )
         init_energies = self.energy_function(init_states)
 

@@ -2,7 +2,7 @@ defaults:
   - pseudo_default
   - _self_
   
-_target_: dem.energies.alanine_dipeptide_pesudoenergy.MaceAlDiPseudoEnergy2D
+_target_: dem.energies.alanine_dipeptide_dihedral_pesudoenergy.MaceAlDiPseudoEnergy2D
 
 dimensionality: 2
 device: ${trainer.accelerator}

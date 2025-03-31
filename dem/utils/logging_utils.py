@@ -79,21 +79,23 @@ def fig_to_image(fig):
         )
 
 
-IGNORE_OVERRIDES = [
-]
-IGNORE_OVERRIDES_CHECKPOINT = [
-]
+IGNORE_OVERRIDES = []
+IGNORE_OVERRIDES_CHECKPOINT = []
 REPLACE = {
     "experiment=": "",
+    "model.temperature_schedule.temp": "T",
     "temperature_schedule": "T",
     "num_estimator_mc_samples": "Bmc",
-    "model." : "",
-    "+" : "",
+    "addon": "",
+    "energy.": "",
+    "model.": "",
+    "+": "",
 }
+
 
 def get_name_from_config(cfg: DictConfig, is_checkpoint_name: bool = False) -> str:
     """Human-readable name for wandb. Pretty janky.
-    is_checkpoint_name: if True, the name will be used as the checkpoint name. 
+    is_checkpoint_name: if True, the name will be used as the checkpoint name.
     This means we don't want to include certain overrides in the name.
     """
     name = ""
@@ -118,7 +120,7 @@ def get_name_from_config(cfg: DictConfig, is_checkpoint_name: bool = False) -> s
             name += f"({cfg['energy']['force_activation']}{cfg['energy']['force_scale']} {cfg['energy']['hessian_eigenvalue_penalty']}{cfg['energy']['hessian_scale']} {cfg['energy']['term_aggr']})"
     if "temperature" in cfg["energy"] and cfg["energy"]["temperature"] != 1.0:
         name += f"T{cfg['energy']['temperature']}"
-        
+
     # get all the overrides
     override_names = ""
     # print(f'Overrides: {args.override_dirname}')
@@ -128,9 +130,7 @@ def get_name_from_config(cfg: DictConfig, is_checkpoint_name: bool = False) -> s
             if np.any([ignore in arg for ignore in IGNORE_OVERRIDES]):
                 continue
             if is_checkpoint_name:
-                if np.any(
-                    [ignore in arg for ignore in IGNORE_OVERRIDES_CHECKPOINT]
-                ):
+                if np.any([ignore in arg for ignore in IGNORE_OVERRIDES_CHECKPOINT]):
                     continue
             override = arg
             for key, value in REPLACE.items():

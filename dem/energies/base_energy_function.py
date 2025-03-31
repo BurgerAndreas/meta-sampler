@@ -15,7 +15,7 @@ plt.ioff()  # Turn off interactive model
 
 from dem.models.components.replay_buffer import ReplayBuffer
 from dem.utils.logging_utils import fig_to_image
-from dem.utils.plotting import plot_fn, plot_marginal_pair
+from dem.utils.plotting import plot_fn, plot_marginal_pair, get_logp_on_grid
 import traceback
 import copy
 from tqdm import tqdm
@@ -57,7 +57,6 @@ class BaseEnergyFunction(ABC):
         test_set_size: int = 2000,
         val_set_size: int = 2000,
         data_path_train: Optional[str] = None,
-        temperature: float = 1.0,
         plotting_batch_size: int = -1,
         plotting_device: str = "cpu",
         is_transition_sampler: bool = False,
@@ -83,8 +82,6 @@ class BaseEnergyFunction(ABC):
         self.test_set_size = test_set_size
         self.val_set_size = val_set_size
         self.data_path_train = data_path_train
-
-        self.temperature = temperature
 
         self.name = self.__class__.__name__
         self.train_set = None
@@ -716,7 +713,9 @@ class BaseEnergyFunction(ABC):
             dataset_name (str): Name for the saved dataset
         """
         os.makedirs(f"dem_outputs/{self.name}", exist_ok=True)
-        np.save(f"dem_outputs/{self.name}/{dataset_name}_samples.npy", samples.cpu().numpy())
+        np.save(
+            f"dem_outputs/{self.name}/{dataset_name}_samples.npy", samples.cpu().numpy()
+        )
 
     def get_hessian_eigenvalues_on_grid(self, grid_width=200, plotting_bounds=None):
         """Compute eigenvalues of the Hessian on a grid.
@@ -1153,6 +1152,7 @@ class BaseEnergyFunction(ABC):
             with open(f"{axis_points_path}.pkl", "rb") as f:
                 saved_data = pickle.load(f)
                 axis_points = saved_data["axis_points"]
+                energy_values = saved_data["energy_values"]
         else:
             axis_points = torch.linspace(
                 plotting_bounds[0], plotting_bounds[1], n_points, device=device
@@ -1235,6 +1235,97 @@ class BaseEnergyFunction(ABC):
         self.move_to_device(self.device)
 
         return fig
+
+    def sample_boltzmann_distribution(
+        self,
+        num_samples,
+        temperature=1.0,
+        grid_width=200,
+        sample_from="unnormalized",  # unnormalized, log_p, p
+    ):
+        """Sample from the Boltzmann distribution."""
+        assert sample_from in [
+            "unnormalized",
+            "log_p",
+            "p",
+        ], f"Invalid sample_from: {sample_from}"
+
+        grid_points, log_p = get_logp_on_grid(
+            self.log_prob,
+            bounds=self._plotting_bounds,
+            grid_width=grid_width,
+            batch_size=self.plotting_batch_size,
+            device=self.plotting_device,
+            load_path=self.get_load_path(
+                bounds=self._plotting_bounds, grid_width=grid_width
+            ),
+            temperature=1.0,
+        )
+
+        # # we neglect normalizing constant in energy function
+        # log(p(x)) = -E(x)/T - log(Z), T=1
+        # log_p_x = -E(x)
+        energies = -log_p
+
+        # shift energies to be positive
+        if energies.min() < 0:
+            # get difference between two smallest energies
+            smallest_energies = torch.sort(energies)[0][:2]
+            delta = torch.abs(smallest_energies[0] - smallest_energies[1])
+            delta = delta + torch.abs(energies.min())
+            energies = energies + delta
+            print(
+                f" sample_boltzmann_distribution: shifting energies by {delta} to be positive"
+            )
+            print(
+                f" new range of energies: {energies.min():.3f} to {energies.max():.3f}"
+            )
+
+        energies = energies / temperature
+
+        # sample from unnormalized Boltzmann distribution
+        if sample_from == "unnormalized":
+            weights = torch.exp(-energies)  # unnormalized probabilities
+            samples = torch.multinomial(
+                weights, num_samples=num_samples, replacement=True
+            )
+            return grid_points[samples], energies[samples]
+
+        # estimate partition function Z by summing over all log_p values
+        # Z = sum_x e^(-E(x)/T)
+        elif sample_from == "log_p":
+            try:
+                Z = torch.sum(torch.exp(energies))
+                assert Z > 1e-10, f"Z is too small: {Z}"
+                assert Z < 1e10, f"Z is too large: {Z}"
+
+                # compute probablity according to Boltzmann distribution
+                # mu = e^(-E(x)/T) / Z
+                p = torch.exp(energies) / Z
+                assert torch.all(
+                    torch.isfinite(p)
+                ), f"p is not NaN, negative infinity, or infinity"
+
+                # sample from Boltzmann distribution
+                samples = torch.multinomial(
+                    p, num_samples=num_samples, replacement=True
+                )
+                return grid_points[samples], energies[samples]
+
+            except Exception as e:
+                print(f"Error: {e}")
+                print(f"Falling back to sampling from log_p")
+
+        elif sample_from == "p":
+            # more numerically stable way to compute partition function
+            log_Z = torch.logsumexp(energies, dim=0)
+            log_p = energies - log_Z
+
+            # Sample using Categorical distribution with logits (log probabilities)
+            categorical_distribution = torch.distributions.Categorical(logits=log_p)
+            samples = categorical_distribution.sample((num_samples,))
+
+        return grid_points[samples], energies[samples]
 
 
 class BasePseudoEnergyFunction:
