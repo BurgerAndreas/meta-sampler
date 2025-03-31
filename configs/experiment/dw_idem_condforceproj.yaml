@@ -71,7 +71,7 @@ energy:
   hessian_weight: 1.0
   hessian_eigenvalue_penalty: null
   hessian_scale: 10.0
-  temperature: 1.0
+  
   clamp_min: -100000.0
   clamp_max: null
   # different to condforce

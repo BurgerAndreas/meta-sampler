@@ -12,7 +12,7 @@ hessian_weight: 1.0
 hessian_eigenvalue_penalty: 'tanh'
 hessian_scale: 10.0
 term_aggr: '1mmultfh'
-temperature: 1.0
+
 gad_offset: -10.0
 clamp_min: -100000.0
 clamp_max: null

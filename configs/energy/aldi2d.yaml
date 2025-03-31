@@ -19,4 +19,3 @@ val_set_size: 2000
 # use cuequivariance (usually much faster)
 use_cueq: false
 plotting_device: ${trainer.accelerator}
-temperature: 1.0

@@ -75,7 +75,7 @@ energy:
   hessian_eigenvalue_penalty: null
   hessian_scale: 10.0
   term_aggr: 'cond_force'
-  temperature: 1.0
+  
   gad_offset: -10.0
   clamp_min: -100000.0
   clamp_max: null

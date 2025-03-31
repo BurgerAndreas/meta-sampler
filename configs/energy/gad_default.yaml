@@ -4,7 +4,7 @@ clip_energy: True
 stitching: True
 stop_grad_ev: False
 div_epsilon: 1e-6
-temperature: 1.0
+
 # change these
 gad_offset: 50.0 # max energy of saddle points you want to sample from
 clamp_min: 0
