@@ -79,7 +79,7 @@ def log_expectation_reward_vmap(
     clipper: Clipper = None,
     return_aux_output: bool = False,
     streaming_batch_size: int = None,
-    temperature: float = None,
+    temperature: float = 1.0,
 ):
     """Computes the log expectation of rewards using Monte Carlo sampling.
 
@@ -133,7 +133,7 @@ def log_expectation_reward_batched(
     clipper: Clipper = None,
     return_aux_output: bool = False,
     streaming_batch_size: int = None,
-    temperature: float = None,
+    temperature: float = 1.0,
 ):
     """Computes the log expectation of rewards using Monte Carlo sampling.
 
@@ -190,7 +190,7 @@ def _estimate_grad_Rt_batched(
     use_vmap: bool = True,
     return_aux_output: bool = False,
     streaming_batch_size: int = None,
-    temperature: float = None,
+    temperature: float = 1.0,
 ):
     if t.ndim == 0:
         t = t.unsqueeze(0).repeat(len(x))
@@ -227,7 +227,7 @@ def _estimate_grad_Rt_vmap(
     use_vmap: bool = True,
     return_aux_output: bool = False,
     streaming_batch_size: int = None,
-    temperature: float = None,
+    temperature: float = 1.0,
 ):
     if t.ndim == 0:
         t = t.unsqueeze(0).repeat(len(x))

@@ -122,7 +122,7 @@ class MultiDoubleWellGADEnergy(BaseEnergyFunction):
     #         return -self.multi_double_well.energy(samples).squeeze(-1), aux_output
     #     return -self.multi_double_well.energy(samples).squeeze(-1)
 
-    def __call__(self, samples, temperature=None, return_aux_output=False):
+    def __call__(self, samples, temperature=1.0, return_aux_output=False):
         raise NotImplementedError("GAD is not implemented for this energy function")
 
     def setup_test_set(self):

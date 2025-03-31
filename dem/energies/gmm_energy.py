@@ -103,7 +103,7 @@ class GMMEnergy(BaseEnergyFunction):
     def log_prob(
         self,
         samples: torch.Tensor,
-        temperature: Optional[float] = None,
+        temperature: Optional[float] = 1.0,
         return_aux_output: bool = False,
     ) -> torch.Tensor:
         """Evaluates GMM log probability at given samples.
@@ -125,8 +125,6 @@ class GMMEnergy(BaseEnergyFunction):
 
         log_prob = self.gmm.log_prob(samples)
 
-        if temperature is None:
-            temperature = 1.0
         log_prob = log_prob / temperature
 
         if return_aux_output:

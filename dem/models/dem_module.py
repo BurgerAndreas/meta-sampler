@@ -642,6 +642,11 @@ class DEMLitModule(LightningModule):
             )
 
             loss = loss + self.hparams.cfm_loss_weight * cfm_loss
+            
+        lr = self.optimizers[0].param_groups[0]["lr"]
+        temperature = self.temperature_schedule(self.global_step)
+        self.log("train/lr", lr, on_step=True, on_epoch=False, prog_bar=False)
+        self.log("train/temperature", temperature, on_step=True, on_epoch=False, prog_bar=False)
 
         return loss
 
@@ -660,7 +665,7 @@ class DEMLitModule(LightningModule):
         diffusion_scale=1.0,
         negative_time=False,
         projection_mask=None,
-        temperature=None,
+        temperature=1.0,
     ) -> torch.Tensor:
         num_samples = num_samples or self.num_samples_to_generate_per_epoch
 
@@ -692,7 +697,7 @@ class DEMLitModule(LightningModule):
         projection_mask=None,
         constrain_score_norm=False,
         constrained_score_norm_target=0.0,
-        temperature=None,
+        temperature=1.0,
     ) -> torch.Tensor:
 
         if reverse_sde is None:

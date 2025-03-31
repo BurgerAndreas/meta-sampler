@@ -434,7 +434,8 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
         dtypestr="float32",
         batch_size=1,
         use_scale_shift=True,
-        # ensures that energies are positive and start from zero
+        # shift zero point of energy so that energies are positive 
+        # so that exponentials are nice and finite
         shift_energy=13494.408,  # 13494.406879236485
         #
         *args,
@@ -660,7 +661,7 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
     def _energy(
         self,
         samples: torch.Tensor,
-        temperature: float = None,
+        temperature: float = 1.0,
         return_aux_output: bool = False,
     ) -> torch.Tensor:
         """Evaluates the pseudoenergy function at given samples.
@@ -685,7 +686,7 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
     def log_prob(
         self,
         samples: torch.Tensor,
-        temperature: float = None,
+        temperature: float = 1.0,
         return_aux_output: bool = False,
     ) -> torch.Tensor:
         """Evaluates the pseudoenergy function at given samples.

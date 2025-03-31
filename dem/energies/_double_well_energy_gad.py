@@ -25,7 +25,7 @@ class DoubleWellEnergyGAD(DoubleWellEnergy, BasePseudoEnergyFunction):
             **kwargs
         )
 
-    def log_prob(self, samples, temperature=None, return_aux_output=False):
+    def log_prob(self, samples, temperature=1.0, return_aux_output=False):
         """Compute the log probability of the GAD pseudo-energy of the double well potential.
         E_gad = -E(x) + 1/lambda_1 * (grad(E), v1)^2
         log_prob = -E_gad
@@ -47,8 +47,6 @@ class DoubleWellEnergyGAD(DoubleWellEnergy, BasePseudoEnergyFunction):
 
         pseudo_energy, aux_output = self.compute_pseudo_potential(self._energy, samples)
 
-        if temperature is None:
-            temperature = 1.0
         pseudo_energy = pseudo_energy / temperature
 
         # log_prob = -energy

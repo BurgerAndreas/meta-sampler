@@ -129,19 +129,17 @@ class FourWellsEnergy:
         self.means = self.means.to(device)
         self.scales = self.scales.to(device)
 
-    def log_prob(self, samples, temperature=None, return_aux_output=False):
+    def log_prob(self, samples, temperature=1.0, return_aux_output=False):
         assert (
             samples.shape[-1] == self._dimensionality
         ), "`x` does not match `dimensionality`"
         log_prob = torch.squeeze(-self._energy(samples))
-        if temperature is None:
-            temperature = 1.0
         log_prob = log_prob / temperature
         if return_aux_output:
             return log_prob, {}
         return log_prob
 
-    def forces(self, samples, temperature=None):
+    def forces(self, samples, temperature=1.0):
         return -torch.vmap(torch.func.grad(self._energy))(samples)
 
     def _energy_dim_1(self, x_1):

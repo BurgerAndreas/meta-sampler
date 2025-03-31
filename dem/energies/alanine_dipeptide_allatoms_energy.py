@@ -295,7 +295,7 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
     def log_prob(
         self,
         samples: torch.Tensor,
-        temperature: float = None,
+        temperature: float = 1.0,
         return_aux_output: bool = False,
     ) -> torch.Tensor:
         """Evaluates the pseudoenergy function at given samples.
@@ -306,8 +306,6 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
         Returns:
             torch.Tensor: Energy values at input points
         """
-        if temperature is None:
-            temperature = 1.0
         if return_aux_output:
             aux_output = {}
             log_prob, aux_output = self._energy(samples, return_aux_output=True)

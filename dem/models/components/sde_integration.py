@@ -17,7 +17,7 @@ def conditional_no_grad(condition):
         yield
 
 
-def grad_E(x, energy_function, temperature=None):
+def grad_E(x, energy_function, temperature=1.0):
     with torch.enable_grad():
         x = x.requires_grad_()
         return torch.autograd.grad(
@@ -27,7 +27,7 @@ def grad_E(x, energy_function, temperature=None):
 
 # TODO: is this docstring really what this is?
 def negative_time_descent(
-    x, energy_function, num_steps, dt=1e-4, clipper=None, temperature=None
+    x, energy_function, num_steps, dt=1e-4, clipper=None, temperature=1.0
 ):
     """Perform gradient descent in the energy landscape (negative time evolution).
 
@@ -128,7 +128,7 @@ def integrate_sde(
     negative_time=False,
     num_negative_time_steps=100,
     clipper=None,
-    temperature=None,
+    temperature=1.0,
 ):
     """Numerically integrate a stochastic differential equation (SDE).
 
@@ -318,7 +318,7 @@ def integrate_constrained_sde(
     negative_time=False,
     num_negative_time_steps=100,
     clipper=None,
-    temperature=None,
+    temperature=1.0,
 ):
     """Numerically integrate an SDE while preserving a constant of motion.
 

@@ -535,7 +535,7 @@ class BaseEnergyFunction(ABC):
     def __call__(
         self,
         samples: torch.Tensor,
-        temperature: Optional[float] = None,
+        temperature: Optional[float] = 1.0,
         return_aux_output: bool = False,
     ) -> torch.Tensor:
         """Evaluates the normalized (pseudo-)energy function at given samples.
@@ -555,7 +555,7 @@ class BaseEnergyFunction(ABC):
     def log_prob(
         self,
         samples: torch.Tensor,
-        temperature: Optional[float] = None,
+        temperature: Optional[float] = 1.0,
         return_aux_output: bool = False,
     ) -> torch.Tensor:
         """Evaluates the unnormalized log probability of the (pseudo-)energy function at given samples.
@@ -574,7 +574,7 @@ class BaseEnergyFunction(ABC):
     def _energy(
         self,
         samples: torch.Tensor,
-        temperature: Optional[float] = None,
+        temperature: Optional[float] = 1.0,
         return_aux_output: bool = False,
     ) -> torch.Tensor:
         """Energy of the unnormalized (physical) potential.
@@ -594,7 +594,7 @@ class BaseEnergyFunction(ABC):
     def energy(
         self,
         samples: torch.Tensor,
-        temperature: Optional[float] = None,
+        temperature: Optional[float] = 1.0,
         return_aux_output: bool = False,
     ) -> torch.Tensor:
         """Energy=-logprob of unnormalized (pseudo-)potential.

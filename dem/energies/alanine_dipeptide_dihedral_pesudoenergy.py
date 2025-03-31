@@ -107,7 +107,7 @@ class MaceAlDiPseudoEnergy2D(MaceAlDiEnergy2D, BasePseudoEnergyFunction):
     def log_prob(
         self,
         samples: torch.Tensor,
-        temperature: Optional[float] = None,
+        temperature: Optional[float] = 1.0,
         return_aux_output: bool = False,
     ) -> torch.Tensor:
         """Compute unnormalized log-probability of pseudo-energy.
@@ -131,8 +131,6 @@ class MaceAlDiPseudoEnergy2D(MaceAlDiEnergy2D, BasePseudoEnergyFunction):
             samples, return_aux_output=True
         )
 
-        if temperature is None:
-            temperature = 1.0
         pseudo_energy = pseudo_energy / temperature
 
         # convention

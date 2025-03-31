@@ -56,7 +56,7 @@ class GMMPseudoEnergy(GMMEnergy, BasePseudoEnergyFunction):
     def log_prob(
         self,
         samples: torch.Tensor,
-        temperature: Optional[float] = None,
+        temperature: Optional[float] = 1.0,
         return_aux_output: bool = False,
     ) -> torch.Tensor:
         """Compute unnormalized log-probability of GAD pseudo-energy.
@@ -82,8 +82,6 @@ class GMMPseudoEnergy(GMMEnergy, BasePseudoEnergyFunction):
 
         pseudo_energy, aux_output = self.compute_pseudo_potential(self._energy, samples)
 
-        if temperature is None:
-            temperature = 1.0
         pseudo_energy = pseudo_energy / temperature
 
         # convention
