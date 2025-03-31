@@ -1250,7 +1250,7 @@ class BaseEnergyFunction(ABC):
             "p",
         ], f"Invalid sample_from: {sample_from}"
         if num_samples <= 0:
-            return None
+            return None, None
 
         grid_points, log_p = get_logp_on_grid(
             self.log_prob,
