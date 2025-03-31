@@ -27,6 +27,7 @@ import ase.build
 from tqdm import tqdm
 import itertools
 import pickle
+import os
 
 from alanine_dipeptide.mace_neighbourhood import (
     update_neighborhood_graph_batched,
@@ -840,7 +841,8 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
 
             for _ in range(optimization_steps):
                 optimizer.zero_grad()
-                energy = self(point_copy.unsqueeze(0))
+                # self returns log(p(x))=-energy, so we negate it to find minima
+                energy = -self(point_copy.unsqueeze(0))
                 energy.backward()
                 optimizer.step()
 
@@ -853,7 +855,7 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
             # Add to minima list if it's a new minimum
             min_point = point_copy.detach()
             tqdm.write(f"Found minimum at {min_point}")
-            energy_value = self(min_point.unsqueeze(0)).item()
+            energy_value = -self(min_point.unsqueeze(0)).item()
 
             # Check if this is a new minimum (not close to existing ones)
             is_new_minimum = True
@@ -922,7 +924,7 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
         # return minima_coords
 
         # Try to load from cache file if provided
-        cache_file = "alanine_dipeptide_2d_minima.pt"
+        cache_file = f"dem_outputs/{self.name}/alanine_dipeptide_2d_minima.pt"
         try:
             minima_coords = torch.load(cache_file)
             print(f"Loaded {len(minima_coords)} minima from {cache_file}")
@@ -932,6 +934,7 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
         # Compute minima
         minima_coords = self.find_energy_minima()
         # Save to cache file if provided
+        os.makedirs(os.path.dirname(cache_file), exist_ok=True)
         torch.save(minima_coords, cache_file)
         print(f"Saved {len(minima_coords)} minima to {cache_file}")
         return minima_coords

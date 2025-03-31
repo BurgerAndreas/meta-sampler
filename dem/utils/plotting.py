@@ -94,6 +94,7 @@ def plot_fn(
                 log_p_x.append(log_prob_func(batch).detach().cpu())
                 so_far += batch_size
             log_p_x = torch.cat(log_p_x)
+        # save log_p_x
         if load_path is not None:
             os.makedirs(os.path.dirname(load_path), exist_ok=True)
             with open(f"{load_path}.pkl", "wb") as f:

@@ -337,7 +337,7 @@ class BaseEnergyFunction(ABC):
         return None
 
     def get_load_path(self, bounds, grid_width):
-        return f"dem_outputs/{self.name}/bounds_{bounds[0]:.2f}_{bounds[1]:.2f}_grid_{grid_width}"
+        return f"dem_outputs/{self.name}/logp_bounds_{bounds[0]:.2f}_{bounds[1]:.2f}_grid_{grid_width}"
 
     def get_single_dataset_fig(
         self,
@@ -715,7 +715,8 @@ class BaseEnergyFunction(ABC):
             samples (torch.Tensor): Samples to save
             dataset_name (str): Name for the saved dataset
         """
-        np.save(f"{dataset_name}_samples.npy", samples.cpu().numpy())
+        os.makedirs(f"dem_outputs/{self.name}", exist_ok=True)
+        np.save(f"dem_outputs/{self.name}/{dataset_name}_samples.npy", samples.cpu().numpy())
 
     def get_hessian_eigenvalues_on_grid(self, grid_width=200, plotting_bounds=None):
         """Compute eigenvalues of the Hessian on a grid.
