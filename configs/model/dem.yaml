@@ -18,6 +18,8 @@ defaults:
       - mlp
   - noise_schedule:
       - geometric
+  - temperature_schedule:
+      - constant
 
 buffer:
   _target_: dem.models.components.prioritised_replay_buffer.SimpleBuffer
@@ -29,6 +31,9 @@ buffer:
   sample_with_replacement: True
   fill_buffer_during_init: False
   prioritize: False
+
+buffer_temperature: same
+val_temperature: same
 
 score_scaler: null
 

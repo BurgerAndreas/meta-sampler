@@ -18,13 +18,13 @@ def wrap_for_richardsons(score_estimator):
         results from different sample sizes.
     """
 
-    def _fxn(t, x, energy_function, noise_schedule, num_mc_samples):
+    def _fxn(t, x, energy_function, noise_schedule, num_mc_samples, *args, **kwargs):
         bigger_samples = score_estimator(
-            t, x, energy_function, noise_schedule, num_mc_samples
+            t, x, energy_function, noise_schedule, num_mc_samples, *args, **kwargs
         )
 
         smaller_samples = score_estimator(
-            t, x, energy_function, noise_schedule, int(num_mc_samples / 2)
+            t, x, energy_function, noise_schedule, int(num_mc_samples / 2), *args, **kwargs
         )
 
         return (2 * bigger_samples) - smaller_samples
@@ -73,6 +73,7 @@ def log_expectation_reward_vmap(
     clipper: Clipper = None,
     return_aux_output: bool = False,
     streaming_batch_size: int = None,
+    temperature: float = None,
 ):
     """Computes the log expectation of rewards using Monte Carlo sampling.
 
@@ -98,9 +99,9 @@ def log_expectation_reward_vmap(
 
     # Compute log rewards per MC sample [S]
     if return_aux_output:
-        log_rewards, aux_output = energy_function(samples, return_aux_output=True)
+        log_rewards, aux_output = energy_function(samples, temperature=temperature, return_aux_output=True)
     else:
-        log_rewards = energy_function(samples)
+        log_rewards = energy_function(samples, temperature=temperature)
 
     # Clip log rewards if necessary
     if clipper is not None and clipper.should_clip_log_rewards:
@@ -124,6 +125,7 @@ def log_expectation_reward_batched(
     clipper: Clipper = None,
     return_aux_output: bool = False,
     streaming_batch_size: int = None,
+    temperature: float = None,
 ):
     """Computes the log expectation of rewards using Monte Carlo sampling.
 
@@ -150,9 +152,9 @@ def log_expectation_reward_batched(
     # Compute log rewards per MC sample [B, S]
     samples = samples.view(-1, samples.shape[-1])  # [B * S, D]
     if return_aux_output:
-        log_rewards, aux_output = energy_function(samples, return_aux_output=True)
+        log_rewards, aux_output = energy_function(samples, temperature=temperature, return_aux_output=True)
     else:
-        log_rewards = energy_function(samples)
+        log_rewards = energy_function(samples, temperature=temperature)
     log_rewards = log_rewards.view(t.shape[0], -1)  # [B*S] -> [B, S]
 
     # Clip log rewards if necessary
@@ -178,6 +180,7 @@ def _estimate_grad_Rt_batched(
     use_vmap: bool = True,
     return_aux_output: bool = False,
     streaming_batch_size: int = None,
+    temperature: float = None,
 ):
     if t.ndim == 0:
         t = t.unsqueeze(0).repeat(len(x))
@@ -192,6 +195,7 @@ def _estimate_grad_Rt_batched(
         num_mc_samples,
         return_aux_output=return_aux_output,
         streaming_batch_size=streaming_batch_size,
+        temperature=temperature,
     )
     grad_output = torch.autograd.grad(
         outputs=reward,
@@ -213,6 +217,7 @@ def _estimate_grad_Rt_vmap(
     use_vmap: bool = True,
     return_aux_output: bool = False,
     streaming_batch_size: int = None,
+    temperature: float = None,
 ):
     if t.ndim == 0:
         t = t.unsqueeze(0).repeat(len(x))
@@ -227,6 +232,7 @@ def _estimate_grad_Rt_vmap(
             num_mc_samples,
             return_aux_output=return_aux_output,
             streaming_batch_size=streaming_batch_size,
+            temperature=temperature,
         )
 
     # argnums=1 -> computes grad w.r.t. to x (zero indexed)

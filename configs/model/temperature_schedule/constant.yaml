@@ -1,0 +1,2 @@
+_target_: dem.models.components.temperature_schedule.ConstantTemperatureSchedule
+temp: 1.0

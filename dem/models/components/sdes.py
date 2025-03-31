@@ -10,15 +10,15 @@ class SDE(torch.nn.Module):
         self.drift = drift
         self.diffusion = diffusion
 
-    def f(self, t, x):
+    def f(self, t, x, *args, **kwargs):
         if t.dim() == 0:
             # repeat the same time for all points if we have a scalar time
             t = t * torch.ones(x.shape[0]).to(x.device)
 
-        return self.drift(t, x)
+        return self.drift(t, x, *args, **kwargs)
 
-    def g(self, t, x):
-        return self.diffusion(t, x)
+    def g(self, t, x, *args, **kwargs):
+        return self.diffusion(t, x, *args, **kwargs)
 
 
 class VEReverseSDE(torch.nn.Module):
@@ -30,26 +30,26 @@ class VEReverseSDE(torch.nn.Module):
         self.score = score
         self.noise_schedule = noise_schedule
 
-    def f(self, t, x):
+    def f(self, t, x, *args, **kwargs):
         if t.dim() == 0:
             # repeat the same time for all points if we have a scalar time
             t = t * torch.ones(x.shape[0]).to(x.device)
 
-        score = self.score(t, x)
+        score = self.score(t, x, *args, **kwargs)
         return self.g(t, x).pow(2) * score
 
-    def g(self, t, x):
+    def g(self, t, x, *args, **kwargs):
         g = self.noise_schedule.g(t)
         return g.unsqueeze(1) if g.ndim > 0 else torch.full_like(x, g)
 
 
 class RegVEReverseSDE(VEReverseSDE):
-    def f(self, t, x):
-        dx = super().f(t, x[..., :-1])
+    def f(self, t, x, *args, **kwargs):
+        dx = super().f(t, x[..., :-1], *args, **kwargs)
         quad_reg = 0.5 * dx.pow(2).sum(dim=-1, keepdim=True)
         return torch.cat([dx, quad_reg], dim=-1)
 
-    def g(self, t, x):
+    def g(self, t, x, *args, **kwargs):
         g = self.noise_schedule.g(t)
         if g.ndim > 0:
             return g.unsqueeze(1)

@@ -17,14 +17,14 @@ def conditional_no_grad(condition):
         yield
 
 
-def grad_E(x, energy_function):
+def grad_E(x, energy_function, temperature=None):
     with torch.enable_grad():
         x = x.requires_grad_()
-        return torch.autograd.grad(torch.sum(energy_function(x)), x)[0].detach()
+        return torch.autograd.grad(torch.sum(energy_function(x, temperature=temperature)), x)[0].detach()
 
 
 # TODO: is this docstring really what this is?
-def negative_time_descent(x, energy_function, num_steps, dt=1e-4, clipper=None):
+def negative_time_descent(x, energy_function, num_steps, dt=1e-4, clipper=None, temperature=None):
     """Perform gradient descent in the energy landscape (negative time evolution).
 
     While the regular diffusion process moves from t=1 to t=0, this function continues
@@ -49,7 +49,7 @@ def negative_time_descent(x, energy_function, num_steps, dt=1e-4, clipper=None):
     for _ in range(num_steps):
         # Compute the gradient of the energy function at the current state
         # This points in the direction of increasing energy
-        drift = grad_E(x, energy_function)
+        drift = grad_E(x, energy_function, temperature=temperature)
 
         # Optionally clip the gradients for numerical stability
         if clipper is not None:
@@ -124,6 +124,7 @@ def integrate_sde(
     negative_time=False,
     num_negative_time_steps=100,
     clipper=None,
+    temperature=None,
 ):
     """Numerically integrate a stochastic differential equation (SDE).
 
@@ -211,7 +212,7 @@ def integrate_sde(
         # Perform gradient descent in the energy landscape
         # This follows the gradient of the energy function (not the score function)
         samples_langevin = negative_time_descent(
-            x, energy_function, num_steps=num_negative_time_steps, clipper=clipper
+            x, energy_function, num_steps=num_negative_time_steps, clipper=clipper, temperature=temperature
         )
         # Concatenate the negative time trajectory with the regular trajectory
         samples = torch.concatenate((samples, samples_langevin), axis=0)
@@ -309,6 +310,7 @@ def integrate_constrained_sde(
     negative_time=False,
     num_negative_time_steps=100,
     clipper=None,
+    temperature=None,
 ):
     """Numerically integrate an SDE while preserving a constant of motion.
 
@@ -395,7 +397,7 @@ def integrate_constrained_sde(
         # Would need to implement a constrained version of negative_time_descent
         # For now, use the regular version
         samples_langevin = negative_time_descent(
-            x, energy_function, num_steps=num_negative_time_steps, clipper=clipper
+            x, energy_function, num_steps=num_negative_time_steps, clipper=clipper, temperature=temperature
         )
         samples = torch.concatenate((samples, samples_langevin), axis=0)
 
