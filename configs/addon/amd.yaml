@@ -1,14 +1,21 @@
 # @package _global_
 
 model:
-  num_buffer_samples_to_generate_per_epoch: 32
-  num_buffer_samples_to_generate_init: 32
+  # populate buffer
+  num_buffer_samples_to_generate_init: 128
+  num_buffer_samples_to_generate_per_epoch: 128
+  gen_batch_size: 32
+
+  # batch size during training
   num_samples_to_sample_from_buffer: 32
-  num_estimator_mc_samples: 4
+
+  # per sample in batch
+  num_estimator_mc_samples: 20
+
   # used to generate samples (integrate) and W2 distance
   eval_batch_size: 32
   # negative log likelihood = augmented integration
-  nll_batch_size: 16
+  nll_batch_size: 32
   
   # if you reduce num_buffer_samples_to_generate_init, you need to reduce min_length
   buffer:

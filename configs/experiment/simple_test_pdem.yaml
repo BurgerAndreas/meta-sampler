@@ -55,7 +55,7 @@ model:
   diffusion_scale: 1.0
 
   use_buffer: false
-  num_samples_to_generate_per_epoch: 1000
+  num_buffer_samples_to_generate_per_epoch: 1000
   eval_batch_size: 1000
   scheduler: null
   num_estimator_mc_samples: 500 

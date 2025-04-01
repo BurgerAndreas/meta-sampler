@@ -53,9 +53,9 @@ model:
     min_log_reward: null
 
   diffusion_scale: 1
-  num_samples_to_generate_per_epoch: 1000
+  num_buffer_samples_to_generate_per_epoch: 1000
 
-  init_from_prior: true
+  init_buffer_from_prior: true
 
   eval_batch_size: 1000
 

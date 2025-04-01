@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 
+import math
 import numpy as np
 import torch
 
@@ -121,6 +122,45 @@ def integrate_sde(
     x0: torch.Tensor,
     num_integration_steps: int,
     energy_function: BaseEnergyFunction,
+    batch_size=-1,
+    **kwargs,
+):
+    # wrapper around _integrate_sde to handle batching
+    if batch_size <= 0 or batch_size > x0.shape[0]:
+        # x0: [B, D] or [B, N, D]
+        # trajectory: [T, B, D] 
+        return _integrate_sde(
+            sde=sde,
+            x0=x0,
+            num_integration_steps=num_integration_steps,
+            energy_function=energy_function,
+            **kwargs,
+        )
+    else:
+        trajectories = []
+        num_batches = math.ceil(x0.shape[0] / batch_size)
+        for i in range(num_batches):
+            start_idx = i * batch_size
+            end_idx = start_idx + batch_size
+            # trajectory: [T, B, D]
+            trajectories.append(
+                _integrate_sde(
+                    sde=sde,
+                    x0=x0[start_idx:end_idx],
+                    num_integration_steps=num_integration_steps,
+                    energy_function=energy_function,
+                    **kwargs,
+                )
+            )
+        # [T, B, D]
+        return torch.cat(trajectories, dim=1)
+
+
+def _integrate_sde(
+    sde: VEReverseSDE,
+    x0: torch.Tensor,
+    num_integration_steps: int,
+    energy_function: BaseEnergyFunction,
     reverse_time: bool = True,
     diffusion_scale=1.0,
     no_grad=True,
@@ -157,11 +197,10 @@ def integrate_sde(
     end_time = time_range - start_time
 
     # Create evenly spaced time points for integration
+    # Remove the last point as it's handled separately
     times = torch.linspace(
         start_time, end_time, num_integration_steps + 1, device=x0.device
-    )[
-        :-1
-    ]  # Remove the last point as it's handled separately
+    )[:-1]  
 
     # Initialize the current state with the input samples
     x = x0
@@ -189,24 +228,6 @@ def integrate_sde(
 
     # Combine all states into a single tensor representing the full trajectory
     samples = torch.stack(samples)
-
-    try:
-        assert torch.isfinite(samples).all()
-    except Exception as e:
-        nan_idx = torch.isnan(samples[-1]).nonzero()
-        print(f"Error in integrate_sde: {e}")
-        print(f"nan_idx numel: {nan_idx.numel()}")
-        print(f"x0: {x0[nan_idx].shape}")
-        for i, s in enumerate(samples):
-            print(f"t: {times[i]}. x: \n{s[nan_idx]}")
-        # write to file
-        with open("nan_samples.txt", "w") as f:
-            f.write(f"nan_idx numel: {nan_idx.numel()}")
-            f.write(f"x0: {x0[nan_idx].shape}")
-            for i, s in enumerate(samples):
-                f.write(f"\nt: {times[i]}. x: \n{s[nan_idx]}")
-        print("nan samples written to nan_samples.txt")
-        raise e
 
     # TODO: is this really what this is?
     # Optional: Continue integration into negative time (past t=0)

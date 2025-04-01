@@ -35,7 +35,7 @@ model:
 
   diffusion_scale: 0.9
 
-  init_from_prior: true
+  init_buffer_from_prior: true
 
   cfm_prior_std: 2
 
@@ -66,16 +66,16 @@ model:
   use_vmap: true
   use_richardsons: True
 
-  # num_init_samples: 1024
+  # num_buffer_samples_to_generate_init: 1024
   # num_estimator_mc_samples: 100
-  # num_samples_to_generate_per_epoch: 1024
+  # num_buffer_samples_to_generate_per_epoch: 1024
   # num_samples_to_sample_from_buffer: 512
   # eval_batch_size: 1024
 
   # memory cost ~ outer batch size * num_estimator_mc_samples
   # outer batch sizes (number of samples)
-  num_samples_to_generate_per_epoch: 32
-  num_init_samples: 32
+  num_buffer_samples_to_generate_per_epoch: 32
+  num_buffer_samples_to_generate_init: 32
   num_samples_to_sample_from_buffer: 32
   nll_batch_size: 16
   # inner batch size (for each sample)

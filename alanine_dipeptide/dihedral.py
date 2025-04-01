@@ -4,11 +4,13 @@ import math
 import os
 from typing import Iterable
 
-from openmm.app import PDBFile, ForceField, Simulation, NoCutoff
-from openmm import Context, VerletIntegrator, Platform
-from openmm.unit import nanometer, kilojoule_per_mole, picoseconds, Quantity
+try:
+    import torch_geometric as tg
+except ImportError:
+    print("torch_geometric not installed, some functions will not be available")
 
-from alanine_dipeptide.mace_neighbourhood import get_neighborhood
+from openmm.app import PDBFile
+from openmm.unit import nanometer
 
 import mdtraj as md
 
@@ -761,9 +763,6 @@ def test_numpy_is_torch():
 
     # Set a target dihedral angle (in radians)
     target_angle = math.pi / 3.0  # 60 degrees
-
-    # Decide which atoms to rotate. For this test, assume "psi" rotates indices 4:end.
-    atoms_to_rotate = "psi"
 
     # Run NumPy version.
     positions_np_modified = set_dihedral(

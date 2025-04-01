@@ -57,18 +57,18 @@ model:
   diffusion_scale: 0.5
 
   buffer:
-    # if you reduce num_init_samples, you need to reduce min_length
+    # if you reduce num_buffer_samples_to_generate_init, you need to reduce min_length
     min_sample_length: 16
 
-  num_init_samples: 16
-  num_samples_to_generate_per_epoch: 16
+  num_buffer_samples_to_generate_init: 16
+  num_buffer_samples_to_generate_per_epoch: 16
   num_samples_to_sample_from_buffer: 16
   eval_batch_size: 16
   num_estimator_mc_samples: 4
   nll_batch_size: 8
   use_richardsons: True
 
-  init_from_prior: true
+  init_buffer_from_prior: true
   num_samples_to_save: 10000
 
   nll_integration_method: dopri5

@@ -56,12 +56,12 @@ model:
 
   diffusion_scale: 0.5
 
-  num_init_samples: 1024
-  num_samples_to_generate_per_epoch: 128
+  num_buffer_samples_to_generate_init: 1024
+  num_buffer_samples_to_generate_per_epoch: 128
   num_samples_to_sample_from_buffer: 128
   eval_batch_size: 128
 
-  init_from_prior: true
+  init_buffer_from_prior: true
   num_samples_to_save: 10000
 
   nll_integration_method: dopri5

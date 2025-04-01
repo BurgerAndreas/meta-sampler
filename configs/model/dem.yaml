@@ -37,10 +37,20 @@ val_temperature: same
 
 score_scaler: null
 
-num_init_samples: 1024
+# inner batch size in score estimator
 num_estimator_mc_samples: 100
-num_samples_to_generate_per_epoch: 1024
+
+# number to generate for buffer
+num_buffer_samples_to_generate_init: 1024
+num_buffer_samples_to_generate_per_epoch: 1024
+
+# number of samples to generate at once using SDE
+gen_batch_size: -1 # -1 means all num_samples at once
+
+# number of samples to sample from buffer, what you would usually call batch size
 num_samples_to_sample_from_buffer: 512
+
+# number of samples to compute distribution distances on
 eval_batch_size: 1024
 
 num_integration_steps: 1000
@@ -69,6 +79,7 @@ output_scaling_factor: null
 compile: false
 
 use_richardsons: false
+use_richardson_in_trainloss: false
 
 cfm_loss_weight: 1.0
 use_ema: false
@@ -78,7 +89,8 @@ use_exact_likelihood: true
 debug_use_train_data: false
 
 # initialize the buffer with samples from the prior
-init_from_prior: false
+init_buffer_from_prior: false
+init_buffer_from_train: false
 
 # set to true for iDEM and false for pDEM
 use_buffer: true

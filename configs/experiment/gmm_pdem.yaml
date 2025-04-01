@@ -50,7 +50,7 @@ model:
   diffusion_scale: 1.0
 
   use_buffer: false # no buffer for pDEM
-  num_samples_to_generate_per_epoch: 1000
+  num_buffer_samples_to_generate_per_epoch: 1000
 
   # this has to be max 1000 since test_set is 1000
   eval_batch_size: 1000

@@ -111,9 +111,9 @@ class PISLitModule(LightningModule):
         noise_schedule: BaseNoiseSchedule,
         lambda_weighter: BaseLambdaWeighter,
         buffer: PrioritisedReplayBuffer,
-        num_init_samples: int,
+        num_buffer_samples_to_generate_init: int,
         num_estimator_mc_samples: int,
-        num_samples_to_generate_per_epoch: int,
+        num_buffer_samples_to_generate_per_epoch: int,
         eval_batch_size: int,
         num_samples_to_sample_from_buffer: int,
         num_integration_steps: int,
@@ -140,7 +140,7 @@ class PISLitModule(LightningModule):
         time_range=5.0,
         use_ema=False,
         debug_use_train_data=False,
-        init_from_prior=False,
+        init_buffer_from_prior=False,
         compute_nll_on_train_data=False,
         use_otcfm=False,
     ) -> None:
@@ -206,9 +206,9 @@ class PISLitModule(LightningModule):
             self.cfm_net, is_diffusion=False, use_exact_likelihood=use_exact_likelihood
         )
 
-        self.num_init_samples = num_init_samples
+        self.num_buffer_samples_to_generate_init = num_buffer_samples_to_generate_init
         self.num_estimator_mc_samples = num_estimator_mc_samples
-        self.num_samples_to_generate_per_epoch = num_samples_to_generate_per_epoch
+        self.num_buffer_samples_to_generate_per_epoch = num_buffer_samples_to_generate_per_epoch
         self.eval_batch_size = eval_batch_size
         self.num_samples_to_sample_from_buffer = num_samples_to_sample_from_buffer
         self.num_integration_steps = num_integration_steps
@@ -422,7 +422,7 @@ class PISLitModule(LightningModule):
         return_full_trajectory: bool = False,
         diffusion_scale=1.0,
     ) -> torch.Tensor:
-        num_samples = num_samples or self.num_samples_to_generate_per_epoch
+        num_samples = num_samples or self.num_buffer_samples_to_generate_per_epoch
         samples = torch.zeros(num_samples, self.dim + 1, device=self.device)
 
         return self.integrate(
@@ -445,9 +445,9 @@ class PISLitModule(LightningModule):
         time_range=1.0,
     ) -> torch.Tensor:
         trajectory = integrate_sde(
-            sde or self.pis_sde,
-            samples,
-            self.num_integration_steps,
+            sde=sde or self.pis_sde,
+            x0=samples,
+            num_integration_steps=self.num_integration_steps,
             diffusion_scale=diffusion_scale,
             reverse_time=reverse_time,
             no_grad=no_grad,
@@ -672,7 +672,7 @@ class PISLitModule(LightningModule):
         :param batch_idx: The index of the current batch.
         """
         batch = self.energy_function.sample_test_set(
-            self.num_samples_to_generate_per_epoch
+            self.num_buffer_samples_to_generate_per_epoch
         )
         loss = self.get_loss()[0]
 
@@ -853,7 +853,7 @@ class PISLitModule(LightningModule):
         self.tcond = self.tcond.to(self.device)
         self.pis_sde = SDE(self.drift, self.diffusion).to(self.device)
         init_states = self.generate_samples(
-            self.pis_sde, self.num_init_samples, diffusion_scale=self.diffusion_scale
+            self.pis_sde, self.num_buffer_samples_to_generate_init, diffusion_scale=self.diffusion_scale
         )
         init_energies = self.energy_function(init_states)
 
