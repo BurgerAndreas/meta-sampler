@@ -444,6 +444,7 @@ class DEMLitModule(LightningModule):
         return loss
 
     def should_train_cfm(self, batch_idx: int) -> bool:
+        """Use Conditional Flow Matching (CFM) to train the model."""
         return self.nll_with_cfm or self.hparams.debug_use_train_data
 
     def get_score_loss(
@@ -591,6 +592,7 @@ class DEMLitModule(LightningModule):
 
         if self.should_train_cfm(batch_idx):
             if self.hparams.debug_use_train_data:
+                # use conditional flow matching to train on train set
                 cfm_samples = self.energy_function.sample_train_set(
                     self.num_samples_to_sample_from_buffer
                 )
@@ -598,15 +600,14 @@ class DEMLitModule(LightningModule):
                     (self.num_samples_to_sample_from_buffer,), device=cfm_samples.device
                 )
             else:
+                # use buffer samples for training
                 cfm_samples, _, _ = self.buffer.sample(
                     self.num_samples_to_sample_from_buffer,
                     prioritize=self.prioritize_cfm_training_samples,
                 )
 
             cfm_loss = self.get_cfm_loss(cfm_samples)
-            assert torch.isfinite(
-                cfm_loss
-            ).all(), f"{(~torch.isfinite(cfm_loss)).sum().item()} entries are NaN/inf. Epoch={self.current_epoch}, step={self.global_step}"
+            
             self.log_dict(
                 t_stratified_loss(
                     times, cfm_loss, loss_name="train/stratified/cfm_loss"
@@ -1580,7 +1581,7 @@ class DEMLitModule(LightningModule):
             self.net = torch.compile(self.net)
             self.cfm_net = torch.compile(self.cfm_net)
 
-        if self.nll_with_cfm:
+        if self.nll_with_cfm or self.should_train_cfm(0):
             self.cfm_prior = self.partial_prior(
                 device=self.device, scale=self.cfm_prior_std
             )

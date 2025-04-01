@@ -863,7 +863,7 @@ class PISLitModule(LightningModule):
             self.net = torch.compile(self.net)
             self.cfm_net = torch.compile(self.cfm_net)
 
-        if self.nll_with_cfm:
+        if self.nll_with_cfm or self.should_train_cfm(0):
             self.cfm_prior = self.partial_prior(
                 device=self.device, scale=self.cfm_prior_std
             )
