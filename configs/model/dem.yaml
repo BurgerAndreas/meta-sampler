@@ -89,7 +89,8 @@ use_ema: false
 use_exact_likelihood: true
 
 # train cfm only on train data and not dem
-debug_use_train_data: false
+debug_cfm_with_train_data: false
+debug_dem_with_train_data: false
 
 # initialize the buffer with samples from the prior
 init_buffer_from_prior: false

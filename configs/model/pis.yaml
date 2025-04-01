@@ -68,7 +68,8 @@ compile: false
 
 cfm_loss_weight: 1.0
 use_ema: false
-debug_use_train_data: false
+debug_cfm_with_train_data: false
+debug_dem_with_train_data: false
 
 pis_scale: 1.
 time_range: 1.

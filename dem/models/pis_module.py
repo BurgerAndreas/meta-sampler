@@ -139,7 +139,7 @@ class PISLitModule(LightningModule):
         pis_scale=1.0,
         time_range=5.0,
         use_ema=False,
-        debug_use_train_data=False,
+        debug_cfm_with_train_data=False,
         init_buffer_from_prior=False,
         compute_nll_on_train_data=False,
         use_otcfm=False,
@@ -496,7 +496,7 @@ class PISLitModule(LightningModule):
         loss = loss + pis_loss
 
         if self.should_train_cfm(batch_idx):
-            if self.hparams.debug_use_train_data:
+            if self.hparams.debug_cfm_with_train_data:
                 cfm_samples = self.energy_function.sample_train_set(
                     self.num_samples_to_sample_from_buffer
                 )

@@ -32,7 +32,7 @@ trainer:
   max_epochs: 2000
 
 model:
-  debug_use_train_data: true
+  debug_cfm_with_train_data: true
   use_otcfm: false
   use_ema: false
   nll_with_cfm: true

@@ -187,7 +187,8 @@ class DEMLitModule(LightningModule):
         cfm_loss_weight=1.0,
         use_ema=False,
         use_exact_likelihood=False,
-        debug_use_train_data=False,
+        debug_cfm_with_train_data=False,
+        debug_dem_with_train_data=False,
         init_buffer_from_prior=False,
         init_buffer_from_train=False,
         compute_nll_on_train_data=False,
@@ -447,7 +448,7 @@ class DEMLitModule(LightningModule):
 
     def should_train_cfm(self, batch_idx: int) -> bool:
         """Use Conditional Flow Matching (CFM) to train the model."""
-        return self.nll_with_cfm or self.hparams.debug_use_train_data
+        return self.nll_with_cfm or self.hparams.debug_cfm_with_train_data
 
     def get_score_loss(
         self, times: torch.Tensor, samples: torch.Tensor, noised_samples: torch.Tensor
@@ -525,8 +526,12 @@ class DEMLitModule(LightningModule):
     def training_step(self, batch, batch_idx):
         """Samples from the buffer (iDEM) or prior (pDEM), noises and denoises, computes the loss."""
         loss = 0.0
-        if not self.hparams.debug_use_train_data:
-            if self.hparams.use_buffer:
+        if not self.hparams.debug_cfm_with_train_data:
+            if self.hparams.debug_dem_with_train_data:
+                iter_samples = self.energy_function.sample_train_set(
+                        self.num_samples_to_sample_from_buffer
+                    )
+            elif self.hparams.use_buffer:
                 # iDEM with buffer
                 iter_samples, _, _ = self.buffer.sample(
                     self.num_samples_to_sample_from_buffer
@@ -593,7 +598,7 @@ class DEMLitModule(LightningModule):
                 )
 
         if self.should_train_cfm(batch_idx):
-            if self.hparams.debug_use_train_data:
+            if self.hparams.debug_cfm_with_train_data:
                 # use conditional flow matching to train on train set
                 cfm_samples = self.energy_function.sample_train_set(
                     self.num_samples_to_sample_from_buffer
@@ -1131,7 +1136,7 @@ class DEMLitModule(LightningModule):
             iter_samples, _, _ = self.buffer.sample(self.eval_batch_size)
 
             # compute nll on buffer if not training cfm only
-            if not self.hparams.debug_use_train_data and self.nll_on_buffer:
+            if not self.hparams.debug_cfm_with_train_data and self.nll_on_buffer:
                 forwards_samples = self.compute_and_log_nll(
                     self.cfm_cnf, self.cfm_prior, iter_samples, prefix, "buffer_"
                 )
