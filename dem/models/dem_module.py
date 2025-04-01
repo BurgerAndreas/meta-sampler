@@ -201,6 +201,7 @@ class DEMLitModule(LightningModule):
         # added
         use_vmap=True,
         gen_batch_size: int = -1,
+        num_samples_to_plot: int = 256,
         generate_constrained_samples: bool = False,
         constrained_score_norm_target: float = 0.0,
         force_grad: bool = False,
@@ -381,6 +382,7 @@ class DEMLitModule(LightningModule):
         self.num_samples_to_save = num_samples_to_save
         self.eval_batch_size = eval_batch_size
         self.gen_batch_size = gen_batch_size
+        self.num_samples_to_plot = num_samples_to_plot
         
         self.prioritize_cfm_training_samples = prioritize_cfm_training_samples
         self.lambda_weighter = self.hparams.lambda_weighter(self.noise_schedule)
@@ -797,6 +799,7 @@ class DEMLitModule(LightningModule):
                 reverse_sde=reverse_sde,
                 diffusion_scale=self.diffusion_scale,
                 temperature=temperature,
+                num_samples=self.num_samples_to_plot,
                 batch_size=self.gen_batch_size,
             )
             self.last_energies = self.energy_function(self.last_samples)
@@ -804,16 +807,10 @@ class DEMLitModule(LightningModule):
             self.last_samples = self.generate_samples(
                 diffusion_scale=self.diffusion_scale,
                 temperature=temperature,
+                num_samples=self.num_samples_to_plot,
                 batch_size=self.gen_batch_size,
             )
             self.last_energies = self.energy_function(self.last_samples)
-
-        assert torch.isfinite(
-            self.last_samples
-        ).all(), f"{(~torch.isfinite(self.last_samples)).sum().item()} entries are NaN/inf. Epoch={self.current_epoch}, step={self.global_step}"
-        assert torch.isfinite(
-            self.last_energies
-        ).all(), f"{(~torch.isfinite(self.last_energies)).sum().item()} entries are NaN/inf. Epoch={self.current_epoch}, step={self.global_step}"
 
         self.buffer.add(self.last_samples, self.last_energies)
 

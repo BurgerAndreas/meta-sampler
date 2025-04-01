@@ -290,6 +290,7 @@ def plot_marginal_pair(
         "marker": "o",
         # "markersize": 1,
         "linestyle": "none",
+        "color": "red",
     }
     for k, v in dflt.items():
         if k not in plot_kwargs:

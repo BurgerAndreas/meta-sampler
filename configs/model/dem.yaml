@@ -53,6 +53,9 @@ num_samples_to_sample_from_buffer: 512
 # number of samples to compute distribution distances on
 eval_batch_size: 1024
 
+# plotting
+num_samples_to_plot: 1024
+
 num_integration_steps: 1000
 nll_integration_method: dopri5
 tol: 1e-5

@@ -83,6 +83,8 @@ model:
   # inner batch size (for each sample)
   num_estimator_mc_samples: 4
 
+  num_samples_to_plot: 256
+
   # this has to be max 1000 since test_set is 1000
   eval_batch_size: 32
   scheduler: null

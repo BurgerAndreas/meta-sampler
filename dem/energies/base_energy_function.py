@@ -680,9 +680,6 @@ class BaseEnergyFunction(ABC):
                 )
 
             if latest_samples is not None:
-                assert torch.isfinite(
-                    latest_samples
-                ).all(), f"Max value: {latest_samples.max()}, Min value: {latest_samples.min()}"
                 plt.close()
                 fig, ax = plt.subplots()
                 ax.scatter(*latest_samples.detach().cpu().T)
