@@ -706,28 +706,28 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
         return -self._energy(samples, temperature=temperature)
 
     def project_dihedral_angles(self, samples):
-        # Project dihedral angles to be within [-pi, pi]
-        # Handle different input shapes
-        if len(samples.shape) == 1:  # Single sample [2]
-            if list(self._plotting_bounds) == [-np.pi, np.pi]:
-                samples = torch.remainder(samples + torch.pi, 2 * torch.pi) - torch.pi
-            elif list(self._plotting_bounds) == [0, 2 * np.pi]:
-                samples = torch.remainder(samples, 2 * torch.pi)
-            else:
-                raise ValueError(f"Unexpected plotting bounds: {self._plotting_bounds}")
-        elif len(samples.shape) == 2:  # Batch of samples [B, 2]
-            if list(self._plotting_bounds) == [-np.pi, np.pi]:
-                samples = torch.remainder(samples + torch.pi, 2 * torch.pi) - torch.pi
-            elif list(self._plotting_bounds) == [0, 2 * np.pi]:
-                samples = torch.remainder(samples, 2 * torch.pi)
-            else:
-                raise ValueError(f"Unexpected plotting bounds: {self._plotting_bounds}")
-        else:
-            raise ValueError(f"Unexpected shape for samples: {samples.shape}")
+        # # Project dihedral angles to be within [-pi, pi]
+        # # Handle different input shapes
+        # if len(samples.shape) == 1:  # Single sample [2]
+        #     if list(self._plotting_bounds) == [-np.pi, np.pi]:
+        #         samples = torch.remainder(samples + torch.pi, 2 * torch.pi) - torch.pi
+        #     elif list(self._plotting_bounds) == [0, 2 * np.pi]:
+        #         samples = torch.remainder(samples, 2 * torch.pi)
+        #     else:
+        #         raise ValueError(f"Unexpected plotting bounds: {self._plotting_bounds}")
+        # elif len(samples.shape) == 2:  # Batch of samples [B, 2]
+        #     if list(self._plotting_bounds) == [-np.pi, np.pi]:
+        #         samples = torch.remainder(samples + torch.pi, 2 * torch.pi) - torch.pi
+        #     elif list(self._plotting_bounds) == [0, 2 * np.pi]:
+        #         samples = torch.remainder(samples, 2 * torch.pi)
+        #     else:
+        #         raise ValueError(f"Unexpected plotting bounds: {self._plotting_bounds}")
+        # else:
+        #     raise ValueError(f"Unexpected shape for samples: {samples.shape}")
 
-        # # Ensure all values are within the expected range (not vmap-able)
-        # assert torch.all(samples >= -torch.pi) and torch.all(samples <= torch.pi), \
-        #     f"Samples out of range: min={samples.min()}, max={samples.max()}"
+        # # # Ensure all values are within the expected range (not vmap-able)
+        # # assert torch.all(samples >= -torch.pi) and torch.all(samples <= torch.pi), \
+        # #     f"Samples out of range: min={samples.min()}, max={samples.max()}"
         return samples
 
     #####################################################################################

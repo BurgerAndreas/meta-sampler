@@ -42,21 +42,21 @@ psi_indices = psi_indices_bg
 def get_indices(indices, convention):
     if indices == "phi":
         if convention == "andreas":
-            i, j, k, l = phi_indices_andreas
+            i, j, k, ll = phi_indices_andreas
         elif convention == "bg":
-            i, j, k, l = phi_indices_bg
+            i, j, k, ll = phi_indices_bg
         else:
             raise ValueError(f"Invalid convention: {convention}")
     elif indices == "psi":
         if convention == "andreas":
-            i, j, k, l = psi_indices_andreas
+            i, j, k, ll = psi_indices_andreas
         elif convention == "bg":
-            i, j, k, l = psi_indices_bg
+            i, j, k, ll = psi_indices_bg
         else:
             raise ValueError(f"Invalid convention: {convention}")
     else:
-        i, j, k, l = indices
-    return i, j, k, l
+        i, j, k, ll = indices
+    return i, j, k, ll
 
 
 def rotation_matrix(axis, theta):
@@ -146,15 +146,15 @@ def set_dihedral(
     Returns:
       positions   : Modified NumPy array of positions (in nanometers)
     """
-    i, j, k, l = get_indices(indices, convention)
+    i, j, k, ll = get_indices(indices, convention)
     p0, p1, p2, p3 = (
         positions[i].copy(),
         positions[j].copy(),
         positions[k].copy(),
-        positions[l].copy(),
+        positions[ll].copy(),
     )
 
-    target_angle = target_angle % (2 * np.pi)
+    # target_angle = target_angle % (2 * np.pi)
     if absolute:
         current_angle = compute_dihedral(p0, p1, p2, p3)
         delta = target_angle - current_angle
@@ -261,13 +261,13 @@ def set_dihedral_torch(
     """
     target_angle = target_angle.to(positions.device)
 
-    i, j, k, l = get_indices(indices, convention)
+    i, j, k, ll = get_indices(indices, convention)
     # Use clone to avoid modifying the original tensor
     positions = positions.clone()
     p0 = positions[i].clone()
     p1 = positions[j].clone()
     p2 = positions[k].clone()
-    p3 = positions[l].clone()
+    p3 = positions[ll].clone()
 
     current_angle = compute_dihedral_torch(p0, p1, p2, p3)
     if absolute:
@@ -323,13 +323,13 @@ def set_dihedral_torch_vmap(
     ), f"target_angle must be a scalar, got shape {target_angle.shape}"
     target_angle = target_angle.to(positions.device)
 
-    i, j, k, l = get_indices(indices, convention)
+    i, j, k, ll = get_indices(indices, convention)
     # Use clone to avoid modifying the original tensor
     positions = positions.clone()
     p0 = positions[i].clone()
     p1 = positions[j].clone()
     p2 = positions[k].clone()
-    p3 = positions[l].clone()
+    p3 = positions[ll].clone()
 
     current_angle = compute_dihedral_torch(p0, p1, p2, p3)
     if absolute:
@@ -499,12 +499,12 @@ def set_dihedral_torch_batched(
     elif target_angle.shape[0] != B:
         target_angle = target_angle.expand(B)
 
-    i, j, k, l = get_indices(indices, convention)
+    i, j, k, ll = get_indices(indices, convention)
     positions = positions.clone()
     p0 = positions[:, i].clone()  # (B, 3)
     p1 = positions[:, j].clone()
     p2 = positions[:, k].clone()
-    p3 = positions[:, l].clone()
+    p3 = positions[:, ll].clone()
 
     current_angle = compute_dihedral_torch_batched(p0, p1, p2, p3)  # (B,)
     if absolute:
