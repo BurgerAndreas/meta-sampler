@@ -503,15 +503,18 @@ class DEMLitModule(LightningModule):
             return self.lambda_weighter(times) * error_norms
 
     def training_step(self, batch, batch_idx):
+        """Samples from the buffer (iDEM) or prior (pDEM), noises and denoises, computes the loss."""
         loss = 0.0
         if not self.hparams.debug_use_train_data:
             if self.hparams.use_buffer:
+                # iDEM with buffer
                 iter_samples, _, _ = self.buffer.sample(
                     self.num_samples_to_sample_from_buffer
                 )
             else:
+                # prior DEM (pDEM) without buffer, truly simulation free
                 iter_samples = self.prior.sample(self.num_samples_to_sample_from_buffer)
-                # Uncomment for SM
+                # Uncomment for score matching (SM)
                 # iter_samples = self.energy_function.sample_train_set(self.num_samples_to_sample_from_buffer)
 
             times = torch.rand(
@@ -530,55 +533,16 @@ class DEMLitModule(LightningModule):
                     self.energy_function.n_spatial_dim,
                 )
 
-            # REMOVE try/except for GAD debugging
-            try:
-                dem_loss, aux_output = self.get_loss(
-                    times, noised_samples, return_aux_output=True
-                )
-                assert torch.isfinite(
-                    dem_loss
-                ).all(), f"{(~torch.isfinite(dem_loss)).sum().item()} entries are NaN/inf. Epoch={self.current_epoch}, step={self.global_step}"
-                for k, v in aux_output.items():
-                    assert torch.isfinite(
-                        v
-                    ).all(), f"NaN/inf in {k}\n{v}. Epoch={self.current_epoch}, step={self.global_step}"
-            except Exception as e:
-                # dem_loss, aux_output = self.get_loss(
-                #     times, noised_samples, return_aux_output=True
-                # )
-                dem_loss, aux_output = self.energy_function(
-                    noised_samples,
-                    return_aux_output=True,
-                    temperature=self.temperature_schedule(self.global_step),
-                )
-                nan_indices = (~torch.isfinite(dem_loss)).nonzero()
-                print("-" * 80)
-                # print(f"aux_output: {aux_output.keys()}")
-                print(f"Samples: \n{noised_samples[nan_indices]}")
-                print(f"Energy: \n{aux_output['energy'][nan_indices]}")
-                print(traceback.format_exc())
-                with open("gad_nan_log.txt", "w") as f:
-                    # f.write(traceback.format_exc())
-                    f.write(
-                        f"Epoch={self.energy_function.curr_epoch}, step={self.global_step}\n"
-                    )
-                    f.write(f"noised_samples: \n{noised_samples[nan_indices]}\n")
-                    f.write(f"iter_samples: \n{iter_samples[nan_indices]}\n")
-                    f.write(f"Energy: \n{aux_output['energy'][nan_indices]}\n")
-                    f.write(f"Forces: \n{aux_output['forces'][nan_indices]}\n")
-                    f.write(
-                        f"Smallest eigenvalues: \n{aux_output['smallest_eigenvalues'][nan_indices]}\n"
-                    )
-                    f.write(
-                        f"Smallest eigenvectors: \n{aux_output['smallest_eigenvectors'][nan_indices]}\n"
-                    )
-                    f.write(
-                        f"Pseudo energy: \n{aux_output['pseudo_energy'][nan_indices]}\n"
-                    )
-                    f.write("-" * 80 + "\n")
-                print("=" * 80)
-                print(f"Logged to gad_nan_log.txt")
-                exit()
+            dem_loss, aux_output = self.get_loss(
+                times, noised_samples, return_aux_output=True
+            )
+            # assert torch.isfinite(
+            #     dem_loss
+            # ).all(), f"{(~torch.isfinite(dem_loss)).sum().item()} entries are NaN/inf. Epoch={self.current_epoch}, step={self.global_step}"
+            # for k, v in aux_output.items():
+            #     assert torch.isfinite(
+            #         v
+            #     ).all(), f"NaN/inf in {k}\n{v}. Epoch={self.current_epoch}, step={self.global_step}"
 
             # Uncomment for SM
             # dem_loss = self.get_score_loss(times, iter_samples, noised_samples)
@@ -1558,7 +1522,6 @@ class DEMLitModule(LightningModule):
                 temperature=temperature,
             )
 
-        # TODO: add Kirill's mode gen
         reverse_sde = VEReverseSDE(_grad_fxn, self.noise_schedule)
 
         self.prior = self.partial_prior(
