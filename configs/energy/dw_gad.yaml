@@ -28,6 +28,6 @@ clamp_max: null
 
 override_energy_dummy: 1.0
 
-train_set_size: 0 # 100000
+train_set_size: 1000 # 100000
 test_set_size: 2000
 val_set_size: 2000 

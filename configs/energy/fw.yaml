@@ -10,6 +10,6 @@ data_normalization_factor: 1.0
 
 is_molecule: False
 
-train_set_size: 0 # 100000
+train_set_size: 1000 # 100000
 test_set_size: 2000
 val_set_size: 2000

@@ -86,6 +86,7 @@ REPLACE = {
     "model.temperature_schedule.temp": "T",
     "temperature_schedule": "T",
     "num_estimator_mc_samples": "Bmc",
+    "train_set_size": "train",
     "addon": "",
     "energy.": "",
     "model.": "",

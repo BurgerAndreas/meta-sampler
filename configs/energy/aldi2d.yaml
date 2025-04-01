@@ -12,7 +12,7 @@ plot_samples_epoch_period: 1
 data_normalization_factor: 1.0
 should_unnormalize: false
 
-train_set_size: 0
+train_set_size: 1000
 test_set_size: 2000
 val_set_size: 2000 
 
