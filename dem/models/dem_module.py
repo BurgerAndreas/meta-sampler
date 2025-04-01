@@ -642,12 +642,23 @@ class DEMLitModule(LightningModule):
             )
 
             loss = loss + self.hparams.cfm_loss_weight * cfm_loss
-            
-        lr = self.optimizers[0].param_groups[0]["lr"]
-        temperature = self.temperature_schedule(self.global_step)
-        self.log("train/lr", lr, on_step=True, on_epoch=False, prog_bar=False)
-        self.log("train/temperature", temperature, on_step=True, on_epoch=False, prog_bar=False)
+        
+        try:
+            optimizer = self.optimizers()
+            if isinstance(optimizer, list):
+                optimizer = optimizer[0]
+            lr = optimizer.param_groups[0]["lr"]
+            self.log("train/lr", lr, on_step=True, on_epoch=False, prog_bar=False)
+        except Exception as e:
+            print(f"Error logging learning rate: {e}")
+            pass
 
+        try:
+            temperature = self.temperature_schedule(self.global_step)
+            self.log("train/temperature", temperature, on_step=True, on_epoch=False, prog_bar=False)
+        except Exception as e:
+            print(f"Error logging temperature: {e}")
+            pass
         return loss
 
     def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_closure):
@@ -1607,6 +1618,7 @@ class DEMLitModule(LightningModule):
 
 if __name__ == "__main__":
     _ = DEMLitModule(
+        None,
         None,
         None,
         None,
