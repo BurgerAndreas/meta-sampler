@@ -208,7 +208,9 @@ class PISLitModule(LightningModule):
 
         self.num_buffer_samples_to_generate_init = num_buffer_samples_to_generate_init
         self.num_estimator_mc_samples = num_estimator_mc_samples
-        self.num_buffer_samples_to_generate_per_epoch = num_buffer_samples_to_generate_per_epoch
+        self.num_buffer_samples_to_generate_per_epoch = (
+            num_buffer_samples_to_generate_per_epoch
+        )
         self.eval_batch_size = eval_batch_size
         self.num_samples_to_sample_from_buffer = num_samples_to_sample_from_buffer
         self.num_integration_steps = num_integration_steps
@@ -853,7 +855,9 @@ class PISLitModule(LightningModule):
         self.tcond = self.tcond.to(self.device)
         self.pis_sde = SDE(self.drift, self.diffusion).to(self.device)
         init_states = self.generate_samples(
-            self.pis_sde, self.num_buffer_samples_to_generate_init, diffusion_scale=self.diffusion_scale
+            self.pis_sde,
+            self.num_buffer_samples_to_generate_init,
+            diffusion_scale=self.diffusion_scale,
         )
         init_energies = self.energy_function(init_states)
 

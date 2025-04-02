@@ -45,7 +45,8 @@ num_buffer_samples_to_generate_init: 1024
 num_buffer_samples_to_generate_per_epoch: 1024
 
 # number of samples to generate at once using SDE
-gen_batch_size: -1 # -1 means all num_samples at once
+integrate_energy_batch_size: -1
+integrate_model_batch_size: -1 # -1 means all num_samples at once
 
 # number of samples to sample from buffer, what you would usually call batch size
 num_samples_to_sample_from_buffer: 512

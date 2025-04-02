@@ -396,9 +396,7 @@ class MyMLP(nn.Module):
         positional_embeddings = []
         for i in range(input_dim):
             embedding = PositionalEmbedding(emb_size, input_emb, scale=25.0)
-
             self.add_module(f"input_mlp{i}", embedding)
-
             positional_embeddings.append(embedding)
 
         self.channels = 1

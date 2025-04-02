@@ -44,11 +44,11 @@ for config in configs:
 
     # only non-special characters
     plt_name = re.sub(r"[^a-zA-Z0-9]", "", name)
-    
+
     device = energy_function.device
     num_samples = cfg.model.num_buffer_samples_to_generate_init
     gen_batch_size = cfg.model.gen_batch_size
-    
+
     #################################################################################
     # test 10 forward passes
     n = 10
@@ -58,8 +58,10 @@ for config in configs:
         energy_function(x)
     t2 = time.time()
     print(f"Time per forward pass: {(t2 - t1)/n:.3f} seconds")
-    print(f"Estimated time for 1000 integration steps: {(t2 - t1)/n * 1000:.3f} seconds")
-    
+    print(
+        f"Estimated time for 1000 integration steps: {(t2 - t1)/n * 1000:.3f} seconds"
+    )
+
     #################################################################################
     # test 10 forward passes without gradient
     n = 10
@@ -70,11 +72,13 @@ for config in configs:
             energy_function(x)
     t2 = time.time()
     print(f"Time per forward pass: {(t2 - t1)/n:.3f} seconds")
-    print(f"Estimated time for 1000 integration steps: {(t2 - t1)/n * 1000:.3f} seconds")
-    
+    print(
+        f"Estimated time for 1000 integration steps: {(t2 - t1)/n * 1000:.3f} seconds"
+    )
+
     #################################################################################
     # compare if estimate_grad_Rt gives the same result always
-    print("\n", "-"*40)
+    print("\n", "-" * 40)
     n = 10
     t1 = time.time()
     for i in range(n):
@@ -95,13 +99,13 @@ for config in configs:
             num_mc_samples=cfg.model.num_estimator_mc_samples,
             temperature=1.0,
         )
-        diff = (score_with_grad - score_again)
+        diff = score_with_grad - score_again
         print(f"Difference: {diff.norm():.3e}")
         print(f"Relative difference: {(diff/score_with_grad).norm():.3e}")
-        
+
     #################################################################################
     # compare if estimate_grad_Rt gives the same result regardless of no_grad
-    print("\n", "-"*40)
+    print("\n", "-" * 40)
     n = 10
     t1 = time.time()
     for i in range(n):
@@ -123,13 +127,13 @@ for config in configs:
                 num_mc_samples=cfg.model.num_estimator_mc_samples,
                 temperature=1.0,
             )
-        diff = (score_with_grad - score_no_grad)
+        diff = score_with_grad - score_no_grad
         print(f"Difference: {diff.norm():.3e}")
         print(f"Relative difference: {(diff/score_with_grad).norm():.3e}")
-    
+
     #################################################################################
     # test 10 estimate_grad_Rt
-    print("\n", "-"*40)
+    print("\n", "-" * 40)
     n = 10
     t1 = time.time()
     for i in range(n):
@@ -144,9 +148,11 @@ for config in configs:
         )
     t2 = time.time()
     print(f"Time per estimate_grad_Rt: {(t2 - t1)/n:.3f} seconds")
-    seconds = (t2 - t1)/n * 1000
-    print(f"Estimated time for 1000 integration steps: {seconds:.3f} seconds ({seconds/60:.3f} minutes)")
-    
+    seconds = (t2 - t1) / n * 1000
+    print(
+        f"Estimated time for 1000 integration steps: {seconds:.3f} seconds ({seconds/60:.3f} minutes)"
+    )
+
     #################################################################################
     t1 = time.time()
 
@@ -172,8 +178,6 @@ for config in configs:
         batch_size=cfg.model.gen_batch_size,
         no_grad=True,
     ).detach()
-    
+
     t2 = time.time()
     print(f"Time for integration: {t2 - t1:.1f} seconds")
-
-    

@@ -45,18 +45,18 @@ for config in configs:
 
     # only non-special characters
     plt_name = re.sub(r"[^a-zA-Z0-9]", "", name)
-    
+
     device = energy_function.device
     num_samples = cfg.model.num_buffer_samples_to_generate_init
     print(f"num_samples: {num_samples}")
     gen_batch_size = cfg.model.gen_batch_size
-    
+
     num_estimator_mc_samples = 500
-    
+
     #################################################################################
     #################################################################################
     # compare if estimate_grad_Rt gives the same result always
-    print("\n", "-"*40)
+    print("\n", "-" * 40)
     n = 10
     mean_abs_diffs = []
     mean_rel_diffs = []
@@ -84,29 +84,29 @@ for config in configs:
             )
             diff = torch.abs(score_with_grad - score_again)
             abs_diffs.append(diff.mean().item())
-            rel_diffs.append((diff/score_with_grad).mean().item())
-            
+            rel_diffs.append((diff / score_with_grad).mean().item())
+
         print(f"{b}: Abs: {np.mean(abs_diffs):.3e} Rel: {np.mean(rel_diffs):.3e}")
         mean_abs_diffs.append(np.mean(abs_diffs))
         mean_rel_diffs.append(np.mean(rel_diffs))
-    
+
     # Create a figure with two subplots
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-    
+
     # First subplot for absolute differences
     ax1.plot(mc_samples, mean_abs_diffs)
     ax1.set_title("Absolute Differences")
     ax1.set_xlabel("Number of MC Samples")
     ax1.set_ylabel("Mean Absolute Difference")
-    ax1.set_xscale('log')
-    
+    ax1.set_xscale("log")
+
     # Second subplot for relative differences
     ax2.plot(mc_samples, mean_rel_diffs)
     ax2.set_title("Relative Differences")
     ax2.set_xlabel("Number of MC Samples")
     ax2.set_ylabel("Mean Relative Difference")
-    ax2.set_xscale('log')
-    
+    ax2.set_xscale("log")
+
     plt.tight_layout()
     plt.savefig(f"plots/score_estimator_dw_abs_rel_diffs.png")
     plt.close()

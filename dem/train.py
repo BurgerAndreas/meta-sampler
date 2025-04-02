@@ -9,7 +9,11 @@ from lightning import Callback, LightningDataModule, LightningModule, Trainer
 from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig
 import torch
-from lightning.pytorch.profilers import SimpleProfiler, AdvancedProfiler, PyTorchProfiler
+from lightning.pytorch.profilers import (
+    SimpleProfiler,
+    AdvancedProfiler,
+    PyTorchProfiler,
+)
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 # ------------------------------------------------------------------------------------ #
@@ -29,6 +33,7 @@ rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 # more info: https://github.com/ashleve/rootutils
 # ------------------------------------------------------------------------------------ #
 
+import logging
 from dem.utils import (
     RankedLogger,
     extras,
@@ -85,8 +90,6 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     logger: List[Logger] = instantiate_loggers(cfg.get("logger"))
 
     if cfg["wandb_noinfo"]:
-        import logging
-
         wandb_logger = logging.getLogger("wandb")
         wandb_logger.setLevel(logging.ERROR)
 

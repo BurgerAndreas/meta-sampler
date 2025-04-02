@@ -52,13 +52,14 @@ ranklogger = RankedLogger(__name__, rank_zero_only=True)
 def timer_decorator(func):
     """
     A decorator that times and ranklogger.infos the execution time of a function.
-    
+
     Args:
         func: The function to be timed
-        
+
     Returns:
         The wrapped function that includes timing functionality
     """
+
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         start_time = time.time()
@@ -67,7 +68,9 @@ def timer_decorator(func):
         elapsed_time = end_time - start_time
         ranklogger.info(f"'{func.__name__}' took {elapsed_time:.1f} seconds to execute")
         return result
+
     return wrapper
+
 
 class ProjectedVectorField:
     """Wrapper class to project out components of a vector field."""
@@ -226,7 +229,8 @@ class DEMLitModule(LightningModule):
         nll_batch_size=256,
         # added
         use_vmap=True,
-        gen_batch_size: int = -1,
+        integrate_energy_batch_size: int = -1,
+        integrate_model_batch_size: int = -1,
         num_samples_to_plot: int = 256,
         generate_constrained_samples: bool = False,
         constrained_score_norm_target: float = 0.0,
@@ -254,7 +258,8 @@ class DEMLitModule(LightningModule):
             np.random.seed(seed)
             torch.manual_seed(seed)
 
-        self.net = net(energy_function=energy_function)
+        # self.net = net(energy_function=energy_function)
+        self.net = net()
         self.cfm_net = net(energy_function=energy_function)
 
         if use_ema:
@@ -325,8 +330,8 @@ class DEMLitModule(LightningModule):
         grad_fxn = estimate_grad_Rt
         if use_richardsons:
             grad_fxn = wrap_for_richardsons(grad_fxn)
-        
-        # TODO: added by Andreas because DEM just used estimate_grad_Rt in trainloss?
+
+        # TODO: added by Andreas because DEM just used estimate_grad_Rt in train loss?
         self.use_richardson_in_trainloss = use_richardson_in_trainloss
         if self.use_richardson_in_trainloss:
             self.grad_fxn_trainloss = grad_fxn
@@ -403,13 +408,16 @@ class DEMLitModule(LightningModule):
         self.num_samples_to_sample_from_buffer = num_samples_to_sample_from_buffer
         # number of MC samples per batch for score estimation in loss
         self.num_estimator_mc_samples = num_estimator_mc_samples
-        self.num_buffer_samples_to_generate_per_epoch = num_buffer_samples_to_generate_per_epoch
+        self.num_buffer_samples_to_generate_per_epoch = (
+            num_buffer_samples_to_generate_per_epoch
+        )
         self.num_integration_steps = num_integration_steps
         self.num_samples_to_save = num_samples_to_save
         self.eval_batch_size = eval_batch_size
-        self.gen_batch_size = gen_batch_size
+        self.integrate_energy_batch_size = integrate_energy_batch_size
+        self.integrate_model_batch_size = integrate_model_batch_size
         self.num_samples_to_plot = num_samples_to_plot
-        
+
         self.prioritize_cfm_training_samples = prioritize_cfm_training_samples
         self.lambda_weighter = self.hparams.lambda_weighter(self.noise_schedule)
 
@@ -495,7 +503,7 @@ class DEMLitModule(LightningModule):
         # B = num_samples_to_sample_from_buffer
         # samples [B, D] times [B]
 
-        # By default did not use Richardson extrapolation (estimate_grad_Rt) 
+        # By default did not use Richardson extrapolation (estimate_grad_Rt)
         # instead of grad_fxn
         _out = self.grad_fxn_trainloss(
             times,
@@ -512,7 +520,7 @@ class DEMLitModule(LightningModule):
             estimated_score, aux_output = _out
         else:
             estimated_score = _out
-            
+
         # score_norm: [B]
         score_norm = (estimated_score.detach() ** 2).mean(-1).sqrt()
 
@@ -548,15 +556,15 @@ class DEMLitModule(LightningModule):
         else:
             return self.lambda_weighter(times) * error_norms
 
-    @timer_decorator
+    # @timer_decorator
     def training_step(self, batch, batch_idx):
         """Samples from the buffer (iDEM) or prior (pDEM), noises and denoises, computes the loss."""
         loss = 0.0
         if not self.hparams.debug_cfm_with_train_data:
             if self.hparams.debug_dem_with_train_data:
                 iter_samples = self.energy_function.sample_train_set(
-                        self.num_samples_to_sample_from_buffer
-                    )
+                    self.num_samples_to_sample_from_buffer
+                )
             elif self.hparams.use_buffer:
                 # iDEM with buffer
                 iter_samples, _, _ = self.buffer.sample(
@@ -587,7 +595,7 @@ class DEMLitModule(LightningModule):
             dem_loss, aux_output = self.get_loss(
                 times, noised_samples, return_aux_output=True
             )
-            
+
             # Uncomment for SM
             # dem_loss = self.get_score_loss(times, iter_samples, noised_samples)
             self.log_dict(
@@ -633,7 +641,7 @@ class DEMLitModule(LightningModule):
                 )
 
             cfm_loss = self.get_cfm_loss(cfm_samples)
-            
+
             self.log_dict(
                 t_stratified_loss(
                     times, cfm_loss, loss_name="train/stratified/cfm_loss"
@@ -650,7 +658,7 @@ class DEMLitModule(LightningModule):
             )
 
             loss = loss + self.hparams.cfm_loss_weight * cfm_loss
-        
+
         try:
             optimizer = self.optimizers()
             if isinstance(optimizer, list):
@@ -663,7 +671,13 @@ class DEMLitModule(LightningModule):
 
         try:
             temperature = self.temperature_schedule(self.global_step)
-            self.log("train/temperature", temperature, on_step=True, on_epoch=False, prog_bar=False)
+            self.log(
+                "train/temperature",
+                temperature,
+                on_step=True,
+                on_epoch=False,
+                prog_bar=False,
+            )
         except Exception as e:
             ranklogger.info(f"Error logging temperature: {e}")
             pass
@@ -687,7 +701,7 @@ class DEMLitModule(LightningModule):
         projection_mask=None,
         temperature=1.0,
         batch_size=-1,
-        verbose=True
+        verbose=True,
     ) -> torch.Tensor:
         num_samples = num_samples or self.num_buffer_samples_to_generate_per_epoch
 
@@ -703,7 +717,7 @@ class DEMLitModule(LightningModule):
             projection_mask=projection_mask,
             temperature=temperature,
             batch_size=batch_size,
-            verbose=verbose
+            verbose=verbose,
         )
 
     def integrate(
@@ -720,7 +734,7 @@ class DEMLitModule(LightningModule):
         constrained_score_norm_target=0.0,
         temperature=1.0,
         batch_size=-1,
-        verbose=True
+        verbose=True,
     ) -> torch.Tensor:
 
         if reverse_sde is None:
@@ -751,9 +765,9 @@ class DEMLitModule(LightningModule):
         # added for pseudopotentials that relies on gradients
         if self.force_grad:
             no_grad = False
-            
+
         # samples: [B, D] or [B, N, D]
-        # trajectory: [T, B, D] 
+        # trajectory: [T, B, D]
         trajectory = integrate_sde(
             sde=reverse_sde,
             x0=samples,
@@ -767,13 +781,13 @@ class DEMLitModule(LightningModule):
             clipper=self.clipper,
             temperature=temperature,
             batch_size=batch_size,
-            verbose=verbose
+            verbose=verbose,
         )
-            
+
         if return_full_trajectory:
             return trajectory
 
-        # [B, D] 
+        # [B, D]
         return trajectory[-1]
 
     def compute_nll(
@@ -830,15 +844,16 @@ class DEMLitModule(LightningModule):
                 diffusion_scale=self.diffusion_scale,
                 temperature=temperature,
                 num_samples=self.num_samples_to_plot,
-                batch_size=self.gen_batch_size,
+                batch_size=self.integrate_model_batch_size,
             )
             self.last_energies = self.energy_function(self.last_samples)
         else:
             self.last_samples = self.generate_samples(
+                # reverse_sde=self.reverse_sde,
                 diffusion_scale=self.diffusion_scale,
                 temperature=temperature,
                 num_samples=self.num_samples_to_plot,
-                batch_size=self.gen_batch_size,
+                batch_size=self.integrate_model_batch_size,
             )
             self.last_energies = self.energy_function(self.last_samples)
 
@@ -856,10 +871,11 @@ class DEMLitModule(LightningModule):
         if prefix == "test":
             data_set = self.energy_function.sample_val_set(self.eval_batch_size)
             generated_samples = self.generate_samples(
+                # reverse_sde=self.reverse_sde,
                 num_samples=self.eval_batch_size,
                 diffusion_scale=self.diffusion_scale,
                 negative_time=self.negative_time,
-                batch_size=self.gen_batch_size,
+                batch_size=self.integrate_model_batch_size,
             )
             generated_energies = self.energy_function(generated_samples)
         else:
@@ -897,11 +913,12 @@ class DEMLitModule(LightningModule):
         if prefix == "test":
             data_set = self.energy_function.sample_val_set(self.eval_batch_size)
             generated_samples = self.generate_samples(
+                # reverse_sde=self.reverse_sde,
                 num_samples=self.eval_batch_size,
                 diffusion_scale=self.diffusion_scale,
                 negative_time=self.negative_time,
                 temperature=temperature,
-                batch_size=self.gen_batch_size,
+                batch_size=self.integrate_model_batch_size,
             )
         else:
             if len(self.buffer) < self.eval_batch_size:
@@ -934,11 +951,12 @@ class DEMLitModule(LightningModule):
         if prefix == "test":
             data_set = self.energy_function.sample_val_set(self.eval_batch_size)
             generated_samples = self.generate_samples(
+                reverse_sde=self.reverse_sde,
                 num_samples=self.eval_batch_size,
                 diffusion_scale=self.diffusion_scale,
                 negative_time=self.negative_time,
                 temperature=temperature,
-                batch_size=self.gen_batch_size,
+                batch_size=self.integrate_model_batch_size,
             )
         else:
             if len(self.buffer) < self.eval_batch_size:
@@ -1097,11 +1115,12 @@ class DEMLitModule(LightningModule):
         # generate samples noise --> data if needed
         if backwards_samples is None or self.eval_batch_size > len(backwards_samples):
             backwards_samples = self.generate_samples(
+                reverse_sde=self.reverse_sde,
                 num_samples=self.eval_batch_size,
                 diffusion_scale=self.diffusion_scale,
                 negative_time=self.negative_time,
                 temperature=temperature,
-                batch_size=self.gen_batch_size,
+                batch_size=self.integrate_model_batch_size,
             )
 
         # sample eval_batch_size from generated samples from dem to match dimensions
@@ -1273,12 +1292,14 @@ class DEMLitModule(LightningModule):
 
     @timer_decorator
     def validation_step(self, batch: torch.Tensor, batch_idx: int) -> None:
+        ranklogger.info(f"validation_step: {batch.shape} {batch_idx}")
         self.eval_step("val", batch, batch_idx)
 
     @timer_decorator
     def test_step(self, batch: torch.Tensor, batch_idx: int) -> None:
+        ranklogger.info(f"test_step: {batch.shape} {batch_idx}")
         self.eval_step("test", batch, batch_idx)
-    
+
     def get_energies(self, samples, batch_size=-1):
         if batch_size <= 0 or batch_size > samples.shape[0]:
             batch_size = samples.shape[0]
@@ -1288,7 +1309,6 @@ class DEMLitModule(LightningModule):
     def eval_epoch_end(self, prefix: str):
         wandb_logger = get_wandb_logger(self.loggers)
         # convert to dict of tensors assumes [batch, ...]
-        ranklogger.info("-" * 100)
         ranklogger.info(f"eval_epoch_end: {prefix}")
         if len(self.eval_step_outputs) == 0:
             ranklogger.info(f"Warning: No eval step outputs for {prefix}")
@@ -1339,14 +1359,17 @@ class DEMLitModule(LightningModule):
                 temperature = self.buffer_temperature
 
             dem_samples = self.generate_samples(
+                # reverse_sde=self.reverse_sde,
                 num_samples=num_samples,
                 diffusion_scale=self.diffusion_scale,
                 negative_time=self.negative_time,
                 temperature=temperature,
-                batch_size=self.gen_batch_size,
+                batch_size=self.integrate_model_batch_size,
             )
-            
-            latest_energies = self.get_energies(dem_samples, batch_size=self.gen_batch_size)
+
+            latest_energies = self.get_energies(
+                dem_samples, batch_size=self.energy_function.plotting_batch_size
+            )
 
             # Only plot dem samples
             self.energy_function.log_on_epoch_end(
@@ -1479,25 +1502,27 @@ class DEMLitModule(LightningModule):
             batch_size = self.num_samples_to_save
             n_batches = 1
         n_batches = max(n_batches, 1)
-        
+
         final_samples = []
         energies = []
         for i in range(n_batches):
             samples = self.generate_samples(
+                # reverse_sde=self.reverse_sde,
                 num_samples=batch_size,
                 diffusion_scale=self.diffusion_scale,
                 negative_time=self.negative_time,
                 temperature=temperature,
+                # batch_size=self.integrate_model_batch_size,
             )
             assert torch.isfinite(
                 samples
             ).all(), f"samples: Max={samples.max()}, Min={samples.min()}"
             final_samples.append(samples)
             energies.append(self.energy_function(samples).detach())
-            
+
         final_samples = torch.cat(final_samples, dim=0)
         energies = torch.cat(energies, dim=0)
-        
+
         self.energy_function.log_on_epoch_end(
             latest_samples=final_samples,
             latest_energies=energies,
@@ -1505,7 +1530,9 @@ class DEMLitModule(LightningModule):
         )
 
         if self.energy_function.test_set is not None:
-            ranklogger.info("one_test_epoch_end: Computing large batch distribution distances")
+            ranklogger.info(
+                "one_test_epoch_end: Computing large batch distribution distances"
+            )
             test_set = self.energy_function.sample_test_set(-1, full=True)
             names, dists = compute_full_dataset_distribution_distances(
                 self.energy_function.unnormalize(final_samples)[:, None],
@@ -1523,7 +1550,9 @@ class DEMLitModule(LightningModule):
                 f"one_test_epoch_end: Done computing large batch distribution distances. W2 = {dists[1]}"
             )
         else:
-            ranklogger.info("Warning: No test set provided. Skipping distribution distances.")
+            ranklogger.info(
+                "Warning: No test set provided. Skipping distribution distances."
+            )
             d = {}
             # raise NotImplementedError("No test set provided")
 
@@ -1581,20 +1610,24 @@ class DEMLitModule(LightningModule):
         self.prior = self.partial_prior(
             device=self.device, scale=self.noise_schedule.h(1) ** 0.5
         )
-        
+
         # populate buffer with initial samples
         if self.init_buffer_from_train:
-            init_states = self.energy_function.sample_train_set(self.num_buffer_samples_to_generate_init)
+            init_states = self.energy_function.sample_train_set(
+                self.num_buffer_samples_to_generate_init
+            )
         elif self.init_buffer_from_prior:
             init_states = self.prior.sample(self.num_buffer_samples_to_generate_init)
         else:
-            ranklogger.info("Generating initial buffer samples...")
+            ranklogger.info("Generating initial buffer samples by integrating the energy function...")
             t1 = time.time()
             if self.buffer_temperature == "same":
                 temperature = self.temperature_schedule(self.global_step)
             else:
                 temperature = self.buffer_temperature
 
+            # integrate the score from the energy function
+            # instead of the predicted score from the model
             def _grad_fxn(t, x):
                 return self.clipped_grad_fxn(
                     t,
@@ -1605,20 +1638,23 @@ class DEMLitModule(LightningModule):
                     # use_vmap=self.use_vmap,
                     temperature=temperature,
                 )
-
             reverse_sde = VEReverseSDE(_grad_fxn, self.noise_schedule)
             init_states = self.generate_samples(
                 reverse_sde=reverse_sde,
                 num_samples=self.num_buffer_samples_to_generate_init,
                 diffusion_scale=self.diffusion_scale,
                 temperature=temperature,
-                batch_size=self.gen_batch_size,
+                batch_size=self.integrate_energy_batch_size,
             ).detach()
             t2 = time.time()
             ranklogger.info(f"Buffer initialized in {t2 - t1:.1f} seconds")
-        
+
         # init_energies = self.energy_function(init_states)
-        init_energies = self.get_energies(init_states, batch_size=self.energy_function.plotting_batch_size).detach()
+        init_energies = self.get_energies(
+            init_states, batch_size=self.energy_function.plotting_batch_size
+        ).detach()
+        if len(init_energies) > 1:
+            init_energies = init_energies.squeeze(-1)
         self.buffer.add(init_states, init_energies)
 
         if self.hparams.compile and stage == "fit":

@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from typing import Optional
 
 import math
 import numpy as np
@@ -122,14 +123,14 @@ def integrate_sde(
     sde: VEReverseSDE,
     x0: torch.Tensor,
     num_integration_steps: int,
-    energy_function: BaseEnergyFunction,
+    energy_function: Optional[BaseEnergyFunction] = None,
     batch_size=-1,
     **kwargs,
 ):
     # wrapper around _integrate_sde to handle batching
     if batch_size <= 0 or batch_size > x0.shape[0]:
         # x0: [B, D] or [B, N, D]
-        # trajectory: [T, B, D] 
+        # trajectory: [T, B, D]
         return _integrate_sde(
             sde=sde,
             x0=x0,
@@ -161,7 +162,7 @@ def _integrate_sde(
     sde: VEReverseSDE,
     x0: torch.Tensor,
     num_integration_steps: int,
-    energy_function: BaseEnergyFunction,
+    energy_function: Optional[BaseEnergyFunction] = None,
     reverse_time: bool = True,
     diffusion_scale=1.0,
     no_grad=True,
@@ -170,7 +171,7 @@ def _integrate_sde(
     num_negative_time_steps=100,
     clipper=None,
     temperature=1.0,
-    verbose=True,
+    verbose=False,
 ):
     """Numerically integrate a stochastic differential equation (SDE).
 
@@ -202,7 +203,7 @@ def _integrate_sde(
     # Remove the last point as it's handled separately
     times = torch.linspace(
         start_time, end_time, num_integration_steps + 1, device=x0.device
-    )[:-1]  
+    )[:-1]
 
     # Initialize the current state with the input samples
     x = x0
@@ -220,7 +221,7 @@ def _integrate_sde(
 
             # For molecular systems, enforce center of mass conservation
             # by removing the mean displacement (fixing translation invariance)
-            if energy_function.is_molecule:
+            if energy_function is not None and energy_function.is_molecule:
                 x = remove_mean(
                     x, energy_function.n_particles, energy_function.n_spatial_dim
                 )
@@ -233,7 +234,6 @@ def _integrate_sde(
 
     # TODO: is this really what this is?
     # Optional: Continue integration into negative time (past t=0)
-    # This is useful for finding transition states or exploring energy landscapes
     if negative_time:
         print("doing negative time descent...")
         # Perform gradient descent in the energy landscape

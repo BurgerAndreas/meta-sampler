@@ -38,7 +38,6 @@ def wrap_for_richardsons(score_estimator):
     return _fxn
 
 
-
 # original implementation in DEM codebase, using vmap
 def log_expectation_reward_vmap(
     t: torch.Tensor,

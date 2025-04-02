@@ -434,7 +434,7 @@ class MaceAlDiEnergy2D(BaseEnergyFunction):
         dtypestr="float32",
         batch_size=1,
         use_scale_shift=True,
-        # shift zero point of energy so that energies are positive 
+        # shift zero point of energy so that energies are positive
         # so that exponentials are nice and finite
         shift_energy=13494.408,  # 13494.406879236485
         #

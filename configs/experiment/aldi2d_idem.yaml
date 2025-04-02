@@ -52,21 +52,22 @@ model:
     lr: 5e-4
 
   net:
-    # _target_: dem.models.components.mlp.MyMLP
-    # _partial_: true
-    # hidden_size: 128
-    # hidden_layers: 3
-    # emb_size: 128
-    # input_dim: ${energy.dimensionality} # 2                                     
-    # out_dim: ${energy.dimensionality} # 2
-    # time_emb: "sinusoidal"
+    # - mlp
+    _target_: dem.models.components.mlp.MyMLP
+    _partial_: true
+    hidden_size: 128
+    hidden_layers: 3
+    emb_size: 128
+    input_dim: ${energy.dimensionality} # 2                                     
+    out_dim: ${energy.dimensionality} # 2
+    time_emb: "sinusoidal"
     input_emb: "periodic_angle" # sinusoidal -> periodic_angle, periodic_learnable
     periodic_output: "atan2" # atan2, tanh
 
   diffusion_scale: 1.0
 
   use_vmap: true
-  use_richardsons: True
+  use_richardsons: true
 
   # num_buffer_samples_to_generate_init: 1024
   # num_estimator_mc_samples: 100
@@ -74,20 +75,30 @@ model:
   # num_samples_to_sample_from_buffer: 512
   # eval_batch_size: 1024
 
+  num_buffer_samples_to_generate_per_epoch: 256
+  num_buffer_samples_to_generate_init: 256
+
   # memory cost ~ outer batch size * num_estimator_mc_samples
   # outer batch sizes (number of samples)
-  num_buffer_samples_to_generate_per_epoch: 32
-  num_buffer_samples_to_generate_init: 32
-  num_samples_to_sample_from_buffer: 32
-  nll_batch_size: 32
+  num_samples_to_sample_from_buffer: 16
+
   # inner batch size (for each sample)
-  num_estimator_mc_samples: 4
+  num_estimator_mc_samples: 8
+
+  integrate_energy_batch_size: 16
+  integrate_model_batch_size: -1
 
   num_samples_to_plot: 256
 
+  nll_batch_size: 16
   # this has to be max 1000 since test_set is 1000
-  eval_batch_size: 32
+  eval_batch_size: 16
   scheduler: null
+
+  num_integration_steps: 1000 # 1000
+
+  init_buffer_from_train: false
+  init_buffer_from_prior: true
 
 
 energy:

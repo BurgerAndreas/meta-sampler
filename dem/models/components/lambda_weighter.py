@@ -8,6 +8,7 @@ from .noise_schedules import BaseNoiseSchedule
 Rescales the signal to noise ratio for small/large noising times
 """
 
+
 class BaseLambdaWeighter(ABC):
     @abstractmethod
     def __call__(self, t: torch.Tensor) -> torch.Tensor:

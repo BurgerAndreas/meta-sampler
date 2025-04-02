@@ -4,7 +4,9 @@ model:
   # populate buffer
   num_buffer_samples_to_generate_init: 128
   num_buffer_samples_to_generate_per_epoch: 128
-  gen_batch_size: 32
+  
+  integrate_energy_batch_size: 32
+  integrate_model_batch_size: -1
 
   # batch size during training
   num_samples_to_sample_from_buffer: 16
