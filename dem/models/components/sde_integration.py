@@ -3,6 +3,7 @@ from contextlib import contextmanager
 import math
 import numpy as np
 import torch
+from tqdm import tqdm
 
 from dem.energies.base_energy_function import BaseEnergyFunction
 from dem.models.components.sdes import VEReverseSDE
@@ -169,6 +170,7 @@ def _integrate_sde(
     num_negative_time_steps=100,
     clipper=None,
     temperature=1.0,
+    verbose=True,
 ):
     """Numerically integrate a stochastic differential equation (SDE).
 
@@ -209,7 +211,7 @@ def _integrate_sde(
     # Conditionally disable gradient computation to save memory during inference
     with conditional_no_grad(no_grad):
         # Main integration loop: step through time points
-        for t in times:
+        for t in tqdm(times, desc="IntegrateSDE", disable=not verbose):
             # Perform a single Euler-Maruyama step of the SDE
             # This updates the state x based on the drift and diffusion terms
             x, f = euler_maruyama_step(

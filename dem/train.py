@@ -9,6 +9,7 @@ from lightning import Callback, LightningDataModule, LightningModule, Trainer
 from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig
 import torch
+from lightning.pytorch.profilers import SimpleProfiler, AdvancedProfiler, PyTorchProfiler
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 # ------------------------------------------------------------------------------------ #
@@ -101,6 +102,12 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         logger=logger,
         num_sanity_val_steps=0,
         enable_model_summary=False,
+        # profiler=PyTorchProfiler(
+        #     dirpath=".",
+        #     filename="profile.prof",
+        #     # record_shapes=True,
+        #     profile_memory=True,
+        # ),
         # log_every_n_steps=50, # default is 50
     )
 
@@ -123,6 +130,7 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         trainer.validate(
             model=model, datamodule=datamodule, verbose=cfg.get("verbose_val")
         )
+        log.info("Starting to fit!")
         trainer.fit(model=model, datamodule=datamodule, ckpt_path=cfg.get("ckpt_path"))
 
     train_metrics = trainer.callback_metrics

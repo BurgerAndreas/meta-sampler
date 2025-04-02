@@ -20,10 +20,13 @@ from torchmetrics import MeanMetric
 from tqdm import tqdm
 import os
 import traceback
+import time
+import functools
 
 from dem.energies.base_energy_function import BaseEnergyFunction
 from dem.utils.data_utils import remove_mean
 from dem.utils.logging_utils import fig_to_image
+from dem.utils import RankedLogger
 
 from .components.clipper import Clipper
 from .components.cnf import CNF
@@ -43,6 +46,28 @@ from .components.score_scaler import BaseScoreScaler
 from .components.sde_integration import integrate_sde, integrate_constrained_sde
 from .components.sdes import VEReverseSDE
 
+ranklogger = RankedLogger(__name__, rank_zero_only=True)
+
+
+def timer_decorator(func):
+    """
+    A decorator that times and ranklogger.infos the execution time of a function.
+    
+    Args:
+        func: The function to be timed
+        
+    Returns:
+        The wrapped function that includes timing functionality
+    """
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        ranklogger.info(f"'{func.__name__}' took {elapsed_time:.1f} seconds to execute")
+        return result
+    return wrapper
 
 class ProjectedVectorField:
     """Wrapper class to project out components of a vector field."""
@@ -523,6 +548,7 @@ class DEMLitModule(LightningModule):
         else:
             return self.lambda_weighter(times) * error_norms
 
+    @timer_decorator
     def training_step(self, batch, batch_idx):
         """Samples from the buffer (iDEM) or prior (pDEM), noises and denoises, computes the loss."""
         loss = 0.0
@@ -561,14 +587,7 @@ class DEMLitModule(LightningModule):
             dem_loss, aux_output = self.get_loss(
                 times, noised_samples, return_aux_output=True
             )
-            # assert torch.isfinite(
-            #     dem_loss
-            # ).all(), f"{(~torch.isfinite(dem_loss)).sum().item()} entries are NaN/inf. Epoch={self.current_epoch}, step={self.global_step}"
-            # for k, v in aux_output.items():
-            #     assert torch.isfinite(
-            #         v
-            #     ).all(), f"NaN/inf in {k}\n{v}. Epoch={self.current_epoch}, step={self.global_step}"
-
+            
             # Uncomment for SM
             # dem_loss = self.get_score_loss(times, iter_samples, noised_samples)
             self.log_dict(
@@ -639,14 +658,14 @@ class DEMLitModule(LightningModule):
             lr = optimizer.param_groups[0]["lr"]
             self.log("train/lr", lr, on_step=True, on_epoch=False, prog_bar=False)
         except Exception as e:
-            print(f"Error logging learning rate: {e}")
+            ranklogger.info(f"Error logging learning rate: {e}")
             pass
 
         try:
             temperature = self.temperature_schedule(self.global_step)
             self.log("train/temperature", temperature, on_step=True, on_epoch=False, prog_bar=False)
         except Exception as e:
-            print(f"Error logging temperature: {e}")
+            ranklogger.info(f"Error logging temperature: {e}")
             pass
         return loss
 
@@ -657,6 +676,7 @@ class DEMLitModule(LightningModule):
             if self.should_train_cfm(batch_idx):
                 self.cfm_net.update_ema()
 
+    @timer_decorator
     def generate_samples(
         self,
         reverse_sde: VEReverseSDE = None,
@@ -667,6 +687,7 @@ class DEMLitModule(LightningModule):
         projection_mask=None,
         temperature=1.0,
         batch_size=-1,
+        verbose=True
     ) -> torch.Tensor:
         num_samples = num_samples or self.num_buffer_samples_to_generate_per_epoch
 
@@ -682,6 +703,7 @@ class DEMLitModule(LightningModule):
             projection_mask=projection_mask,
             temperature=temperature,
             batch_size=batch_size,
+            verbose=verbose
         )
 
     def integrate(
@@ -698,6 +720,7 @@ class DEMLitModule(LightningModule):
         constrained_score_norm_target=0.0,
         temperature=1.0,
         batch_size=-1,
+        verbose=True
     ) -> torch.Tensor:
 
         if reverse_sde is None:
@@ -744,6 +767,7 @@ class DEMLitModule(LightningModule):
             clipper=self.clipper,
             temperature=temperature,
             batch_size=batch_size,
+            verbose=verbose
         )
             
         if return_full_trajectory:
@@ -789,6 +813,7 @@ class DEMLitModule(LightningModule):
             torch.cat(log_p_1s, dim=0),
         )
 
+    @timer_decorator
     def on_train_epoch_end(self) -> None:
         "Lightning hook that is called when a training epoch ends."
         if self.buffer_temperature == "same":
@@ -825,6 +850,7 @@ class DEMLitModule(LightningModule):
             self._log_dist_w2(prefix="val")
             self._log_dist_total_var(prefix="val")
 
+    @timer_decorator
     def _log_energy_w2(self, prefix="val"):
         """Wasserstein distance (EMD) between energy of data set and energy of generated samples"""
         if prefix == "test":
@@ -845,7 +871,7 @@ class DEMLitModule(LightningModule):
             )
 
         if data_set is None:
-            print("Warning: data_set is None skipping energy w2")
+            ranklogger.info("Warning: data_set is None skipping energy w2")
             return
 
         energies = self.energy_function(self.energy_function.normalize(data_set))
@@ -861,6 +887,7 @@ class DEMLitModule(LightningModule):
             prog_bar=False,
         )
 
+    @timer_decorator
     def _log_dist_w2(self, prefix="val"):
         if self.val_temperature == "same":
             temperature = self.temperature_schedule(self.global_step)
@@ -897,6 +924,7 @@ class DEMLitModule(LightningModule):
             prog_bar=False,
         )
 
+    @timer_decorator
     def _log_dist_total_var(self, prefix="val"):
         if self.val_temperature == "same":
             temperature = self.temperature_schedule(self.global_step)
@@ -928,6 +956,7 @@ class DEMLitModule(LightningModule):
             prog_bar=False,
         )
 
+    @timer_decorator
     def _compute_total_var(self, generated_samples, data_set):
         """Compute total variation distance between histograms of interatomic distances.
 
@@ -965,6 +994,7 @@ class DEMLitModule(LightningModule):
 
         return total_var
 
+    @timer_decorator
     def compute_log_z(self, cnf, prior, samples, prefix, name):
         nll, _, _, _ = self.compute_nll(cnf, prior, samples)
         # energy function will unnormalize the samples itself
@@ -995,6 +1025,7 @@ class DEMLitModule(LightningModule):
             prog_bar=False,
         )
 
+    @timer_decorator
     def compute_and_log_nll(self, cnf, prior, samples, prefix, name):
         batch_size = self.nll_batch_size
         num_batches = math.ceil(len(samples) / float(batch_size))
@@ -1083,7 +1114,7 @@ class DEMLitModule(LightningModule):
             backwards_samples = backwards_samples[indices]
 
         if batch is None:
-            print(f"Warning batch is None skipping eval for {prefix}")
+            ranklogger.info(f"Warning batch is None skipping eval for {prefix}")
             self.eval_step_outputs.append({"gen_0": backwards_samples})
             return
 
@@ -1111,7 +1142,7 @@ class DEMLitModule(LightningModule):
             loss_metric,
             on_step=True,
             on_epoch=True,
-            # if to print metrics to terminal
+            # if to ranklogger.info metrics to terminal
             prog_bar=False,
         )
 
@@ -1240,9 +1271,11 @@ class DEMLitModule(LightningModule):
 
         self.eval_step_outputs.append(to_log)
 
+    @timer_decorator
     def validation_step(self, batch: torch.Tensor, batch_idx: int) -> None:
         self.eval_step("val", batch, batch_idx)
 
+    @timer_decorator
     def test_step(self, batch: torch.Tensor, batch_idx: int) -> None:
         self.eval_step("test", batch, batch_idx)
     
@@ -1250,15 +1283,15 @@ class DEMLitModule(LightningModule):
         if batch_size <= 0 or batch_size > samples.shape[0]:
             batch_size = samples.shape[0]
         return torch.vmap(self.energy_function, chunk_size=batch_size)(samples)
-                
 
+    @timer_decorator
     def eval_epoch_end(self, prefix: str):
         wandb_logger = get_wandb_logger(self.loggers)
         # convert to dict of tensors assumes [batch, ...]
-        print("-" * 100)
-        print(f"eval_epoch_end: {prefix}")
+        ranklogger.info("-" * 100)
+        ranklogger.info(f"eval_epoch_end: {prefix}")
         if len(self.eval_step_outputs) == 0:
-            print(f"Warning: No eval step outputs for {prefix}")
+            ranklogger.info(f"Warning: No eval step outputs for {prefix}")
             return
 
         outputs = {
@@ -1335,14 +1368,14 @@ class DEMLitModule(LightningModule):
             d = dict(zip(names, dists))
             self.log_dict(d, sync_dist=True)
         else:
-            print(
+            ranklogger.info(
                 f"Warning: No data_0 in outputs for {prefix}. Skipping distribution distances."
             )
 
         # Compute energy of samples
         try:
-            print("=" * 10)
-            print(f"assessing samples for {prefix}")
+            ranklogger.info("=" * 10)
+            ranklogger.info(f"assessing samples for {prefix}")
             assessments = self.energy_function.assess_samples(samples)
             if assessments is not None:
                 d = {}
@@ -1350,11 +1383,12 @@ class DEMLitModule(LightningModule):
                     d[f"{prefix}/{key}"] = value
                 self.log_dict(d, sync_dist=True)
         except Exception as e:
-            print(f"Error assessing samples: \n---\n{e}\n---\n")
-            print("=" * 10)
+            ranklogger.info(f"Error assessing samples: \n---\n{e}\n---\n")
+            ranklogger.info("=" * 10)
 
         self.eval_step_outputs.clear()
 
+    @timer_decorator
     def _cfm_test_epoch_end(self) -> None:
         """
         Performs end-of-test-epoch operations for the Continuous Flow Matching (CFM) model.
@@ -1370,7 +1404,7 @@ class DEMLitModule(LightningModule):
         """
         test_set = self.energy_function.sample_test_set(-1, full=True)
         if test_set is None:
-            print("Warning: test_set is None, skipping CFM test epoch end")
+            ranklogger.info("Warning: test_set is None, skipping CFM test epoch end")
             return
 
         forwards_samples = self.compute_and_log_nll(
@@ -1380,7 +1414,7 @@ class DEMLitModule(LightningModule):
         batch_size = self.nll_batch_size
         final_samples = []
         n_batches = math.ceil(self.num_samples_to_save / float(batch_size))
-        print(f"Generating {self.num_samples_to_save} CFM samples")
+        ranklogger.info(f"Generating {self.num_samples_to_save} CFM samples")
         for i in range(n_batches):
             start = time.time()
             backwards_samples = self.cfm_cnf.generate(
@@ -1389,14 +1423,11 @@ class DEMLitModule(LightningModule):
 
             final_samples.append(backwards_samples)
             end = time.time()
-            print(f"batch {i} took{end - start: 0.2f}s")
+            ranklogger.info(f"batch {i} took{end - start: 0.2f}s")
             break
 
-        print("Computing log Z and ESS on generated samples")
+        ranklogger.info("Computing log Z and ESS on generated samples")
         final_samples = torch.cat(final_samples, dim=0)
-        assert torch.isfinite(
-            final_samples
-        ).all(), f"final_samples: Max={final_samples.max()}, Min={final_samples.min()}"
 
         self.energy_function.log_on_epoch_end(
             latest_samples=final_samples,
@@ -1409,16 +1440,18 @@ class DEMLitModule(LightningModule):
         output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
         path = f"{output_dir}/finalsamples_{self.num_samples_to_save}.pt"
         torch.save(final_samples, path)
-        print(f"Saving samples to {path}")
+        ranklogger.info(f"Saving samples to {path}")
 
         os.makedirs(self.energy_function.name, exist_ok=True)
         path2 = f"{self.energy_function.name}/samples_{self.hparams.version}_{self.num_samples_to_save}.pt"
         torch.save(final_samples, path2)
-        print(f"Saving samples to {path2}")
+        ranklogger.info(f"Saving samples to {path2}")
 
+    @timer_decorator
     def on_validation_epoch_end(self) -> None:
         self.eval_epoch_end("val")
 
+    @timer_decorator
     def on_test_epoch_end(self) -> None:
         wandb_logger = get_wandb_logger(self.loggers)
 
@@ -1472,7 +1505,7 @@ class DEMLitModule(LightningModule):
         )
 
         if self.energy_function.test_set is not None:
-            print("one_test_epoch_end: Computing large batch distribution distances")
+            ranklogger.info("one_test_epoch_end: Computing large batch distribution distances")
             test_set = self.energy_function.sample_test_set(-1, full=True)
             names, dists = compute_full_dataset_distribution_distances(
                 self.energy_function.unnormalize(final_samples)[:, None],
@@ -1486,11 +1519,11 @@ class DEMLitModule(LightningModule):
                 d["test/full_batch/dist_total_var"] = self._compute_total_var(
                     self.energy_function.unnormalize(final_samples), test_set
                 )
-            print(
+            ranklogger.info(
                 f"one_test_epoch_end: Done computing large batch distribution distances. W2 = {dists[1]}"
             )
         else:
-            print("Warning: No test set provided. Skipping distribution distances.")
+            ranklogger.info("Warning: No test set provided. Skipping distribution distances.")
             d = {}
             # raise NotImplementedError("No test set provided")
 
@@ -1500,7 +1533,7 @@ class DEMLitModule(LightningModule):
                 for key, value in assessments.items():
                     d[f"test/{key}"] = value
         except Exception as e:
-            print(f"Error assessing samples: \n---\n{e}\n---\n")
+            ranklogger.info(f"Error assessing samples: \n---\n{e}\n---\n")
             # raise e
 
         self.log_dict(d, sync_dist=True)
@@ -1511,19 +1544,21 @@ class DEMLitModule(LightningModule):
         # output_dir = "/".join(output_dir)
         path = f"{output_dir}/samples_{self.num_samples_to_save}.pt"
         torch.save(final_samples, path)
-        print(f"one_test_epoch_end: Saving samples to {path}")
+        ranklogger.info(f"one_test_epoch_end: Saving samples to {path}")
 
         path2 = f"dem_outputs/{self.energy_function.name}/samples_{self.hparams.version}_{self.num_samples_to_save}.pt"
         os.makedirs(os.path.dirname(path2), exist_ok=True)
         torch.save(final_samples, path2)
-        print(f"one_test_epoch_end: Saving samples to {path2}")
+        ranklogger.info(f"one_test_epoch_end: Saving samples to {path2}")
 
+    @timer_decorator
     def on_fit_start(self):
         """Called at the beginning of training after sanity check."""
         wandb_logger = get_wandb_logger(self.loggers)
         if wandb_logger:
             self.energy_function.log_datasets(wandb_logger)
 
+    @timer_decorator
     def setup(self, stage: str) -> None:
         """Lightning hook that is called at the beginning of fit (train + validate), validate,
         test, or predict.
@@ -1533,31 +1568,15 @@ class DEMLitModule(LightningModule):
 
         :param stage: Either `"fit"`, `"validate"`, `"test"`, or `"predict"`.
         """
+        ranklogger.info("Setting up model...")
 
         # setup energy function
         self.energy_function.setup()
+        ranklogger.info("Energy function setup complete")
 
         # # log datasets
         # wandb_logger = get_wandb_logger(self.loggers)
         # self.energy_function.log_datasets(wandb_logger)
-
-        if self.buffer_temperature == "same":
-            temperature = self.temperature_schedule(self.global_step)
-        else:
-            temperature = self.buffer_temperature
-
-        def _grad_fxn(t, x):
-            return self.clipped_grad_fxn(
-                t,
-                x,
-                self.energy_function,
-                self.noise_schedule,
-                self.num_estimator_mc_samples,
-                # use_vmap=self.use_vmap,
-                temperature=temperature,
-            )
-
-        reverse_sde = VEReverseSDE(_grad_fxn, self.noise_schedule)
 
         self.prior = self.partial_prior(
             device=self.device, scale=self.noise_schedule.h(1) ** 0.5
@@ -1569,25 +1588,53 @@ class DEMLitModule(LightningModule):
         elif self.init_buffer_from_prior:
             init_states = self.prior.sample(self.num_buffer_samples_to_generate_init)
         else:
+            ranklogger.info("Generating initial buffer samples...")
+            t1 = time.time()
+            if self.buffer_temperature == "same":
+                temperature = self.temperature_schedule(self.global_step)
+            else:
+                temperature = self.buffer_temperature
+
+            def _grad_fxn(t, x):
+                return self.clipped_grad_fxn(
+                    t,
+                    x,
+                    self.energy_function,
+                    self.noise_schedule,
+                    self.num_estimator_mc_samples,
+                    # use_vmap=self.use_vmap,
+                    temperature=temperature,
+                )
+
+            reverse_sde = VEReverseSDE(_grad_fxn, self.noise_schedule)
             init_states = self.generate_samples(
                 reverse_sde=reverse_sde,
                 num_samples=self.num_buffer_samples_to_generate_init,
                 diffusion_scale=self.diffusion_scale,
                 temperature=temperature,
                 batch_size=self.gen_batch_size,
-            )
-        init_energies = self.energy_function(init_states)
+            ).detach()
+            t2 = time.time()
+            ranklogger.info(f"Buffer initialized in {t2 - t1:.1f} seconds")
+        
+        # init_energies = self.energy_function(init_states)
+        init_energies = self.get_energies(init_states, batch_size=self.energy_function.plotting_batch_size).detach()
         self.buffer.add(init_states, init_energies)
 
         if self.hparams.compile and stage == "fit":
+            ranklogger.info("Compiling model...")
+            t1 = time.time()
             self.net = torch.compile(self.net)
             self.cfm_net = torch.compile(self.cfm_net)
+            t2 = time.time()
+            ranklogger.info(f"Model compiled in {t2 - t1:.1f} seconds")
 
         if self.nll_with_cfm or self.should_train_cfm(0):
             self.cfm_prior = self.partial_prior(
                 device=self.device, scale=self.cfm_prior_std
             )
 
+    @timer_decorator
     def configure_optimizers(self) -> Dict[str, Any]:
         """Choose what optimizers and learning-rate schedulers to use in your optimization.
         Normally you'd need one. But in the case of GANs or similar you might have multiple.
