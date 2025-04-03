@@ -2,17 +2,17 @@
 
 model:
   # populate buffer
-  num_buffer_samples_to_generate_init: 128
-  num_buffer_samples_to_generate_per_epoch: 128
+  num_buffer_samples_to_generate_init: 512
+  num_buffer_samples_to_generate_per_epoch: 512
   
   integrate_energy_batch_size: 32
   integrate_model_batch_size: -1
 
   # batch size during training
-  num_samples_to_sample_from_buffer: 32
+  num_samples_to_sample_from_buffer: 16
 
   # per sample in batch
-  num_estimator_mc_samples: 20
+  num_estimator_mc_samples: 32
 
   # used to generate samples (integrate) and W2 distance
   eval_batch_size: 32
@@ -22,3 +22,6 @@ model:
   # if you reduce num_buffer_samples_to_generate_init, you need to reduce min_length
   buffer:
     min_sample_length: 16
+
+energy:
+  plotting_batch_size: 800

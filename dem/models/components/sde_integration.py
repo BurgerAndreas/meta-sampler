@@ -212,7 +212,8 @@ def _integrate_sde(
     # Conditionally disable gradient computation to save memory during inference
     with conditional_no_grad(no_grad):
         # Main integration loop: step through time points
-        for t in tqdm(times, desc="IntegrateSDE", disable=not verbose):
+        # for t in tqdm(times, desc="IntegrateSDE", disable=not verbose):
+        for t in times:
             # Perform a single Euler-Maruyama step of the SDE
             # This updates the state x based on the drift and diffusion terms
             x, f = euler_maruyama_step(

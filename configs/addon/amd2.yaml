@@ -2,8 +2,8 @@
 
 model:
   # populate buffer
-  num_buffer_samples_to_generate_init: 128
-  num_buffer_samples_to_generate_per_epoch: 128
+  num_buffer_samples_to_generate_init: 512
+  num_buffer_samples_to_generate_per_epoch: 512
   
   integrate_energy_batch_size: 32
   integrate_model_batch_size: -1
@@ -15,9 +15,9 @@ model:
   num_estimator_mc_samples: 40
 
   # used to generate samples (integrate) and W2 distance
-  eval_batch_size: 16
+  eval_batch_size: 32
   # negative log likelihood = augmented integration
-  nll_batch_size: 16
+  nll_batch_size: 32
   
   # if you reduce num_buffer_samples_to_generate_init, you need to reduce min_length
   buffer:
