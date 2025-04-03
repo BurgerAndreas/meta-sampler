@@ -12,7 +12,7 @@ model:
   num_samples_to_sample_from_buffer: 16
 
   # per sample in batch
-  num_estimator_mc_samples: 40
+  num_estimator_mc_samples: 32
 
   # used to generate samples (integrate) and W2 distance
   eval_batch_size: 16
