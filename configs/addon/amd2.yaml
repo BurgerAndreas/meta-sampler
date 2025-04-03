@@ -15,9 +15,9 @@ model:
   num_estimator_mc_samples: 40
 
   # used to generate samples (integrate) and W2 distance
-  eval_batch_size: 32
+  eval_batch_size: 16
   # negative log likelihood = augmented integration
-  nll_batch_size: 32
+  nll_batch_size: 16
   
   # if you reduce num_buffer_samples_to_generate_init, you need to reduce min_length
   buffer:
