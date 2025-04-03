@@ -228,7 +228,7 @@ def _integrate_sde(
                 )
 
             # Save the current state in the trajectory
-            samples.append(x)
+            samples.append(x.detach())
 
     # Combine all states into a single tensor representing the full trajectory
     samples = torch.stack(samples)

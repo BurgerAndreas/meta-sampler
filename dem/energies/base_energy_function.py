@@ -682,6 +682,9 @@ class BaseEnergyFunction(ABC):
             if latest_samples is not None:
                 plt.close()
                 fig, ax = plt.subplots()
+                latest_samples = torch.clamp(
+                    latest_samples, self._plotting_bounds[0], self._plotting_bounds[1]
+                )
                 ax.scatter(*latest_samples.detach().cpu().T)
                 plt.xlim(self._plotting_bounds[0], self._plotting_bounds[1])
                 plt.ylim(self._plotting_bounds[0], self._plotting_bounds[1])
@@ -693,6 +696,9 @@ class BaseEnergyFunction(ABC):
                     latest_samples, "dem_generated_samples"
                 )
                 wandb_logger.log_image(f"{prefix}generated_samples", [img])
+                print(
+                    f"Logging {latest_samples.shape[0]} samples for {prefix}generated_samples to wandb"
+                )
 
             plt.close()
 

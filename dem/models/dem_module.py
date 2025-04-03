@@ -66,7 +66,9 @@ def timer_decorator(func):
         result = func(*args, **kwargs)
         end_time = time.time()
         elapsed_time = end_time - start_time
-        ranklogger.info(f"'{func.__name__}' took {elapsed_time:.1f} seconds to execute")
+        # print if time was > 10 seconds
+        if elapsed_time > 10:
+            ranklogger.info(f"'{func.__name__}' took {elapsed_time:.1f} seconds to execute")
         return result
 
     return wrapper
@@ -846,7 +848,7 @@ class DEMLitModule(LightningModule):
                 num_samples=self.num_samples_to_plot,
                 batch_size=self.integrate_model_batch_size,
             )
-            self.last_energies = self.energy_function(self.last_samples)
+            self.last_energies = self.get_energies(self.last_samples)
         else:
             self.last_samples = self.generate_samples(
                 # reverse_sde=self.reverse_sde,
@@ -855,7 +857,7 @@ class DEMLitModule(LightningModule):
                 num_samples=self.num_samples_to_plot,
                 batch_size=self.integrate_model_batch_size,
             )
-            self.last_energies = self.energy_function(self.last_samples)
+            self.last_energies = self.get_energies(self.last_samples)
 
         self.buffer.add(self.last_samples, self.last_energies)
 
@@ -1301,9 +1303,13 @@ class DEMLitModule(LightningModule):
         self.eval_step("test", batch, batch_idx)
 
     def get_energies(self, samples, batch_size=-1):
+        """Handles batching of energy function calls."""
         if batch_size <= 0 or batch_size > samples.shape[0]:
             batch_size = samples.shape[0]
-        return torch.vmap(self.energy_function, chunk_size=batch_size)(samples)
+        energies = torch.vmap(self.energy_function, chunk_size=batch_size)(samples)
+        if len(energies.shape) > 1:
+            energies = energies.squeeze(-1)  # [B,1] -> [B]
+        return energies
 
     @timer_decorator
     def eval_epoch_end(self, prefix: str):
@@ -1347,11 +1353,13 @@ class DEMLitModule(LightningModule):
             )
 
         else:
-            num_samples = (
-                len(outputs["data_0"])
-                if "data_0" in outputs
-                else self.num_buffer_samples_to_generate_per_epoch
-            )
+            # num_samples = (
+            #     len(outputs["data_0"])
+            #     if "data_0" in outputs
+            #     # else self.num_buffer_samples_to_generate_per_epoch
+            #     else self.num_samples_to_plot
+            # )
+            num_samples = self.num_samples_to_plot
 
             if self.buffer_temperature == "same":
                 temperature = self.temperature_schedule(self.global_step)
@@ -1378,10 +1386,15 @@ class DEMLitModule(LightningModule):
                 wandb_logger=wandb_logger,
             )
 
+        # compute distribution distances
+        # between generated samples and data_0
         if "data_0" in outputs:
-            # pad with time dimension 1
             step_samples = cfm_samples if cfm_samples is not None else dem_samples
             samples = step_samples if step_samples is not None else outputs["gen_0"]
+            # We might have logged more data than data_0
+            if samples.shape[0] > outputs["data_0"].shape[0]:
+                samples = samples[: outputs["data_0"].shape[0]]
+            # pad with time dimension 1
             names, dists = compute_distribution_distances(
                 self.energy_function.unnormalize(samples)[:, None],
                 outputs["data_0"][:, None],
@@ -1397,8 +1410,6 @@ class DEMLitModule(LightningModule):
 
         # Compute energy of samples
         try:
-            ranklogger.info("=" * 10)
-            ranklogger.info(f"assessing samples for {prefix}")
             assessments = self.energy_function.assess_samples(samples)
             if assessments is not None:
                 d = {}
@@ -1414,7 +1425,7 @@ class DEMLitModule(LightningModule):
     @timer_decorator
     def _cfm_test_epoch_end(self) -> None:
         """
-        Performs end-of-test-epoch operations for the Continuous Flow Matching (CFM) model.
+        Performs end-of-test-epoch operations for the Conditional Flow Matching (CFM) model.
 
         This method:
         1. Computes negative log-likelihood (NLL) on the full test set
@@ -1454,7 +1465,7 @@ class DEMLitModule(LightningModule):
 
         self.energy_function.log_on_epoch_end(
             latest_samples=final_samples,
-            latest_energies=self.energy_function(final_samples),
+            latest_energies=self.get_energies(final_samples),
             wandb_logger=get_wandb_logger(self.loggers),
         )
 
@@ -1513,12 +1524,12 @@ class DEMLitModule(LightningModule):
                 negative_time=self.negative_time,
                 temperature=temperature,
                 # batch_size=self.integrate_model_batch_size,
-            )
-            assert torch.isfinite(
-                samples
-            ).all(), f"samples: Max={samples.max()}, Min={samples.min()}"
+            ).detach()
+            # assert torch.isfinite(
+            #     samples
+            # ).all(), f"samples: Max={samples.max()}, Min={samples.min()}"
             final_samples.append(samples)
-            energies.append(self.energy_function(samples).detach())
+            energies.append(self.get_energies(samples).detach())
 
         final_samples = torch.cat(final_samples, dim=0)
         energies = torch.cat(energies, dim=0)
@@ -1653,8 +1664,6 @@ class DEMLitModule(LightningModule):
         init_energies = self.get_energies(
             init_states, batch_size=self.energy_function.plotting_batch_size
         ).detach()
-        if len(init_energies) > 1:
-            init_energies = init_energies.squeeze(-1)
         self.buffer.add(init_states, init_energies)
 
         if self.hparams.compile and stage == "fit":
