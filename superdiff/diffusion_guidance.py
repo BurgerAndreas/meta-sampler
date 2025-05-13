@@ -234,11 +234,21 @@ $$dx = (v_t(x) + \xi_t\nabla_x\log q_t(x))\cdot dt + \sqrt{2\xi_t}dW_t\,.$$
 """
 
 
-# v_t(x) = dlog(alpha)/dt x - s^2_t d/dt log(s_t/alpha_t) dlog q_t(x)/dx
 @jax.jit
-def vector_field(t, x, xi, state):
+def get_sde_drift(t, x, xi, state):
+    """Vector field of the diffusion process
+
+    vector field
+    v_t(x) = dlog(alpha)/dt x - beta_t * dlog(q_t(x))/dx
+    beta_t = s^2_t d/dt log(s_t/alpha_t)
+    
+    used to simulate the SDE
+    dx = f_t(x) dt + sqrt(2 * eps_t) dW_t
+    drift f_t(x) = v_t(x) + eps_t * dlog(q_t(x))/dx
+    """
     
     def sdlogqdx(_t, _x):
+        # NN = \sigma_t\nabla_x\log q_t(x)
         return state.apply_fn(state.params, _t, _x)
 
     dxdt = (
@@ -264,7 +274,7 @@ def generate_samples(key, vf_state, bs=512):
         noise_term = jnp.sqrt(2 * xi * beta(t) * dt) * random.normal(
             ikey, shape=(bs, 2)
         )
-        diff_vec_field = -dt * vector_field(t, x_gen[:, i, :], xi, vf_state)
+        diff_vec_field = -dt * get_sde_drift(t, x_gen[:, i, :], xi, vf_state)
         dx = diff_vec_field + noise_term
         x_gen = x_gen.at[:, i + 1, :].set(x_gen[:, i, :] + dx)
         t += -dt
@@ -296,35 +306,6 @@ def plot_samples(x_gen, t_axis, key):
     fname = os.path.join(plotfolder, "gen_data.png")
     plt.savefig(fname)
     print(f"Saved\n {fname}")
-
-
-# SDE
-
-# v_t(x) = dlog(alpha)/dt x - s^2_t d/dt log(s_t/alpha_t) dlog q_t(x)/dx
-# dx = (v_t(x) - xi*beta_t*dlog q_t(x)/dx)dt + sqrt(2*beta_t*xi*dt)*eps
-@jax.jit
-def vector_field_SDE(state, t, x):
-    sdlogqdx = lambda _t, _x: state.apply_fn(state.params, _t, _x)
-    dxdt = dlog_alphadt(t) * x - 2 * beta(t) * sdlogqdx(t, x)
-    return dxdt
-
-
-def generate_samples_sde(key, state):
-    dt = 1e-2
-    t = 1.0
-    n = int(t / dt)
-    t = t * jnp.ones((bs, 1))
-    key, ikey = random.split(key, num=2)
-    x_gen = jnp.zeros((bs, n + 1, ndim))
-    x_gen = x_gen.at[:, 0, :].set(random.normal(ikey, shape=(bs, ndim)))
-    for i in trange(n, desc="Generating samples with SDE"):
-        key, ikey = random.split(key, num=2)
-        dx = -dt * vector_field_SDE(state, t, x_gen[:, i, :]) + jnp.sqrt(
-            2 * jnp.exp(log_sigma(t)) * beta(t) * dt
-        ) * random.normal(ikey, shape=(bs, 2))
-        x_gen = x_gen.at[:, i + 1, :].set(x_gen[:, i, :] + dx)
-        t += -dt
-    return x_gen
 
 
 # Train a classifier to separate up and down regions
@@ -359,7 +340,7 @@ def train_classifier(key):
 
     # Training loop
     cls_bs = 256
-    num_cls_iterations = 5000
+    num_cls_iterations = 1000
     losses = []
 
     for iter in trange(num_cls_iterations, desc="Training classifier"):
@@ -383,10 +364,10 @@ def train_classifier(key):
 
     # Plot training loss
     plt.figure(figsize=(6, 4))
-    plt.plot(losses)
+    plt.semilogy(losses)
     plt.grid()
     plt.xlabel("Iteration")
-    plt.ylabel("Loss")
+    plt.ylabel("Loss (log scale)")
     plt.title("Classifier Training Loss")
     fname = os.path.join(plotfolder, "classifier", "loss.png")
     plt.savefig(fname)
@@ -465,57 +446,27 @@ def generate_samples_from_vectorfield(
     return x_gen
 
 
-def classifier_vectorfield(t, x, xi, classifier_state, vf_state, target_class, guidance_scale):
+def classifier_vectorfield(t, x, xi, cls_state, vf_state, target_class, guidance_scale):
     # Define classifier gradient function
     def classifier_grad(x):
         return jax.grad(
-            lambda x_input: classifier_state.apply_fn(
-                classifier_state.params, x_input
+            lambda x_input: cls_state.apply_fn(
+                cls_state.params, x_input
             ).sum()
         )(x)
 
     direction = -1.0 if target_class == "up" else 1.0
     cls_grad = jax.vmap(classifier_grad)(x)
     guidance_vec = direction * guidance_scale * t * cls_grad
-    return guidance_vec + vector_field(t=t, x=x, xi=xi, state=vf_state)
+    return guidance_vec + get_sde_drift(t=t, x=x, xi=xi, state=vf_state)
 
-def plot_samples_with_guidance(key):
-    # Generate samples with and without guidance
-    key, gen_key_no_guide, gen_key_guide = random.split(key, 3)
-
-    x_gen_unguided = generate_samples_from_vectorfield(
-        gen_key_guide,
-        vf_fn=lambda t, x, xi: classifier_vectorfield(t, x, xi, cls_state, vf_state, "up", 0.0),
-        bs=bs,
-    )
-    
-    # Generate samples with classifier guidance
-    guidance_scale = 2.0  # Adjust strength as needed
-
-    # Generate "up" class samples with strong guidance
-    x_gen_up = generate_samples_from_vectorfield(
-        gen_key_guide,
-        vf_fn=lambda t, x, xi: classifier_vectorfield(
-            t, x, xi, cls_state, vf_state, "up", guidance_scale
-        ),
-        bs=bs,
-    )
-
-    # Generate "down" class samples with strong guidance
-    x_gen_down = generate_samples_from_vectorfield(
-        gen_key_guide,
-        vf_fn=lambda t, x, xi: classifier_vectorfield(
-            t, x, xi, cls_state, vf_state, "down", guidance_scale
-        ),
-        bs=bs,
-    )
-
+def plot_samples_with_guidance(x_gen_unguided, x_gen_up, x_gen_down):
     # Plot samples with guidance
     nrows = 3
     plt.figure(figsize=(6, nrows * 6))  # width, height
 
     # Plot samples without guidance (original generation)
-    plt.subplot(nrows, 1, 2)
+    plt.subplot(nrows, 1, 1)
     plt.scatter(x_gen_unguided[:, -1, 0], x_gen_unguided[:, -1, 1], alpha=0.5)
     plt.xlim(-3, 3)
     plt.ylim(-3, 3)
@@ -523,7 +474,7 @@ def plot_samples_with_guidance(key):
     plt.title("Samples with zero guidance")
 
     # Plot samples with guidance
-    plt.subplot(nrows, 1, 3)
+    plt.subplot(nrows, 1, 2)
     plt.scatter(x_gen_up[:, -1, 0], x_gen_up[:, -1, 1], alpha=0.5)
     plt.xlim(-3, 3)
     plt.ylim(-3, 3)
@@ -531,7 +482,7 @@ def plot_samples_with_guidance(key):
     plt.title(f"Samples with up guidance (scale={guidance_scale})")
 
     # Plot samples with guidance
-    plt.subplot(nrows, 1, 4)
+    plt.subplot(nrows, 1, 3)
     plt.scatter(x_gen_down[:, -1, 0], x_gen_down[:, -1, 1], alpha=0.5)
     plt.xlim(-3, 3)
     plt.ylim(-3, 3)
@@ -562,7 +513,7 @@ def vector_field_jvp(key, t, x, state):
     eps = jax.random.randint(key, x.shape, 0, 2).astype(float) * 2 - 1.0
 
     def sdlogqdx(_x):
-        return state.apply_fn(state.params, t, _x)
+        return state.apply_fn(vf_state.params, t, _x)
 
     sdlogdx_val, jvp_val = jax.jvp(sdlogqdx, (x,), (eps,))
     return sdlogdx_val, (jvp_val * eps).sum(1, keepdims=True)
@@ -572,7 +523,7 @@ def vector_field_jvp(key, t, x, state):
 
 @jax.jit
 def get_dll(t, x, sdlogdx_val, divlog_val, dxdt):
-    """
+    r"""
     Compute the log-likelihood derivative.
 
     Args:
@@ -593,7 +544,7 @@ def get_dll(t, x, sdlogdx_val, divlog_val, dxdt):
 
 @jax.jit
 def get_kappa(t, divlogs, sdlogdxs):
-    """
+    r"""
     Compute the relative weights kappa of different models for isosurface sampling,
     which results in equal (change of) density for every model
 
@@ -693,8 +644,150 @@ def add_isosurface(vf_jvp_fn1, vf_jvp_fn2,key, bs=512):
     plt.savefig(fname)
     print(f"Saved {fname}")
 
+# Stochastic Superposition
+@jax.jit
+def get_sscore(state, t, x):
+    r"""
+    Get the score from a model state.
+    
+    NN = \sigma_t \nabla_x \log q_t(x)
+    
+    Args:
+      state: Model state
+      t: Time parameter
+      x: Input data
+
+    Returns:
+      Score value
+    """
+    return state.apply_fn(state.params, t, x)
+
+# @jax.jit
+def get_guided_sscore(t, x, target_class, guidance_scale):
+    direction = -1.0 if target_class == "up" else 1.0
+    cls_grad = jax.vmap(jax.grad(
+        lambda x_input: cls_state.apply_fn(
+            cls_state.params, x_input
+        ).sum()
+    ))(x)
+    guidance_vec = direction * guidance_scale * t * cls_grad
+    return guidance_vec + get_sscore(vf_state, t, x)
+
+@jax.jit
+def get_stoch_dll(t, dt, x, dx, sscore):
+    """
+    Compute stochastic log-likelihood derivative.
+
+    Args:
+      t: Time parameter
+      dt: Time step
+      x: Input data
+      dx: Change in x
+      sscore: Score value
+
+    Returns:
+      Stochastic log-likelihood derivative
+    """
+    output = ndim * dt * dlog_alphadt(t) - dt * beta(t) * (sscore**2) / jnp.exp(
+        log_sigma(t)
+    )
+    output += (dx + dt * dlog_alphadt(t) * x) * sscore / jnp.exp(log_sigma(t))
+    return output.sum(1)
+
+
+@jax.jit
+def select_kappa(ikey, t, dt, x, sdlogdx_1, sdlogdx_2):
+    noise = jnp.sqrt(2 * jnp.exp(log_sigma(t)) * beta(t) * dt) * random.normal(
+        ikey, shape=(bs, 2)
+    )
+    dx_ind = -dt * (dlog_alphadt(t) * x - 2 * beta(t) * sdlogdx_2) + noise
+    kappa = (
+        -dt
+        * beta(t)
+        * (sdlogdx_1 - sdlogdx_2)
+        * (sdlogdx_1 + sdlogdx_2)
+        / jnp.exp(log_sigma(t))
+    )
+    kappa += (
+        (dx_ind + dt * dlog_alphadt(t) * x)
+        * (sdlogdx_1 - sdlogdx_2)
+        / jnp.exp(log_sigma(t))
+    )
+    kappa = -kappa.sum(1) / (
+        dt * 2 * beta(t) * (sdlogdx_1 - sdlogdx_2) ** 2 / jnp.exp(log_sigma(t))
+    ).sum(1)
+    return kappa
+
+def generate_and(key, sscore_fn1, sscore_fn2):
+    eta = 0.9
+    dt = 1e-2 # 1e-3
+    t = 1.0
+    n = int(t / dt)
+    t = t * jnp.ones((bs, 1))
+    key, ikey = random.split(key, num=2)
+    x_gen = jnp.zeros((bs, n + 1, ndim))
+    x_gen = x_gen.at[:, 0, :].set(random.normal(ikey, shape=(bs, ndim)))
+    ll_0 = -0.5 * (x_gen[:, 0, :] ** 2).sum(1) - ndim * jnp.log(2 * jnp.pi)
+    ll_1 = ll_0[:, None] * jnp.ones((bs, n + 1))
+    ll_2 = ll_0[:, None] * jnp.ones((bs, n + 1))
+    for i in trange(n, desc="Stochastic Superposition"):
+        x_t = x_gen[:, i, :]
+        key, ikey = random.split(key, num=2)
+        sdlogdx_1 = sscore_fn1(t, x_t)
+        sdlogdx_2 = sscore_fn2(t, x_t)
+        kappa = select_kappa(ikey, t, dt, x_t, sdlogdx_1, sdlogdx_2)
+        kappa = kappa[:, None]
+        dx = -dt * (
+            dlog_alphadt(t) * x_t
+            - 2 * beta(t) * (sdlogdx_2 + kappa * (sdlogdx_1 - sdlogdx_2))
+        )
+        dx += jnp.sqrt(2 * jnp.exp(log_sigma(t)) * beta(t) * dt) * random.normal(
+            ikey, shape=(bs, 2)
+        )
+        x_gen = x_gen.at[:, i + 1, :].set(x_t + dx)
+        ll_1 = ll_1.at[:, i + 1].set(
+            ll_1[:, i] + get_stoch_dll(t, dt, x_t, dx, sdlogdx_1).squeeze()
+        )
+        ll_2 = ll_2.at[:, i + 1].set(
+            ll_2[:, i] + get_stoch_dll(t, dt, x_t, dx, sdlogdx_2).squeeze()
+        )
+        t += -dt
+
+    return x_gen, ll_1, ll_2
+
+def plot_and(x_gen, ll_1, ll_2, data1, data2, key):
+    plt.figure(figsize=(23, 5))
+    t_axis = np.linspace(0.0, 1.0, 6)
+    n = data1.shape[1]
+    for i in range(len(t_axis)):
+        plt.subplot(1, len(t_axis), i + 1)
+        key, *ikey = random.split(key, 3)
+        t = t_axis[len(t_axis) - 1 - i]
+        plt.scatter(data1[:, -1, 0], data1[:, -1, 1], label="1", alpha=0.3, color=C1)
+        plt.scatter(data2[:, -1, 0], data2[:, -1, 1], label="2", alpha=0.3, color=C2)
+        plt.scatter(
+            x_gen[:, int(n * (t_axis[i])), 0],
+            x_gen[:, int(n * (t_axis[i])), 1],
+            label="gen_data",
+            color=C3,
+        )
+        plt.title(f"t={t}")
+        plt.xlim(-3, 3)
+        plt.ylim(-3, 3)
+        plt.grid()
+        if i == 0:
+            plt.legend(fontsize=15)
+    plt.tight_layout()
+    fname = os.path.join(plotfolder, "toy-and.png")
+    plt.savefig(fname)
+    print(f"Saved {fname}")
+
 
 if __name__ == "__main__":
+    
+    C1 = "#1D9D79"
+    C2 = "#756FB3"
+    C3 = "#D96002"
 
     ndim = 2
     t_0, t_1 = 0.0, 1.0
@@ -730,17 +823,72 @@ if __name__ == "__main__":
     key, ikey = random.split(key)
     x_gen = generate_samples(ikey, vf_state)
     plot_samples(x_gen, t_axis, key)
+    
+    ###################################################################
+    # Classifier guidance
+    ###################################################################
 
     # Train classifier
+    # TODO: 4 classes instead of 2
     key, cls_key = random.split(key)
     cls_state = train_classifier(cls_key)
 
-    plot_samples_with_guidance(key, cls_state)
+    key, gen_key_no_guide, gen_key_guide = random.split(key, 3)
+
+    x_gen_unguided = generate_samples_from_vectorfield(
+        gen_key_guide,
+        vf_fn=lambda t, x, xi: classifier_vectorfield(t, x, xi, cls_state, vf_state, "up", 0.0),
+        bs=bs,
+    )
+
+    # Generate samples with and without guidance
+    key, gen_key_no_guide, gen_key_guide = random.split(key, 3)
+
+    x_gen_unguided = generate_samples_from_vectorfield(
+        gen_key_guide,
+        vf_fn=lambda t, x, xi: classifier_vectorfield(t, x, xi, cls_state, vf_state, "up", 0.0),
+        bs=bs,
+    )
+    
+    # Generate samples with classifier guidance
+    guidance_scale = 2.0  # Adjust strength as needed
+
+    # Generate "up" class samples with strong guidance
+    x_gen_up = generate_samples_from_vectorfield(
+        gen_key_guide,
+        vf_fn=lambda t, x, xi: classifier_vectorfield(
+            t, x, xi, cls_state, vf_state, "up", guidance_scale
+        ),
+        bs=bs,
+    )
+
+    # Generate "down" class samples with strong guidance
+    x_gen_down = generate_samples_from_vectorfield(
+        gen_key_guide,
+        vf_fn=lambda t, x, xi: classifier_vectorfield(
+            t, x, xi, cls_state, vf_state, "down", guidance_scale
+        ),
+        bs=bs,
+    )
+    plot_samples_with_guidance(x_gen_unguided, x_gen_up, x_gen_down)
+    
+    ###################################################################
+    # Superposition
+    ###################################################################
     
     # TODO: vector_field_jvp with guidance
-    vector_field_jvp = partial(vector_field_jvp, state=vf_state)
-    add_isosurface(
-        vector_field_jvp, 
-        vector_field_jvp, 
-        key
+    # vector_field_jvp = partial(vector_field_jvp, state=vf_state)
+    # add_isosurface(
+    #     vector_field_jvp, 
+    #     vector_field_jvp, 
+    #     key
+    # )
+    
+    # TODO: stochastic superposition
+    x_gen_and, ll_1, ll_2 = generate_and(
+        key, 
+        lambda t, x_t: get_guided_sscore(t, x_t, "up", 2.0),
+        lambda t, x_t: get_guided_sscore(t, x_t, "down", 2.0)
     )
+    plot_and(x_gen_and, ll_1, ll_2, x_gen_up, x_gen_down, key)
+    

@@ -20,7 +20,7 @@ import os
 plotfolder = os.path.join(os.path.dirname(__file__), "figs")
 os.makedirs(plotfolder, exist_ok=True)
 
-# ## Data Generation
+# Data Generation
 
 """
 This file implements diffusion models in JAX and Flax on a simple 2D toy dataset.
@@ -127,7 +127,7 @@ fname = os.path.join(plotfolder, "toy-data.png")
 plt.savefig(fname)
 print(f"Saved {fname}")
 
-# ## Define the Model
+# Define the Model
 
 
 class MLP(nn.Module):
@@ -225,12 +225,14 @@ key, ikey = random.split(key)
 state_down = train_model(ikey, partial(sample_data, up=False))
 
 
-# ## Evaluation of the Trained Model
+# Evaluation of the Trained Model
 
 
 # Vector field for SDE sampling
 # v_t(x) = dlog(alpha)/dt x - s^2_t d/dt log(s_t/alpha_t) dlog q_t(x)/dx
+# beta_t = s^2_t d/dt log(s_t/alpha_t)
 # dx = (v_t(x) - xi*beta_t*dlog q_t(x)/dx)dt + sqrt(2*beta_t*xi*dt)*eps
+# drift f_t(x) = v_t(x) + eps_t * dlog(q_t(x))/dx
 @jax.jit
 def vector_field_SDE(state, t, x):
     """
@@ -251,13 +253,15 @@ def vector_field_SDE(state, t, x):
     dxdt = dlog_alphadt(t) * x - 2 * beta(t) * sdlogqdx(t, x)
     return dxdt
 
-
-# Vector field computation with Jacobian-vector product
-# v_t(x) = dlog(alpha)/dt x - s^2_t d/dt log(s_t/alpha_t) dlog q_t(x)/dx
 @jax.jit
-def vector_field_jvp(key, t, x, state):
-    """
+def score_and_divergence(key, t, x, state):
+    r"""
     Compute the vector field and its divergence using JVP.
+    
+    Hutchinson trace estimator
+    $$
+    \text{Tr}(\nabla_x \mathbf{f}(x, t)) \approx \mathbb{E}_v \left[ v^T \nabla_x \mathbf{f}(x, t) v \right]
+    $$
 
     Args:
       key: JAX random key
@@ -268,9 +272,11 @@ def vector_field_jvp(key, t, x, state):
     Returns:
       Tuple of (score, divergence)
     """
+    # random vector
     eps = jax.random.randint(key, x.shape, 0, 2).astype(float) * 2 - 1.0
 
     def sdlogqdx(_x):
+        # NN = \sigma_t\nabla_x\log q_t(x)
         return state.apply_fn(state.params, t, _x)
 
     sdlogdx_val, jvp_val = jax.jvp(sdlogqdx, (x,), (eps,))
@@ -307,7 +313,7 @@ def generate_samples(key, state):
     return x_gen
 
 
-# ### Model up - Generate samples from the "up" model
+# Model up - Generate samples from the "up" model
 
 key, ikey = random.split(key)
 x_gen = generate_samples(ikey, state_up)
@@ -337,7 +343,7 @@ fname = os.path.join(plotfolder, "toy-up.png")
 plt.savefig(fname)
 print(f"Saved {fname}")
 
-# ### Model down - Generate samples from the "down" model
+# Model down - Generate samples from the "down" model
 
 key, ikey = random.split(key)
 x_gen = generate_samples(ikey, state_down)
@@ -368,13 +374,22 @@ plt.savefig(fname)
 print(f"Saved {fname}")
 
 
-# ## Sampling from the isosurface (equal density of both models) (AND)
+# Sampling from the isosurface (equal density of both models) (AND)
 
 
 @jax.jit
 def get_dll(t, x, sdlogdx_val, divlog_val, dxdt):
-    """
-    Compute the log-likelihood derivative.
+    r"""
+    Compute the change in log-likelihood.
+    
+    $$
+    d \log q_{1 - \tau}(x_\tau) =
+    \left\langle dx_\tau, \nabla \log q_{1 - \tau}(x_\tau) \right\rangle
+    + \left\langle \nabla, f_{1 - \tau}(x_\tau) \right\rangle 
+    +
+    \left\langle f_{1 - \tau}(x_\tau) - \frac{g_{1 - \tau}^2}{2} \nabla \log q_{1 - \tau}(x_\tau), \nabla \log q_{1 - \tau}(x_\tau) \right\rangle d\tau
+    $$
+    t = 1 - \tau
 
     Args:
       t: Time parameter
@@ -394,7 +409,7 @@ def get_dll(t, x, sdlogdx_val, divlog_val, dxdt):
 
 @jax.jit
 def get_kappa(t, divlogs, sdlogdxs):
-    """
+    r"""
     Compute the relative weights kappa of different models for isosurface sampling,
     which results in equal (change of) density for every model
 
@@ -435,20 +450,17 @@ t = 1.0
 n = int(t / dt)
 t = t * jnp.ones((bs, 1))
 key, ikey = random.split(key, num=2)
-x_gen = jnp.zeros((bs, n + 1, x_t.shape[1]))
-x_gen = x_gen.at[:, 0, :].set(random.normal(ikey, shape=(bs, x_t.shape[1])))
+x_gen = jnp.zeros((bs, n + 1, ndim))
+x_gen = x_gen.at[:, 0, :].set(random.normal(ikey, shape=(bs, ndim)))
 ll_1 = np.zeros((bs, n + 1))
 ll_2 = np.zeros((bs, n + 1))
 for i in trange(n):
     x_t = x_gen[:, i, :]
     key, ikey = random.split(key, num=2)
-    sdlogdx_1, divdlog_1 = vector_field_jvp(ikey, t, x_t, state_up)
-    sdlogdx_2, divdlog_2 = vector_field_jvp(ikey, t, x_t, state_down)
+    sdlogdx_1, divdlog_1 = score_and_divergence(ikey, t, x_t, state_up)
+    sdlogdx_2, divdlog_2 = score_and_divergence(ikey, t, x_t, state_down)
     # solve linear equations for kappa, proposition 6
     kappa = get_kappa(t, (divdlog_1, divdlog_2), (sdlogdx_1, sdlogdx_2))
-    # f_t(x_t) = d/dt log alpha_t x_t
-    # g_t = sqrt( 2 * sigma_t^2 d/dt log(sigma_t / alpha_t) )
-    # dx_t = f_t(x_t) dt + g_t dW_t
     dxdt = dlog_alphadt(t) * x_t - beta(t) * (
         sdlogdx_2 + kappa * (sdlogdx_1 - sdlogdx_2)
     )
@@ -496,7 +508,7 @@ plt.savefig(fname)
 print(f"Saved {fname}")
 
 
-# ## Simple averaging - 50/50 mixture of both models
+# Simple averaging - 50/50 mixture of both models
 
 bs = 512
 
@@ -506,15 +518,15 @@ t = 1.0
 n = int(t / dt)
 t = t * jnp.ones((bs, 1))
 key, ikey = random.split(key, num=2)
-x_gen = jnp.zeros((bs, n + 1, x_t.shape[1]))
-x_gen = x_gen.at[:, 0, :].set(random.normal(ikey, shape=(bs, x_t.shape[1])))
+x_gen = jnp.zeros((bs, n + 1, ndim))
+x_gen = x_gen.at[:, 0, :].set(random.normal(ikey, shape=(bs, ndim)))
 ll_1 = np.zeros((bs, n + 1))
 ll_2 = np.zeros((bs, n + 1))
 for i in trange(n):
     x_t = x_gen[:, i, :]
     key, ikey = random.split(key, num=2)
-    sdlogdx_1, divdlog_1 = vector_field_jvp(ikey, t, x_t, state_up)
-    sdlogdx_2, divdlog_2 = vector_field_jvp(ikey, t, x_t, state_down)
+    sdlogdx_1, divdlog_1 = score_and_divergence(ikey, t, x_t, state_up)
+    sdlogdx_2, divdlog_2 = score_and_divergence(ikey, t, x_t, state_down)
     kappa = 0.5  # Fixed 50/50 mixture
     dxdt = dlog_alphadt(t) * x_t - beta(t) * (
         sdlogdx_2 + kappa * (sdlogdx_1 - sdlogdx_2)
@@ -574,7 +586,7 @@ plt.savefig(fname)
 print(f"Saved {fname}")
 
 
-# ## Averaging proportionally to the density (OR)
+# Averaging proportionally to the density (OR)
 
 bs = 512
 
@@ -584,15 +596,15 @@ t = 1.0
 n = int(t / dt)
 t = t * jnp.ones((bs, 1))
 key, ikey = random.split(key, num=2)
-x_gen = jnp.zeros((bs, n + 1, x_t.shape[1]))
-x_gen = x_gen.at[:, 0, :].set(random.normal(ikey, shape=(bs, x_t.shape[1])))
+x_gen = jnp.zeros((bs, n + 1, ndim))
+x_gen = x_gen.at[:, 0, :].set(random.normal(ikey, shape=(bs, ndim)))
 ll_1 = np.zeros((bs, n + 1))
 ll_2 = np.zeros((bs, n + 1))
 for i in trange(n):
     x_t = x_gen[:, i, :]
     key, ikey = random.split(key, num=2)
-    sdlogdx_1, divdlog_1 = vector_field_jvp(ikey, t, x_t, state_up)
-    sdlogdx_2, divdlog_2 = vector_field_jvp(ikey, t, x_t, state_down)
+    sdlogdx_1, divdlog_1 = score_and_divergence(ikey, t, x_t, state_up)
+    sdlogdx_2, divdlog_2 = score_and_divergence(ikey, t, x_t, state_down)
     # Compute kappa based on density ratio
     max_ll = jnp.maximum(ll_1[:, i], ll_2[:, i])
     kappa = jnp.exp(ll_1[:, i] - max_ll) / (
@@ -616,9 +628,15 @@ for i in trange(n):
 plt.figure(figsize=(8, 4))
 plt.subplot(121)
 plt.plot((ll_1 - ll_2)[:20, :].T)
+plt.title("log-likelihood difference (20 samples)")
+plt.xlabel("time")
+plt.ylabel("log-likelihood")
 plt.grid()
 plt.subplot(122)
 plt.plot((jnp.exp(ll_1) / (jnp.exp(ll_1) + jnp.exp(ll_2)))[:20, :].T)
+plt.title("log-likelihood ratio (20 samples)")
+plt.xlabel("time")
+plt.ylabel("log-likelihood")
 plt.grid()
 fname = os.path.join(plotfolder, "toy-or-ll-difference.png")
 plt.savefig(fname)
@@ -680,14 +698,14 @@ fname = os.path.join(plotfolder, "toy-or-separate.png")
 plt.savefig(fname)
 print(f"Saved {fname}")
 
-# ## Stochastic Superposition
-
-
+# Stochastic Superposition
 @jax.jit
 def get_sscore(state, t, x):
-    """
+    r"""
     Get the score from a model state.
-
+    
+    NN = \sigma_t \nabla_x \log q_t(x)
+    
     Args:
       state: Model state
       t: Time parameter
@@ -721,39 +739,39 @@ def get_stoch_dll(t, dt, x, dx, sscore):
     return output.sum(1)
 
 
-bs = 512
-
-# Stochastic superposition implementation with softmax weighting
-dt = 1e-3
-t = 1.0
-n = int(t / dt)
-t = t * jnp.ones((bs, 1))
-key, ikey = random.split(key, num=2)
-x_gen = jnp.zeros((bs, n + 1, x_t.shape[1]))
-x_gen = x_gen.at[:, 0, :].set(random.normal(ikey, shape=(bs, x_t.shape[1])))
-ll_1 = np.zeros((bs, n + 1))
-ll_2 = np.zeros((bs, n + 1))
-for i in trange(n):
-    x_t = x_gen[:, i, :]
+# Stochastic superposition implementation with softmax weighting (OR)
+def generate_or(key, state_up, state_down, x_t, bs = 512):
+    dt = 1e-3
+    t = 1.0
+    n = int(t / dt)
+    t = t * jnp.ones((bs, 1))
     key, ikey = random.split(key, num=2)
-    sdlogdx_1 = get_sscore(state_up, t, x_t)
-    sdlogdx_2 = get_sscore(state_down, t, x_t)
-    # Use softmax to compute kappa
-    kappa = jax.nn.softmax(jnp.stack([ll_1[:, i], ll_2[:, i]]), axis=0)[0]
-    kappa = kappa[:, None]
-    dx = -dt * (
-        dlog_alphadt(t) * x_t
-        - 2 * beta(t) * (sdlogdx_2 + kappa * (sdlogdx_1 - sdlogdx_2))
-    )
-    dx += jnp.sqrt(2 * jnp.exp(log_sigma(t)) * beta(t) * dt) * random.normal(
-        ikey, shape=(bs, 2)
-    )
-    x_gen = x_gen.at[:, i + 1, :].set(x_t + dx)
-    ll_1[:, i + 1] = ll_1[:, i] + get_stoch_dll(t, dt, x_t, dx, sdlogdx_1).squeeze()
-    ll_2[:, i + 1] = ll_2[:, i] + get_stoch_dll(t, dt, x_t, dx, sdlogdx_2).squeeze()
-    t += -dt
+    x_gen = jnp.zeros((bs, n + 1, ndim))
+    x_gen = x_gen.at[:, 0, :].set(random.normal(ikey, shape=(bs, ndim)))
+    ll_1 = np.zeros((bs, n + 1))
+    ll_2 = np.zeros((bs, n + 1))
+    for i in trange(n):
+        x_t = x_gen[:, i, :]
+        key, ikey = random.split(key, num=2)
+        sdlogdx_1 = get_sscore(state_up, t, x_t)
+        sdlogdx_2 = get_sscore(state_down, t, x_t)
+        # Use softmax to compute kappa
+        kappa = jax.nn.softmax(jnp.stack([ll_1[:, i], ll_2[:, i]]), axis=0)[0]
+        kappa = kappa[:, None]
+        dx = -dt * (
+            dlog_alphadt(t) * x_t
+            - 2 * beta(t) * (sdlogdx_2 + kappa * (sdlogdx_1 - sdlogdx_2))
+        )
+        dx += jnp.sqrt(2 * jnp.exp(log_sigma(t)) * beta(t) * dt) * random.normal(
+            ikey, shape=(bs, 2)
+        )
+        x_gen = x_gen.at[:, i + 1, :].set(x_t + dx)
+        ll_1[:, i + 1] = ll_1[:, i] + get_stoch_dll(t, dt, x_t, dx, sdlogdx_1).squeeze()
+        ll_2[:, i + 1] = ll_2[:, i] + get_stoch_dll(t, dt, x_t, dx, sdlogdx_2).squeeze()
+        t += -dt
+    return x_gen
 
-x_gen_or = jnp.copy(x_gen)
+x_gen_or = generate_or(key, state_up, state_down, x_t)
 
 
 plt.figure(figsize=(8, 4))
@@ -787,13 +805,13 @@ for i in range(len(t_axis)):
         plt.legend(fontsize=15)
 
 
-@jax.jit
-def get_stoch_dll(t, dt, x, dx, sscore):
-    output = ndim * dt * dlog_alphadt(t) - dt * beta(t) * (sscore**2) / jnp.exp(
-        log_sigma(t)
-    )
-    output += (dx + dt * dlog_alphadt(t) * x) * sscore / jnp.exp(log_sigma(t))
-    return output.sum(1)
+# @jax.jit
+# def get_stoch_dll(t, dt, x, dx, sscore):
+#     output = ndim * dt * dlog_alphadt(t) - dt * beta(t) * (sscore**2) / jnp.exp(
+#         log_sigma(t)
+#     )
+#     output += (dx + dt * dlog_alphadt(t) * x) * sscore / jnp.exp(log_sigma(t))
+#     return output.sum(1)
 
 
 @jax.jit
@@ -819,54 +837,60 @@ def select_kappa(ikey, t, dt, x, sdlogdx_1, sdlogdx_2):
     ).sum(1)
     return kappa
 
-
-bs = 512
-eta = 0.9
-
-dt = 1e-3
-t = 1.0
-n = int(t / dt)
-t = t * jnp.ones((bs, 1))
-key, ikey = random.split(key, num=2)
-x_gen = jnp.zeros((bs, n + 1, x_t.shape[1]))
-x_gen = x_gen.at[:, 0, :].set(random.normal(ikey, shape=(bs, x_t.shape[1])))
-ll_0 = -0.5 * (x_gen[:, 0, :] ** 2).sum(1) - ndim * jnp.log(2 * jnp.pi)
-ll_1 = ll_0[:, None] * jnp.ones((bs, n + 1))
-ll_2 = ll_0[:, None] * jnp.ones((bs, n + 1))
-for i in trange(n):
-    x_t = x_gen[:, i, :]
+def generate_and(key, state_up, state_down):
+    eta = 0.9
+    dt = 1e-3
+    t = 1.0
+    n = int(t / dt)
+    t = t * jnp.ones((bs, 1))
     key, ikey = random.split(key, num=2)
-    sdlogdx_1 = get_sscore(state_up, t, x_t)
-    sdlogdx_2 = get_sscore(state_down, t, x_t)
-    kappa = select_kappa(ikey, t, dt, x_t, sdlogdx_1, sdlogdx_2)
-    kappa = kappa[:, None]
-    dx = -dt * (
-        dlog_alphadt(t) * x_t
-        - 2 * beta(t) * (sdlogdx_2 + kappa * (sdlogdx_1 - sdlogdx_2))
-    )
-    dx += jnp.sqrt(2 * jnp.exp(log_sigma(t)) * beta(t) * dt) * random.normal(
-        ikey, shape=(bs, 2)
-    )
-    x_gen = x_gen.at[:, i + 1, :].set(x_t + dx)
-    ll_1 = ll_1.at[:, i + 1].set(
-        ll_1[:, i] + get_stoch_dll(t, dt, x_t, dx, sdlogdx_1).squeeze()
-    )
-    ll_2 = ll_2.at[:, i + 1].set(
-        ll_2[:, i] + get_stoch_dll(t, dt, x_t, dx, sdlogdx_2).squeeze()
-    )
-    t += -dt
+    x_gen = jnp.zeros((bs, n + 1, ndim))
+    x_gen = x_gen.at[:, 0, :].set(random.normal(ikey, shape=(bs, ndim)))
+    ll_0 = -0.5 * (x_gen[:, 0, :] ** 2).sum(1) - ndim * jnp.log(2 * jnp.pi)
+    ll_1 = ll_0[:, None] * jnp.ones((bs, n + 1))
+    ll_2 = ll_0[:, None] * jnp.ones((bs, n + 1))
+    for i in trange(n):
+        x_t = x_gen[:, i, :]
+        key, ikey = random.split(key, num=2)
+        sdlogdx_1 = get_sscore(state_up, t, x_t)
+        sdlogdx_2 = get_sscore(state_down, t, x_t)
+        kappa = select_kappa(ikey, t, dt, x_t, sdlogdx_1, sdlogdx_2)
+        kappa = kappa[:, None]
+        dx = -dt * (
+            dlog_alphadt(t) * x_t
+            - 2 * beta(t) * (sdlogdx_2 + kappa * (sdlogdx_1 - sdlogdx_2))
+        )
+        dx += jnp.sqrt(2 * jnp.exp(log_sigma(t)) * beta(t) * dt) * random.normal(
+            ikey, shape=(bs, 2)
+        )
+        x_gen = x_gen.at[:, i + 1, :].set(x_t + dx)
+        ll_1 = ll_1.at[:, i + 1].set(
+            ll_1[:, i] + get_stoch_dll(t, dt, x_t, dx, sdlogdx_1).squeeze()
+        )
+        ll_2 = ll_2.at[:, i + 1].set(
+            ll_2[:, i] + get_stoch_dll(t, dt, x_t, dx, sdlogdx_2).squeeze()
+        )
+        t += -dt
 
-x_gen_and = jnp.copy(x_gen)
+    return x_gen, ll_1, ll_2
+
+x_gen_and, ll_1, ll_2 = generate_and(key, state_up, state_down)
 
 plt.close()
 plt.figure(figsize=(8, 4))
 plt.subplot(121)
 plt.plot((ll_1 - ll_2)[:20, :].T)
+plt.title("log-likelihood difference (20 samples)")
+plt.xlabel("time")
+plt.ylabel("log-likelihood")
 plt.grid()
 plt.subplot(122)
 plt.plot((jnp.exp(ll_1) / (jnp.exp(ll_1) + jnp.exp(ll_2)))[:20, :].T)
+plt.title("log-likelihood ratio (20 samples)")
+plt.xlabel("time")
+plt.ylabel("log-likelihood")
 plt.grid()
-fname = "fig1_toy_example/toy-legend.png"
+fname = "fig1_toy_example/toy-and.png"
 plt.savefig(fname)
 print(f"Saved {fname}")
 
@@ -909,6 +933,7 @@ def generate_plot(C1, C2, C3):
     axs[0].scatter(x_gen_up[:, 0], x_gen_up[:, 1], c=C1, alpha=alpha)
     axs[0].scatter(x_gen_down[:, 0], x_gen_down[:, 1], c=C2, alpha=alpha)
     # Second subplot
+    # simple average
     axs[1].scatter(x_gen_up[:, 0], x_gen_up[:, 1], c=C1, alpha=alpha)
     axs[1].scatter(x_gen_down[:, 0], x_gen_down[:, 1], c=C2, alpha=alpha)
     axs[1].scatter(
@@ -917,7 +942,8 @@ def generate_plot(C1, C2, C3):
         c=C3,
         alpha=alpha_3,
     )
-    # Third subplot
+    # Third subplot 
+    # (OR)
     axs[2].scatter(x_gen_up[:, 0], x_gen_up[:, 1], c=C1, alpha=alpha)
     axs[2].scatter(x_gen_down[:, 0], x_gen_down[:, 1], c=C2, alpha=alpha)
     axs[2].scatter(
@@ -927,6 +953,7 @@ def generate_plot(C1, C2, C3):
         alpha=alpha_3,
     )
     # Fourth subplot
+    # equal density (AND)
     axs[3].scatter(x_gen_up[:, 0], x_gen_up[:, 1], c=C1, alpha=alpha)
     axs[3].scatter(x_gen_down[:, 0], x_gen_down[:, 1], c=C2, alpha=alpha)
     axs[3].scatter(
