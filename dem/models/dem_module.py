@@ -68,7 +68,9 @@ def timer_decorator(func):
         elapsed_time = end_time - start_time
         # print if time was > 10 seconds
         if elapsed_time > 10:
-            ranklogger.info(f"'{func.__name__}' took {elapsed_time:.1f} seconds to execute")
+            ranklogger.info(
+                f"'{func.__name__}' took {elapsed_time:.1f} seconds to execute"
+            )
         return result
 
     return wrapper
@@ -1505,6 +1507,7 @@ class DEMLitModule(LightningModule):
             temperature = self.val_temperature
 
         # determine batch size and number of batches
+        # TODO: use integrate_energy_batch_size instead ?
         if self.energy_function.plotting_batch_size > 0:
             batch_size = self.energy_function.plotting_batch_size
             n_batches = self.num_samples_to_save // batch_size
@@ -1516,23 +1519,33 @@ class DEMLitModule(LightningModule):
 
         final_samples = []
         energies = []
-        for i in range(n_batches):
-            samples = self.generate_samples(
-                # reverse_sde=self.reverse_sde,
-                num_samples=batch_size,
-                diffusion_scale=self.diffusion_scale,
-                negative_time=self.negative_time,
-                temperature=temperature,
-                # batch_size=self.integrate_model_batch_size,
-            ).detach()
-            # assert torch.isfinite(
-            #     samples
-            # ).all(), f"samples: Max={samples.max()}, Min={samples.min()}"
-            final_samples.append(samples)
-            energies.append(self.get_energies(samples).detach())
+        try:
+            j = 0
+            for i in range(n_batches):
+                samples = self.generate_samples(
+                    # reverse_sde=self.reverse_sde,
+                    num_samples=batch_size,
+                    diffusion_scale=self.diffusion_scale,
+                    negative_time=self.negative_time,
+                    temperature=temperature,
+                    # batch_size=self.integrate_model_batch_size,
+                ).detach()
+                # assert torch.isfinite(
+                #     samples
+                # ).all(), f"samples: Max={samples.max()}, Min={samples.min()}"
+                final_samples.append(samples)
+                energies.append(self.get_energies(samples).detach())
+                j += 1
 
-        final_samples = torch.cat(final_samples, dim=0)
-        energies = torch.cat(energies, dim=0)
+            final_samples = torch.cat(final_samples, dim=0)
+            energies = torch.cat(energies, dim=0)
+        except Exception as e:
+            print("\n" + "-" * 100 + "\n")
+            print(f"batch {i} failed")
+            print(f"batch size: {batch_size}")
+            print(f"n_batches: {n_batches}")
+            print("\n" + "-" * 100 + "\n")
+            raise e
 
         self.energy_function.log_on_epoch_end(
             latest_samples=final_samples,
@@ -1630,7 +1643,9 @@ class DEMLitModule(LightningModule):
         elif self.init_buffer_from_prior:
             init_states = self.prior.sample(self.num_buffer_samples_to_generate_init)
         else:
-            ranklogger.info("Generating initial buffer samples by integrating the energy function...")
+            ranklogger.info(
+                "Generating initial buffer samples by integrating the energy function..."
+            )
             t1 = time.time()
             if self.buffer_temperature == "same":
                 temperature = self.temperature_schedule(self.global_step)
@@ -1649,6 +1664,7 @@ class DEMLitModule(LightningModule):
                     # use_vmap=self.use_vmap,
                     temperature=temperature,
                 )
+
             reverse_sde = VEReverseSDE(_grad_fxn, self.noise_schedule)
             init_states = self.generate_samples(
                 reverse_sde=reverse_sde,
