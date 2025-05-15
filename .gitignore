@@ -1,18 +1,22 @@
-__pycache__
-src.egg-info
-.env
 
+# Outputs
 **/slurm*out
 dem_results
 **/dem_outputs
 **/*.pt
-
-
 **/*.egg-info
 **/*.png
 outputs
 **/plots
 Ala2Im*
+
+# Checkpoints
+models
+
+# Hugging Face
+.cache/
+.cache/huggingface/
+.cache/huggingface/hub/
 
 # Byte-compiled / optimized / DLL files
 */**/__pycache__/
@@ -21,8 +25,6 @@ Ala2Im*
 
 # C extensions
 *.so
-
-**/*.txt
 
 # Distribution / packaging
 .Python
