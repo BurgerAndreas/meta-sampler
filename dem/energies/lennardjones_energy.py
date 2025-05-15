@@ -1,12 +1,13 @@
 from io import BytesIO
-from typing import Optional
+from typing import Union, Optional, Sequence
+from collections.abc import Sequence as _Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
 import PIL
 import torch
-from bgflow import Energy
-from bgflow.utils import distance_vectors, distances_from_vectors
+# from bgflow import Energy
+from dem.utils.geometry import distance_vectors, distances_from_vectors
 from hydra.utils import get_original_cwd
 from lightning.pytorch.loggers import WandbLogger
 
@@ -25,8 +26,36 @@ def lennard_jones_energy_torch(r, eps=1.0, rm=1.0):
     lj = eps * ((rm / r) ** 12 - 2 * (rm / r) ** 6)
     return lj
 
+def _is_non_empty_sequence_of_integers(x):
+    return (
+        isinstance(x, _Sequence) and (len(x) > 0) and all(isinstance(y, int) for y in x)
+    )
 
-class LennardJonesPotential(Energy):
+
+def _is_sequence_of_non_empty_sequences_of_integers(x):
+    return (
+        isinstance(x, _Sequence)
+        and len(x) > 0
+        and all(_is_non_empty_sequence_of_integers(y) for y in x)
+    )
+
+
+def _parse_dim(dim):
+    if isinstance(dim, int):
+        return [torch.Size([dim])]
+    if _is_non_empty_sequence_of_integers(dim):
+        return [torch.Size(dim)]
+    elif _is_sequence_of_non_empty_sequences_of_integers(dim):
+        return list(map(torch.Size, dim))
+    else:
+        raise ValueError(
+            f"dim must be either:"
+            f"\n\t- an integer"
+            f"\n\t- a non-empty list of integers"
+            f"\n\t- a list with len > 1 containing non-empty lists containing integers"
+        )
+
+class LennardJonesPotential(torch.nn.Module):
     def __init__(
         self,
         dim,
@@ -58,10 +87,11 @@ class LennardJonesPotential(Energy):
             If True, the energy expects inputs with two event dimensions (particle_id, coordinate).
             Else, use only one event dimension.
         """
+        super().__init__()
         if two_event_dims:
-            super().__init__([n_particles, dim // n_particles])
+            self._event_shapes = _parse_dim([n_particles, dim // n_particles])
         else:
-            super().__init__(dim)
+            self._event_shapes = _parse_dim(dim)
         self._n_particles = n_particles
         self._n_dims = dim // n_particles
 
@@ -106,6 +136,53 @@ class LennardJonesPotential(Energy):
 
     def _log_prob(self, x):
         return -self._energy(x)
+
+    @property
+    def dim(self):
+        if len(self._event_shapes) > 1:
+            raise ValueError(
+                "This energy instance is defined for multiple events."
+                "Therefore there exists no coherent way to define the dimension of an event."
+                "Consider using Energy.event_shapes instead."
+            )
+        elif len(self._event_shapes[0]) > 1:
+            warnings.warn(
+                "This Energy instance is defined on multidimensional events. "
+                "Therefore, its Energy.dim is distributed over multiple tensor dimensions. "
+                "Consider using Energy.event_shape instead.",
+                UserWarning,
+            )
+        return int(torch.prod(torch.tensor(self.event_shape, dtype=int)))
+
+    @property
+    def event_shape(self):
+        if len(self._event_shapes) > 1:
+            raise ValueError(
+                "This energy instance is defined for multiple events."
+                "Therefore therefore there exists no single event shape."
+                "Consider using Energy.event_shapes instead."
+            )
+        return self._event_shapes[0]
+
+    @property
+    def event_shapes(self):
+        return self._event_shapes
+
+    def energy(self, *xs, temperature=1.0, **kwargs):
+        assert len(xs) == len(
+            self._event_shapes
+        ), f"Expected {len(self._event_shapes)} arguments but only received {len(xs)}"
+        batch_shape = xs[0].shape[: -len(self._event_shapes[0])]
+        for i, (x, s) in enumerate(zip(xs, self._event_shapes)):
+            assert x.shape[: -len(s)] == batch_shape, (
+                f"Inconsistent batch shapes."
+                f"Input at index {i} has batch shape {x.shape[:-len(s)]}"
+                f"however input at index 0 has batch shape {batch_shape}."
+            )
+            assert (
+                x.shape[-len(s) :] == s
+            ), f"Input at index {i} as wrong shape {x.shape[-len(s):]} instead of {s}"
+        return self._energy(*xs, **kwargs) / temperature
 
 
 class LennardJonesEnergy(BaseEnergyFunction):
